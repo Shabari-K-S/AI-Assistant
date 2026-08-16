@@ -1,0 +1,33 @@
+# Core audio + STT (stages 1-2)
+sounddevice==0.5.5
+numpy==2.5.2
+faster-whisper==1.2.1
+python-dotenv==1.2.2
+
+# System status tool (stage 3)
+psutil==7.2.2
+
+# Wake-word trigger (stage 1, default EV_TRIGGER=wakeword) — local CPU
+# inference; pulls onnxruntime automatically
+openwakeword==0.4.0
+
+# Push-to-talk key hook. On Linux with X11 (incl. WSLg) use the pure-Python X
+# backend: install with `pip install --no-deps pynput python-xlib six` if the
+# default install fails to build the evdev C extension.
+pynput==1.8.2
+python-xlib==0.33
+six==1.17.0
+
+# LLM (stage 3) — Google Gemini API (gemma-4) + httpx for the local Ollama path
+google-genai==2.18.1
+httpx==0.28.1
+
+# TTS (stage 4)
+edge-tts>=7.2.0
+av>=14.0.0
+elevenlabs==2.64.0
+piper-tts==1.6.1
+
+# MCP (Model Context Protocol)
+mcp>=2.0.0
+

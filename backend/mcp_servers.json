@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "dummy-demo": {
+      "command": ".venv/bin/python3",
+      "args": ["dummy_mcp_server.py"],
+      "env": {}
+    },
+    "opencode": {
+      "command": ".venv/bin/python3",
+      "args": ["opencode_mcp_server.py"],
+      "env": {
+        "WORKSPACE_ROOT": "/home/shabari/projects"
+      }
+    }
+  }
+}
