@@ -87,9 +87,11 @@ class AudioConfig:
 
 @dataclass(frozen=True)
 class STTConfig:
-    """Stage 2: faster-whisper settings."""
+    """Stage 2: STT settings (local faster-whisper, or cloud gemini/groq)."""
 
-    model: str = "small"  # tiny/base/small/medium/large-v3
+    provider: str = "local"  # local (faster-whisper) | gemini | groq | openai
+    model: str = "small"  # tiny/base/small/medium/large-v3 for local; gemini-2.0-flash for gemini
+    api_key: str = ""  # optional API key for cloud STT
     device: str = "cpu"  # cpu | cuda (see .env)
     compute_type: str = "int8"  # int8 on CPU, float16 on GPU
     language: str | None = None  # None = auto-detect
@@ -204,7 +206,9 @@ def load_config() -> Config:
             wake_phrase_required=_env_bool("EV_WAKE_PHRASE_REQUIRED", True),
         ),
         stt=STTConfig(
+            provider=_env("EV_STT_PROVIDER", "local").lower(),
             model=_env("EV_STT_MODEL", "small"),
+            api_key=_env("EV_STT_API_KEY", _env("GOOGLE_API_KEY", _env("GEMINI_API_KEY", _env("GROQ_API_KEY")))),
             device=_env("EV_STT_DEVICE", "cpu"),
             compute_type=_env("EV_STT_COMPUTE_TYPE", "int8"),
             language=_env("EV_STT_LANGUAGE") or None,
