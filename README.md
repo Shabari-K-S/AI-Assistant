@@ -110,8 +110,3 @@ npm install
 - **Confirmation Gating:** Dangerous terminal execution commands require operator approval.
 - **AST Mathematical Sandbox:** Evaluates calculations using strict AST node validation without arbitrary code execution.
 - **Restricted CORS Policy:** The live bridge allows only verified local origins, preventing cross-site prompt injections.
-
----
-
-## 📜 License
-MIT License.
