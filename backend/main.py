@@ -173,10 +173,12 @@ def _transcribe(mic, stt, cfg, audio, bus=None) -> str | None:
 
 
 def clean_for_speech(text: str) -> str:
-    """Strip markdown/LaTeX so the reply reads (and speaks) like speech."""
+    """Strip markdown/LaTeX/thought tags so the reply reads (and speaks) like speech."""
     if not text:
         return text
-    t = re.sub(r"```.*?```", " ", text, flags=re.S)        # fenced code
+    t = re.sub(r"<think>.*?</think>", " ", text, flags=re.S | re.IGNORECASE)
+    t = re.sub(r"<thought>.*?</thought>", " ", text, flags=re.S | re.IGNORECASE)
+    t = re.sub(r"```.*?```", " ", t, flags=re.S)        # fenced code
     t = re.sub(r"`[^`]*`", " ", t)                          # inline code
     t = re.sub(r"!?\[([^\]]*)\]\([^)]*\)", r"\1", t)        # links/images
     t = re.sub(r"\$\$.*?\$\$", " ", t, flags=re.S)          # $$ math $$

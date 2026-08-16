@@ -6,6 +6,7 @@ and registers them directly into S.A.R.A.'s ToolRegistry for LLM function callin
 
 from __future__ import annotations
 
+import atexit
 import json
 import logging
 import os
@@ -242,6 +243,7 @@ class MCPManager:
             config_path = Path(__file__).resolve().parent / "mcp_servers.json"
         self.config_path = Path(config_path)
         self.clients: dict[str, MCPProcessClient] = {}
+        atexit.register(self.close)
 
     def ensure_default_config(self) -> None:
         """Create a default mcp_servers.json if it doesn't already exist."""

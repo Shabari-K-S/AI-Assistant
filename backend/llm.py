@@ -169,7 +169,7 @@ def _serialize_openai(messages: list[dict]) -> list[dict]:
                     fr = part.get("functionResponse", {})
                     out.append({
                         "role": "tool",
-                        "tool_call_id": fr.get("id"),
+                        "tool_call_id": fr.get("id") or f"call_{fr.get('name', 'tool')}",
                         "content": (fr.get("response") or {}).get("result", ""),
                     })
             continue
@@ -177,7 +177,7 @@ def _serialize_openai(messages: list[dict]) -> list[dict]:
         text = "".join(p["text"] for p in parts if "text" in p)
         calls = [
             {
-                "id": p["functionCall"].get("id"),
+                "id": p["functionCall"].get("id") or f"call_{p['functionCall'].get('name', 'tool')}",
                 "type": "function",
                 "function": {
                     "name": p["functionCall"].get("name", ""),

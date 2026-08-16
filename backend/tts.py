@@ -142,6 +142,8 @@ class ElevenLabsTTS(TTSEngine):
             raw = b"".join(audio_stream)
             if not raw:
                 return np.zeros(0, dtype=np.float32)
+            if len(raw) % 2 != 0:
+                raw = raw[: -(len(raw) % 2)]
             return np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
         except Exception:
             log.exception("ElevenLabs synthesis failed")
