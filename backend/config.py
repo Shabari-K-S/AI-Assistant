@@ -121,7 +121,7 @@ class TTSConfig:
     """Stage 4: TTS settings (edge | piper | elevenlabs)."""
 
     provider: str = "edge"  # edge | piper | elevenlabs
-    edge_voice: str = "en-US-ChristopherNeural"
+    edge_voice: str = "en-US-AriaNeural"
     edge_rate: str = "+0%"
     edge_pitch: str = "+0Hz"
     edge_volume: str = "+0%"
@@ -230,7 +230,7 @@ def load_config() -> Config:
         ),
         tts=TTSConfig(
             provider=_env("EV_TTS_PROVIDER", "edge").lower(),
-            edge_voice=_env("EV_EDGE_TTS_VOICE", "en-US-ChristopherNeural"),
+            edge_voice=_env("EV_EDGE_TTS_VOICE", "en-US-AriaNeural"),
             edge_rate=_env("EV_EDGE_TTS_RATE", "+0%"),
             edge_pitch=_env("EV_EDGE_TTS_PITCH", "+0Hz"),
             edge_volume=_env("EV_EDGE_TTS_VOLUME", "+0%"),

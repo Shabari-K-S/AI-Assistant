@@ -46,7 +46,7 @@ class EdgeTTS(TTSEngine):
 
     def __init__(self, config: TTSConfig) -> None:
         self._config = config
-        self._voice = config.edge_voice or "en-US-ChristopherNeural"
+        self._voice = config.edge_voice or "en-US-AriaNeural"
         self._rate = config.edge_rate or "+0%"
         self._pitch = config.edge_pitch or "+0Hz"
         self._volume = config.edge_volume or "+0%"
