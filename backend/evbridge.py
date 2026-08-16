@@ -208,6 +208,22 @@ class _Handler(BaseHTTPRequestHandler):
             self._json({"ok": True, "prompt": prompt})
             return
 
+        if path == "/ptt":
+            state = str(body.get("state") or "").lower().strip()
+            if state == "press":
+                bus._call_control("ptt_press", True)
+                bus.set(phase="listening")
+                bus.log("INFO", "web PTT: voice capture activated")
+                self._json({"ok": True, "state": "press"})
+                return
+            elif state == "release":
+                bus._call_control("ptt_release", True)
+                bus.log("INFO", "web PTT: voice capture released")
+                self._json({"ok": True, "state": "release"})
+                return
+            self._json({"ok": False, "error": "state must be 'press' or 'release'"}, 400)
+            return
+
         if path == "/config":
             applied: list[str] = []
             if "threshold" in body:

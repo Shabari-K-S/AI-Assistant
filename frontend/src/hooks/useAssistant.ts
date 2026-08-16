@@ -160,6 +160,25 @@ export function useAssistant() {
     [postConfig],
   )
 
+  const triggerPtt = useCallback(
+    async (state: 'press' | 'release'): Promise<boolean> => {
+      try {
+        if (state === 'press') {
+          soundFx.click()
+        }
+        const res = await fetch(`${BRIDGE_URL}/ptt`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ state }),
+        })
+        return res.ok
+      } catch {
+        return false
+      }
+    },
+    [],
+  )
+
   const clearLogs = useCallback(() => {
     setLogs([])
     soundFx.click()
@@ -172,6 +191,7 @@ export function useAssistant() {
     setThreshold,
     setMuted,
     sendPrompt,
+    triggerPtt,
     clearLogs,
   }
 }

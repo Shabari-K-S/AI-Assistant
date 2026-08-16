@@ -344,6 +344,8 @@ def _run_assistant(cfg, once: bool, text: str | None) -> int:
 
     bus.on_control("threshold", lambda v: trigger.set_threshold(v) if trigger else None)
     bus.on_control("muted", _set_muted)
+    bus.on_control("ptt_press", lambda _: trigger.press() if trigger else None)
+    bus.on_control("ptt_release", lambda _: trigger.release() if trigger else None)
     if cfg.webui.enabled:
         evbridge.start(cfg.webui.port)
     bus.set(

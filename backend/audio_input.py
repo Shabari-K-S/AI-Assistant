@@ -211,6 +211,12 @@ class Trigger(ABC):
     def set_enabled(self, enabled: bool) -> None:  # noqa: ARG002 - base no-op
         """Ignore activations while disabled (EV busy)."""
 
+    def press(self) -> None:
+        """Manual / Web-triggered PTT press."""
+
+    def release(self) -> None:
+        """Manual / Web-triggered PTT release."""
+
     def close(self) -> None:  # optional cleanup
         pass
 
@@ -232,6 +238,14 @@ class PushToTalk(Trigger):
         self._deactivated.set()  # start in the released state
         hook.on_press = self._on_press
         hook.on_release = self._on_release
+
+    def press(self) -> None:
+        """External software/web trigger press."""
+        self._on_press(self._key)
+
+    def release(self) -> None:
+        """External software/web trigger release."""
+        self._on_release(self._key)
 
     def _on_press(self, key: str) -> None:
         if key == self._key and not self._active:
@@ -475,11 +489,32 @@ class WakeWordTrigger(Trigger):
             self._deactivated.clear()
             self._activated.set()
 
-    def reset_audio(self) -> None:
-        """Clear buffered audio frames and reset consecutive frame count."""
+    def press(self) -> None:
+        """Manual / Web-triggered PTT press — force activation immediately."""
         with self._lock:
-            self._frame_buf = []
+            if not self._enabled:
+                return
+            self._listening = True
+            self._activation_ts = time.monotonic()
+            self._listening_since = self._activation_ts
+            self._quiet_frames = 0
             self._consecutive = 0
+            self._frame_buf = []
+            self._deactivated.clear()
+            self._activated.set()
+            log.info("WakeWordTrigger: manual web PTT press activated")
+
+    def release(self) -> None:
+        """Manual / Web-triggered PTT release — force deactivation and process speech."""
+        with self._lock:
+            if self._listening:
+                self._listening = False
+                self._activated.clear()
+                self._quiet_frames = 0
+                self._consecutive = 0
+                self._frame_buf = []
+                self._deactivated.set()
+                log.info("WakeWordTrigger: manual web PTT release deactivated")
 
     def close(self) -> None:
         pass  # model objects are cheap; nothing to tear down

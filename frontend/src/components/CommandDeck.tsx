@@ -1,9 +1,11 @@
-import { memo, useState } from 'react'
+import { memo, useState, useEffect, useCallback } from 'react'
 import { soundFx } from '../lib/soundFx'
-import { Send, Terminal, Activity, Cpu, CloudSun, Dices, GitBranch, FolderSearch, ExternalLink } from 'lucide-react'
+import { Send, Terminal, Activity, Cpu, CloudSun, Dices, GitBranch, FolderSearch, ExternalLink, Mic } from 'lucide-react'
 
 interface Props {
   onSend: (text: string) => Promise<boolean>
+  onPtt?: (state: 'press' | 'release') => Promise<boolean>
+  phase?: string
   disabled?: boolean
   connected: boolean
 }
@@ -18,9 +20,52 @@ const QUICK_ACTIONS = [
   { label: 'MCP Dice', query: 'Sara, roll two 20-sided dice via the MCP tool.', icon: Dices },
 ]
 
-export const CommandDeck = memo(function CommandDeck({ onSend, disabled, connected }: Props) {
+export const CommandDeck = memo(function CommandDeck({
+  onSend,
+  onPtt,
+  phase,
+  disabled,
+  connected,
+}: Props) {
   const [text, setText] = useState('')
   const [transmitting, setTransmitting] = useState(false)
+  const [isPttActive, setIsPttActive] = useState(false)
+
+  const handlePttPress = useCallback(() => {
+    if (!connected || disabled || !onPtt) return
+    setIsPttActive(true)
+    onPtt('press')
+  }, [connected, disabled, onPtt])
+
+  const handlePttRelease = useCallback(() => {
+    if (!connected || disabled || !onPtt) return
+    setIsPttActive(false)
+    onPtt('release')
+  }, [connected, disabled, onPtt])
+
+  // Optional Spacebar hold-to-talk in browser when outside input fields
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = (document.activeElement?.tagName || '').toLowerCase()
+      if (e.code === 'Space' && !e.repeat && tag !== 'input' && tag !== 'textarea') {
+        e.preventDefault()
+        handlePttPress()
+      }
+    }
+    const handleKeyUp = (e: KeyboardEvent) => {
+      const tag = (document.activeElement?.tagName || '').toLowerCase()
+      if (e.code === 'Space' && tag !== 'input' && tag !== 'textarea') {
+        e.preventDefault()
+        handlePttRelease()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keyup', handleKeyUp)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keyup', handleKeyUp)
+    }
+  }, [handlePttPress, handlePttRelease])
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault()
@@ -41,9 +86,44 @@ export const CommandDeck = memo(function CommandDeck({ onSend, disabled, connect
     setTransmitting(false)
   }
 
+  const isListening = phase === 'listening' || isPttActive
+
   return (
-    <div className="w-full space-y-2">
-      {/* Quick Action Chips (Horizontally swipeable on mobile, wraps on larger screens) */}
+    <div className="w-full space-y-2.5">
+      {/* 1. Push-To-Talk (Hold-To-Talk) Voice Button */}
+      {onPtt && (
+        <div className="w-full">
+          <button
+            type="button"
+            onMouseDown={handlePttPress}
+            onMouseUp={handlePttRelease}
+            onMouseLeave={isPttActive ? handlePttRelease : undefined}
+            onTouchStart={handlePttPress}
+            onTouchEnd={handlePttRelease}
+            onTouchCancel={handlePttRelease}
+            disabled={!connected || disabled}
+            className={`w-full py-2.5 sm:py-3 px-4 rounded font-display text-[11px] sm:text-xs tracking-[0.2em] sm:tracking-[0.25em] font-bold flex items-center justify-center gap-2 transition-all select-none touch-none active:scale-[0.98] ${
+              isPttActive
+                ? 'bg-[#41e6ff] text-[#03070b] shadow-[0_0_20px_#41e6ff] animate-pulse border border-[#7ef3ff]'
+                : isListening
+                  ? 'bg-[rgba(65,230,255,0.2)] text-[#41e6ff] border border-[#41e6ff] shadow-[0_0_10px_rgba(65,230,255,0.4)]'
+                  : 'bg-[rgba(6,14,21,0.85)] text-[#7ef3ff] hover:text-[#e8fbff] border border-[rgba(65,230,255,0.3)] hover:border-[#41e6ff] hover:bg-[rgba(65,230,255,0.12)]'
+            } disabled:opacity-40 disabled:pointer-events-none`}
+          >
+            <Mic
+              size={15}
+              className={isPttActive ? 'animate-bounce text-[#03070b]' : 'text-[#41e6ff]'}
+            />
+            <span>
+              {isPttActive
+                ? 'RECORDING VOICE... RELEASE TO TRANSMIT'
+                : 'HOLD TO TALK // PUSH-TO-TALK'}
+            </span>
+          </button>
+        </div>
+      )}
+
+      {/* 2. Quick Action Chips (Horizontally swipeable on mobile, wraps on larger screens) */}
       <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar touch-scroll py-1 sm:flex-wrap">
         <span className="font-mono text-[9px] uppercase tracking-widest text-[#7da4b8] flex items-center gap-1 mr-1 shrink-0">
           <Terminal size={11} className="text-[#41e6ff]" /> Quick:
@@ -64,7 +144,7 @@ export const CommandDeck = memo(function CommandDeck({ onSend, disabled, connect
         })}
       </div>
 
-      {/* Terminal Input Bay */}
+      {/* 3. Terminal Input Bay */}
       <form onSubmit={handleSubmit} className="relative flex items-center">
         <div className="absolute left-3.5 text-[#41e6ff] pointer-events-none flex items-center gap-1">
           <span className="font-mono text-xs font-bold">&gt;</span>
@@ -76,7 +156,7 @@ export const CommandDeck = memo(function CommandDeck({ onSend, disabled, connect
           onChange={(e) => setText(e.target.value)}
           placeholder={
             connected
-              ? 'Enter command or speak "Sara..."'
+              ? 'Enter command, tap Hold-To-Talk, or say "Sara..."'
               : 'Assistant offline — start backend: ./run.sh'
           }
           disabled={!connected || transmitting}

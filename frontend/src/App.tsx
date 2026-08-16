@@ -22,7 +22,16 @@ const PHASE_TAG: Record<string, string> = {
 type MobileTab = 'core' | 'sensors' | 'logs'
 
 export default function App() {
-  const { snap, logs, connected, setThreshold, setMuted, sendPrompt, clearLogs } = useAssistant()
+  const {
+    snap,
+    logs,
+    connected,
+    setThreshold,
+    setMuted,
+    sendPrompt,
+    triggerPtt,
+    clearLogs,
+  } = useAssistant()
   const [showLeftSidebar, setShowLeftSidebar] = useState(true)
   const [showRightSidebar, setShowRightSidebar] = useState(true)
   const [scanlinesActive, setScanlinesActive] = useState(true)
@@ -186,8 +195,13 @@ export default function App() {
               {/* 4-Column Quick Telemetry Gauges */}
               <TelemetryGauges snap={snap} connected={connected} />
 
-              {/* Interactive Terminal Uplink Input */}
-              <CommandDeck onSend={sendPrompt} connected={connected} />
+              {/* Interactive Terminal Uplink Input & Push-To-Talk Button */}
+              <CommandDeck
+                onSend={sendPrompt}
+                onPtt={triggerPtt}
+                phase={snap.phase}
+                connected={connected}
+              />
             </div>
           </main>
         )}
