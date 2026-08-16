@@ -1,12 +1,13 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import type { LogLine, Snapshot } from '../types'
 import { soundFx } from '../lib/soundFx'
-import { Copy, Check, Trash2, Radio, Bot, User } from 'lucide-react'
+import { Copy, Check, Trash2, Radio, Bot, User, X } from 'lucide-react'
 
 interface Props {
   snap: Snapshot
   logs: LogLine[]
   onClearLogs?: () => void
+  onClose?: () => void
 }
 
 const LEVEL_COLOR: Record<string, string> = {
@@ -23,7 +24,7 @@ const KIND_TAG: Record<LogLine['kind'], string> = {
   command: 'CMD',
 }
 
-export const FeedPanel = memo(function FeedPanel({ snap, logs, onClearLogs }: Props) {
+export const FeedPanel = memo(function FeedPanel({ snap, logs, onClearLogs, onClose }: Props) {
   const logRef = useRef<HTMLDivElement>(null)
   const [copiedTranscript, setCopiedTranscript] = useState(false)
   const [copiedReply, setCopiedReply] = useState(false)
@@ -48,7 +49,23 @@ export const FeedPanel = memo(function FeedPanel({ snap, logs, onClearLogs }: Pr
   }
 
   return (
-    <aside className="flex w-full md:w-80 lg:w-[22rem] shrink-0 flex-col gap-3 overflow-y-auto border-l border-[rgba(65,230,255,0.14)] bg-[rgba(4,9,15,0.6)] p-3">
+    <aside className="flex w-full md:w-80 lg:w-[22rem] shrink-0 flex-col gap-3 overflow-y-auto border-l border-[rgba(65,230,255,0.14)] bg-[rgba(4,9,15,0.92)] md:bg-[rgba(4,9,15,0.6)] p-3 pb-20 md:pb-3">
+      {/* Mobile-only header with close */}
+      {onClose && (
+        <div className="md:hidden flex items-center justify-between px-1 py-0.5 border-b border-[rgba(65,230,255,0.1)] mb-1">
+          <span className="hud-label text-[10px] text-[#41e6ff]">TRANSMISSION FEED & LOGS</span>
+          <button
+            onClick={() => {
+              soundFx.click()
+              onClose()
+            }}
+            className="p-1 text-[#7da4b8] hover:text-[#41e6ff] rounded transition-colors"
+            title="Close panel"
+          >
+            <X size={15} />
+          </button>
+        </div>
+      )}
       {/* 1. Inbound Voice/Terminal Transcript */}
       <div className="hud-panel p-3.5 rounded relative">
         <div className="flex items-center justify-between mb-2">

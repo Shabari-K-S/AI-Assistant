@@ -43,9 +43,9 @@ export const CommandDeck = memo(function CommandDeck({ onSend, disabled, connect
 
   return (
     <div className="w-full space-y-2">
-      {/* Quick Action Chips */}
-      <div className="flex flex-wrap items-center gap-1.5">
-        <span className="font-mono text-[9px] uppercase tracking-widest text-[#7da4b8] flex items-center gap-1 mr-1">
+      {/* Quick Action Chips (Horizontally swipeable on mobile, wraps on larger screens) */}
+      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar touch-scroll py-1 sm:flex-wrap">
+        <span className="font-mono text-[9px] uppercase tracking-widest text-[#7da4b8] flex items-center gap-1 mr-1 shrink-0">
           <Terminal size={11} className="text-[#41e6ff]" /> Quick:
         </span>
         {QUICK_ACTIONS.map((item) => {
@@ -55,7 +55,7 @@ export const CommandDeck = memo(function CommandDeck({ onSend, disabled, connect
               key={item.label}
               onClick={() => handleChipClick(item.query)}
               disabled={!connected || transmitting}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono tracking-wider text-[#7ef3ff] bg-[rgba(65,230,255,0.06)] hover:bg-[rgba(65,230,255,0.15)] border border-[rgba(65,230,255,0.22)] hover:border-[rgba(65,230,255,0.5)] rounded transition-all disabled:opacity-30 disabled:pointer-events-none active:scale-95"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[10.5px] sm:text-[11px] font-mono tracking-wider text-[#7ef3ff] bg-[rgba(65,230,255,0.06)] hover:bg-[rgba(65,230,255,0.15)] border border-[rgba(65,230,255,0.22)] hover:border-[rgba(65,230,255,0.5)] rounded transition-all shrink-0 disabled:opacity-30 disabled:pointer-events-none active:scale-95 touch-manipulation"
             >
               <Icon size={10} className="text-[#41e6ff]" />
               <span>{item.label}</span>

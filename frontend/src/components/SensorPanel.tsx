@@ -1,13 +1,14 @@
 import { memo, useEffect, useState } from 'react'
 import type { Snapshot } from '../types'
 import { soundFx } from '../lib/soundFx'
-import { Sliders, Volume2, VolumeX, Shield, Cpu, Mic, Radio, Clock, AudioLines } from 'lucide-react'
+import { Sliders, Volume2, VolumeX, Shield, Cpu, Mic, Radio, Clock, AudioLines, X } from 'lucide-react'
 
 interface Props {
   snap: Snapshot
   connected: boolean
   onThreshold: (value: number) => void
   onMuted: (muted: boolean) => void
+  onClose?: () => void
 }
 
 /** Left HUD panel: live sensor controls + system telemetry readouts. */
@@ -16,6 +17,7 @@ export const SensorPanel = memo(function SensorPanel({
   connected,
   onThreshold,
   onMuted,
+  onClose,
 }: Props) {
   const [localThr, setLocalThr] = useState(snap.threshold)
 
@@ -66,12 +68,26 @@ export const SensorPanel = memo(function SensorPanel({
   )
 
   return (
-    <aside className="hud-panel flex w-full md:w-64 lg:w-72 shrink-0 flex-col overflow-y-auto border-r border-r-[rgba(65,230,255,0.14)] bg-[rgba(4,9,15,0.6)]">
+    <aside className="hud-panel flex w-full md:w-64 lg:w-72 shrink-0 flex-col overflow-y-auto border-r border-r-[rgba(65,230,255,0.14)] bg-[rgba(4,9,15,0.92)] md:bg-[rgba(4,9,15,0.6)] pb-20 md:pb-4">
       {/* 1. Sensory Control Bay */}
-      <div className="border-b border-[rgba(65,230,255,0.1)] p-4">
-        <div className="hud-label mb-3 text-[10px] flex items-center gap-1.5 text-[#41e6ff]">
-          <Sliders size={12} />
-          <span>Sensor Calibration</span>
+      <div className="border-b border-[rgba(65,230,255,0.1)] p-3.5 sm:p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="hud-label text-[10px] flex items-center gap-1.5 text-[#41e6ff]">
+            <Sliders size={12} />
+            <span>Sensor Calibration</span>
+          </div>
+          {onClose && (
+            <button
+              onClick={() => {
+                soundFx.click()
+                onClose()
+              }}
+              className="md:hidden p-1 text-[#7da4b8] hover:text-[#41e6ff] rounded transition-colors"
+              title="Close panel"
+            >
+              <X size={15} />
+            </button>
+          )}
         </div>
 
         <div className="mb-3">

@@ -244,6 +244,16 @@ textarea { caret-color: var(--color-cy); }
 input[type="range"] { accent-color: #41e6ff; }
 select option { background: #0a151e; color: #e8fbff; }
 
+/* ----- mobile utilities ----- */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.touch-scroll { -webkit-overflow-scrolling: touch; }
+
+@supports (padding: max(0px)) {
+  .pb-safe { padding-bottom: max(0.75rem, env(safe-area-inset-bottom)); }
+  .pt-safe { padding-top: max(0.5rem, env(safe-area-inset-top)); }
+}
+
 /* ----- reduced motion ----- */
 @media (prefers-reduced-motion: reduce) {
   .orb-halo, .status-light-on { animation: none; }
