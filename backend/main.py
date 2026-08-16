@@ -24,7 +24,6 @@ Controls
 from __future__ import annotations
 
 import argparse
-import fcntl
 import logging
 import os
 import re
@@ -531,37 +530,6 @@ def _run_transcribe_loop(cfg, once: bool) -> int:
         trigger.close()
 
 
-def _acquire_instance_lock():
-    """Ensure only one instance of S.A.R.A. runs at a time to prevent duplicate audio/TTS output."""
-    import fcntl
-    lock_path = "/tmp/sara_assistant.lock"
-    try:
-        lock_file = open(lock_path, "a+")
-        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        lock_file.seek(0)
-        lock_file.truncate(0)
-        lock_file.write(f"{os.getpid()}\n")
-        lock_file.flush()
-        return lock_file
-    except (BlockingIOError, OSError):
-        existing_pid = "unknown"
-        try:
-            with open(lock_path) as f:
-                content = f.read().strip()
-                if content:
-                    existing_pid = content
-        except Exception:
-            pass
-        print(
-            f"[EV] Another instance of S.A.R.A. is already running (PID {existing_pid}).\n"
-            f"Exiting this process to prevent duplicate audio capture and dual TTS output.\n"
-            f"If this is stale, run: rm -f /tmp/sara_assistant.lock",
-            file=sys.stderr,
-            flush=True,
-        )
-        return None
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="ev", description=__doc__)
     parser.add_argument(
@@ -583,22 +551,12 @@ def main(argv: list[str] | None = None) -> int:
         list_devices()
         return 0
 
-    lock_file = _acquire_instance_lock()
-    if lock_file is None:
-        return 0
-
     cfg = load_config()
     _setup_logging(cfg.log_level)
 
-    try:
-        if args.mode == "assistant":
-            return _run_assistant(cfg, once=args.once, text=args.text)
-        return _run_transcribe_loop(cfg, once=args.once)
-    finally:
-        try:
-            lock_file.close()
-        except Exception:
-            pass
+    if args.mode == "assistant":
+        return _run_assistant(cfg, once=args.once, text=args.text)
+    return _run_transcribe_loop(cfg, once=args.once)
 
 
 if __name__ == "__main__":
