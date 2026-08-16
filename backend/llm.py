@@ -277,25 +277,48 @@ class GeminiGemmaLLM(LLMEngine):
         )
 
     def _stream(self, contents: list[dict], tools: list[dict], system_prompt: str):
-        """Lazy chunk iterator; retries once on HTTP 429 (free-tier quota)."""
+        """Lazy chunk iterator; retries on 429 rate limit and falls back if model is unavailable."""
         from google.genai import errors
 
-        for attempt in (1, 2):
-            try:
-                stream = self._client.models.generate_content_stream(
-                    model=self._config.model,
-                    contents=contents,
-                    config=self._config_dict(tools, system_prompt),
-                )
-                for chunk in stream:
-                    yield chunk
-                return
-            except errors.ClientError as exc:
-                if exc.code == 429 and attempt == 1:
-                    log.warning("llm: HTTP 429 (rate limit) — retrying in 5s")
-                    time.sleep(5)
-                    continue
-                raise
+        models_to_try = [self._config.model]
+        for fallback in ("gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.5-pro", "gemini-1.5-pro"):
+            if fallback not in models_to_try:
+                models_to_try.append(fallback)
+
+        last_exc = None
+        for i, model_name in enumerate(models_to_try):
+            for attempt in (1, 2):
+                try:
+                    stream = self._client.models.generate_content_stream(
+                        model=model_name,
+                        contents=contents,
+                        config=self._config_dict(tools, system_prompt),
+                    )
+                    for chunk in stream:
+                        yield chunk
+                    return
+                except errors.ClientError as exc:
+                    last_exc = exc
+                    if exc.code == 429 and attempt == 1:
+                        log.warning("llm: HTTP 429 (rate limit) on %s — retrying in 5s", model_name)
+                        time.sleep(5)
+                        continue
+                    if exc.code in (404, 400) and i < len(models_to_try) - 1:
+                        log.warning(
+                            "llm model %s not available (%s); switching to fallback %s",
+                            model_name, exc.message if hasattr(exc, "message") else exc, models_to_try[i + 1],
+                        )
+                        break
+                    raise
+                except Exception as exc:
+                    last_exc = exc
+                    if i < len(models_to_try) - 1:
+                        log.warning("llm error with model %s (%s); trying fallback", model_name, exc)
+                        break
+                    raise
+
+        if last_exc:
+            raise last_exc
 
     def stream_response(
         self,

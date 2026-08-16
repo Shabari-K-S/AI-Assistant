@@ -90,27 +90,38 @@ class STTEngine:
             "Transcribe the exact spoken words in this audio recording. "
             "Return ONLY the plain transcribed text without quotes, formatting, or commentary."
         )
-        try:
-            model_name = self._config.model if "gemini" in self._config.model else "gemini-2.0-flash"
-            response = client.models.generate_content(
-                model=model_name,
-                contents=[part, prompt],
-            )
-            text = (response.text or "").strip()
-            elapsed = time.perf_counter() - t0
-            log.info(
-                "gemini stt: %.2fs audio -> %.2fs compute | text=%.60r",
-                audio.size / sample_rate, elapsed, text,
-            )
-            return Transcription(
-                text=text,
-                language="en",
-                confidence=0.0,
-                duration_s=audio.size / sample_rate,
-            )
-        except Exception:
-            log.exception("Gemini audio transcription failed")
-            return Transcription("", None, -2.0, audio.size / sample_rate)
+
+        candidate_models = []
+        if "gemini" in self._config.model:
+            candidate_models.append(self._config.model)
+        candidate_models.extend(["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.5-pro", "gemini-1.5-pro"])
+
+        last_exc = None
+        for model_name in candidate_models:
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=[part, prompt],
+                )
+                text = (response.text or "").strip()
+                elapsed = time.perf_counter() - t0
+                log.info(
+                    "gemini stt (%s): %.2fs audio -> %.2fs compute | text=%.60r",
+                    model_name, audio.size / sample_rate, elapsed, text,
+                )
+                return Transcription(
+                    text=text,
+                    language="en",
+                    confidence=0.0,
+                    duration_s=audio.size / sample_rate,
+                )
+            except Exception as exc:
+                last_exc = exc
+                log.debug("Gemini STT model %s failed: %s; trying next candidate", model_name, exc)
+                continue
+
+        log.error("All Gemini STT candidate models failed: %s", last_exc)
+        return Transcription("", None, -2.0, audio.size / sample_rate)
 
     def _transcribe_groq(self, audio: np.ndarray, sample_rate: int) -> Transcription:
         t0 = time.perf_counter()

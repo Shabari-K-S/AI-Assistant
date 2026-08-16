@@ -90,7 +90,7 @@ class STTConfig:
     """Stage 2: STT settings (local faster-whisper, or cloud gemini/groq)."""
 
     provider: str = "local"  # local (faster-whisper) | gemini | groq | openai
-    model: str = "small"  # tiny/base/small/medium/large-v3 for local; gemini-2.0-flash for gemini
+    model: str = "small"  # tiny/base/small/medium/large-v3 for local; gemini-2.5-flash / gemini-1.5-flash for gemini
     api_key: str = ""  # optional API key for cloud STT
     device: str = "cpu"  # cpu | cuda (see .env)
     compute_type: str = "int8"  # int8 on CPU, float16 on GPU
