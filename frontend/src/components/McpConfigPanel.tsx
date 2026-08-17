@@ -34,6 +34,7 @@ const ICON_MAP: Record<string, typeof Terminal> = {
   Compass,
   GitBranch,
   Wrench,
+  Search,
 }
 
 interface Props {

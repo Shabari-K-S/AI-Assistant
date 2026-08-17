@@ -25,6 +25,22 @@
         "WORKSPACE_ROOT": "/home/shabari/projects"
       },
       "enabled": true
+    },
+    "duckduckgo-search": {
+      "command": ".venv/bin/python3",
+      "args": [
+        "duckduckgo_mcp_server.py"
+      ],
+      "env": {},
+      "enabled": true
+    },
+    "web-scraper": {
+      "command": ".venv/bin/python3",
+      "args": [
+        "web_scraper_mcp_server.py"
+      ],
+      "env": {},
+      "enabled": true
     }
   }
 }
