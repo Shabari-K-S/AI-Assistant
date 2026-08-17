@@ -75,7 +75,7 @@ export const CommandDeck = memo(function CommandDeck({
       setText('')
 
       const rec = new SpeechRec()
-      rec.continuous = true
+      rec.continuous = false
       rec.interimResults = true
       rec.lang = 'en-US'
       rec.maxAlternatives = 1
@@ -83,9 +83,19 @@ export const CommandDeck = memo(function CommandDeck({
       rec.onresult = (event: any) => {
         let full = ''
         for (let i = 0; i < event.results.length; ++i) {
-          full += event.results[i][0].transcript
+          const piece = event.results[i][0]?.transcript?.trim() || ''
+          if (!piece) continue
+          if (!full) {
+            full = piece
+          } else if (piece.toLowerCase().startsWith(full.toLowerCase())) {
+            // Cumulative update (Android Chrome): replace with the full string
+            full = piece
+          } else if (full.toLowerCase().endsWith(piece.toLowerCase())) {
+            // Duplicate suffix: ignore
+          } else {
+            full = `${full} ${piece}`
+          }
         }
-        full = full.trim()
         if (full) {
           speechTextRef.current = full
           setText(full)
@@ -128,6 +138,9 @@ export const CommandDeck = memo(function CommandDeck({
         recognitionRef.current.stop()
       } catch {}
     }
+
+    // Small delay to allow any pending final onresult audio packet from browser
+    await new Promise((r) => setTimeout(r, 60))
 
     const promptToSend = speechTextRef.current.trim() || text.trim()
     if (promptToSend && !transmitting && connected) {
