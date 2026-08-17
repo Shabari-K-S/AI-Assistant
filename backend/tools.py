@@ -553,6 +553,185 @@ class ToolRegistry:
             )
         )
 
+        def _handle_get_research_summary(args: dict) -> str:
+            topic = str(args.get("topic", "")).strip()
+            from deep_research import get_deep_research_engine
+            engine = get_deep_research_engine()
+            return engine.get_research_summary(topic)
+
+        self._register(
+            Tool(
+                name="get_research_summary",
+                description="Retrieve the executive summary, findings, and notes path for completed deep research topics.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "topic": {
+                            "type": "string",
+                            "description": "Optional research topic name or keyword to retrieve summary for",
+                        }
+                    },
+                },
+                handler=_handle_get_research_summary,
+            )
+        )
+
+        # 7. Smart Timers & Pomodoro
+        def _handle_set_timer(args: dict) -> str:
+            duration = str(args.get("duration", "")).strip()
+            label = str(args.get("label", "")).strip()
+            timer_type = str(args.get("timer_type", "timer")).strip()
+            from timer_engine import get_timer_engine
+            engine = get_timer_engine()
+            res = engine.add_timer(duration, label=label, timer_type=timer_type)
+            return res.get("message") or res.get("error", "Failed to set timer")
+
+        self._register(
+            Tool(
+                name="set_timer",
+                description=(
+                    "Set a countdown timer or Pomodoro focus/break session. "
+                    "Accepts durations like '25 minutes', '1 hour', '45 seconds', 'pomodoro', 'short break'."
+                ),
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "duration": {
+                            "type": "string",
+                            "description": "Duration (e.g. '25 minutes', '10s', '1h', 'pomodoro')",
+                        },
+                        "label": {
+                            "type": "string",
+                            "description": "Optional label (e.g. 'review pull request', 'pasta cooking')",
+                        },
+                        "timer_type": {
+                            "type": "string",
+                            "enum": ["timer", "pomodoro", "break"],
+                            "description": "Type of timer",
+                        },
+                    },
+                    "required": ["duration"],
+                },
+                handler=_handle_set_timer,
+            )
+        )
+
+        # 8. Spoken Reminders
+        def _handle_set_reminder(args: dict) -> str:
+            reminder_text = str(args.get("reminder_text", "")).strip()
+            in_time = str(args.get("in_time", "")).strip()
+            at_time = str(args.get("at_time", "")).strip()
+            from timer_engine import get_timer_engine
+            engine = get_timer_engine()
+            res = engine.add_reminder(reminder_text, in_time=in_time, at_time=at_time)
+            return res.get("message") or res.get("error", "Failed to schedule reminder")
+
+        self._register(
+            Tool(
+                name="set_reminder",
+                description="Schedule a spoken voice reminder for a specific time or offset (e.g. 'in 30 minutes', 'at 15:30').",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "reminder_text": {
+                            "type": "string",
+                            "description": "What to remind the user about (e.g. 'take medicine', 'join standup meeting')",
+                        },
+                        "in_time": {
+                            "type": "string",
+                            "description": "Relative time offset (e.g. '20 minutes', '1 hour')",
+                        },
+                        "at_time": {
+                            "type": "string",
+                            "description": "Absolute target time (e.g. '15:30', '9:00 am')",
+                        },
+                    },
+                    "required": ["reminder_text"],
+                },
+                handler=_handle_set_reminder,
+            )
+        )
+
+        # 9. List Timers
+        def _handle_list_timers(_args: dict) -> str:
+            from timer_engine import get_timer_engine
+            engine = get_timer_engine()
+            active = engine.list_timers()
+            if not active:
+                return "There are no active timers or reminders running right now."
+            lines = [f"Active timers ({len(active)}):"]
+            for t in active:
+                rem_m = t["remaining_seconds"] // 60
+                rem_s = t["remaining_seconds"] % 60
+                lines.append(f"- [{t['id']}] '{t['label']}': {rem_m}m {rem_s}s remaining ({t['timer_type']})")
+            return "\n".join(lines)
+
+        self._register(
+            Tool(
+                name="list_active_timers",
+                description="List all active countdown timers, Pomodoros, and scheduled reminders.",
+                parameters={"type": "object", "properties": {}},
+                handler=_handle_list_timers,
+            )
+        )
+
+        # 10. Cancel Timer
+        def _handle_cancel_timer(args: dict) -> str:
+            timer_id = str(args.get("timer_id", "")).strip()
+            if not timer_id:
+                return "error: timer_id or label is required"
+            from timer_engine import get_timer_engine
+            engine = get_timer_engine()
+            res = engine.cancel_timer(timer_id)
+            return res.get("message") or res.get("error", "Failed to cancel timer")
+
+        self._register(
+            Tool(
+                name="cancel_timer",
+                description="Cancel an active timer or reminder by its ID or label name.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "timer_id": {
+                            "type": "string",
+                            "description": "Timer ID (e.g. 'tmr-123456') or label name",
+                        }
+                    },
+                    "required": ["timer_id"],
+                },
+                handler=_handle_cancel_timer,
+            )
+        )
+
+        # 11. Autonomous Morning / Evening Daily Briefing
+        def _handle_get_daily_briefing(args: dict) -> str:
+            briefing_type = str(args.get("briefing_type", "morning")).strip()
+            from briefing_engine import get_briefing_engine
+            engine = get_briefing_engine()
+            res = engine.generate_briefing(briefing_type=briefing_type)
+            return res.get("spoken_summary", "Daily briefing generated.")
+
+        self._register(
+            Tool(
+                name="get_daily_briefing",
+                description=(
+                    "Generate and speak an autonomous intelligence briefing (morning briefing or evening debrief) "
+                    "aggregating live weather for Chennai, active to-dos from the notes vault, top tech headlines, and hardware telemetry."
+                ),
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "briefing_type": {
+                            "type": "string",
+                            "enum": ["morning", "evening"],
+                            "description": "Type of briefing ('morning' or 'evening')",
+                        }
+                    },
+                },
+                handler=_handle_get_daily_briefing,
+            )
+        )
+
     def register(self, tool: Tool) -> None:
         """Register a dynamic tool (e.g. from an MCP server or plugin)."""
         self._tools[tool.name] = tool

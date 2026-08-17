@@ -33,6 +33,7 @@ class DeepResearchEngine:
         self.bus = bus
         self.on_complete = on_complete
         self._active_tasks: dict[str, dict[str, Any]] = {}
+        self._last_completed: dict[str, Any] | None = None
         self._lock = threading.Lock()
 
     def set_engine(self, llm_engine: Any) -> None:
@@ -43,6 +44,46 @@ class DeepResearchEngine:
 
     def set_on_complete(self, callback: Callable[[str, str, str], None]) -> None:
         self.on_complete = callback
+
+    def get_latest_completed(self) -> dict[str, Any] | None:
+        """Return the most recently completed deep research task data."""
+        with self._lock:
+            if self._last_completed:
+                return dict(self._last_completed)
+        return None
+
+    def get_research_summary(self, topic: str = "") -> str:
+        """Retrieve executive summary and key points for a completed research topic."""
+        with self._lock:
+            if self._last_completed and (not topic or topic.lower() in self._last_completed.get("topic", "").lower()):
+                lc = self._last_completed
+                return (
+                    f"Summary of Deep Research on '{lc['topic']}':\n\n"
+                    f"{lc.get('summary', '')}\n\n"
+                    f"Full report saved in notes: {lc.get('file', '')}"
+                )
+
+        # Fallback: search deep-research notes folder
+        res_dir = VAULT_DIR / "deep-research"
+        if res_dir.exists():
+            files = sorted(res_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
+            if files:
+                target_file = files[0]
+                if topic:
+                    for f in files:
+                        if _slugify(topic) in f.stem or topic.lower() in f.stem:
+                            target_file = f
+                            break
+                try:
+                    from notes_mcp_server import _parse_markdown_frontmatter
+                    _, body = _parse_markdown_frontmatter(target_file)
+                    exec_match = re.search(r"## 📌 Executive Summary\s*\n(.*?)(?=\n##|\Z)", body, re.DOTALL)
+                    summary = exec_match.group(1).strip() if exec_match else body[:400]
+                    return f"Deep research report for '{target_file.stem.replace('_', ' ').title()}':\n\n{summary}"
+                except Exception as read_err:
+                    log.warning("Could not read research note: %s", read_err)
+
+        return f"No completed deep research notes found{f' for topic {topic}' if topic else ''}."
 
     def start_research(self, topic: str, user_query: str | None = None) -> str:
         """Spawn background worker thread for deep research."""
@@ -242,6 +283,15 @@ Continued enhancements in efficiency, broader ecosystem integration, and reduced
             exec_summary = exec_match.group(1).strip() if exec_match else f"Deep research on {topic} is complete."
 
             with self._lock:
+                completed_data = {
+                    "task_id": task_id,
+                    "topic": topic,
+                    "title": f"Deep Research: {topic}",
+                    "file": str(note_file.relative_to(DATA_DIR)),
+                    "summary": exec_summary,
+                    "completed_at": time.time(),
+                }
+                self._last_completed = completed_data
                 if task_id in self._active_tasks:
                     self._active_tasks[task_id]["status"] = "completed"
                     self._active_tasks[task_id]["file"] = str(note_file.relative_to(DATA_DIR))

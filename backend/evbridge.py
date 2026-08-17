@@ -232,12 +232,21 @@ class _Handler(BaseHTTPRequestHandler):
                 "id": frontmatter.get("id") or (meta.get("id") if meta else file_path.stem),
                 "title": title,
                 "category": category,
-                "path": str(file_path.relative_to(DATA_DIR)),
-                "created_at": created_at,
-                "updated_at": frontmatter.get("updated_at"),
-                "tags": frontmatter.get("tags", []),
                 "content": body,
             }, 200)
+            return
+        if path == "/timers":
+            from timer_engine import get_timer_engine
+            engine = get_timer_engine(bus)
+            self._json({"ok": True, "timers": engine.list_timers()}, 200)
+            return
+        if path == "/briefing":
+            query_params = urllib.parse.parse_qs(parsed_url.query)
+            b_type = query_params.get("type", ["morning"])[0].strip()
+            from briefing_engine import get_briefing_engine
+            b_engine = get_briefing_engine(bus)
+            res = b_engine.generate_briefing(briefing_type=b_type)
+            self._json(res, 200)
             return
         self.send_response(404)
         self._cors()
@@ -383,6 +392,24 @@ class _Handler(BaseHTTPRequestHandler):
             bus.log("INFO", f"Note deleted: {target}")
             bus.publish({"type": "notes_changed"})
             self._json({"ok": True, "result": res_text}, 200)
+            return
+
+        if path == "/timers/create":
+            duration = str(body.get("duration", "")).strip()
+            label = str(body.get("label", "")).strip()
+            t_type = str(body.get("type", "timer")).strip()
+            from timer_engine import get_timer_engine
+            engine = get_timer_engine(bus)
+            res = engine.add_timer(duration, label=label, timer_type=t_type)
+            self._json(res, 200 if res.get("ok") else 400)
+            return
+
+        if path == "/timers/cancel":
+            timer_id = str(body.get("id", "")).strip()
+            from timer_engine import get_timer_engine
+            engine = get_timer_engine(bus)
+            res = engine.cancel_timer(timer_id)
+            self._json(res, 200 if res.get("ok") else 400)
             return
 
         self.send_response(404)

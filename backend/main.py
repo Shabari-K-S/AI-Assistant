@@ -558,9 +558,47 @@ def _run_assistant(cfg, once: bool, text: str | None) -> int:
             bus.log("INFO", f"🔬 Deep Research Finished: '{topic}'")
             bus.event("deep_research_notified", topic=topic, spoken=notice_speech, note_path=note_path)
 
+        # Inject completed research status & executive summary into the LLM active conversation history
+        context_hint = (
+            f"{notice_speech} [System Note: Autonomous deep research on '{topic}' is now fully completed and saved in '{note_path}'. "
+            f"Executive Summary: {summary}]"
+        )
+        try:
+            conversation.add_assistant(context_hint)
+        except Exception:
+            pass
+
         _speak(tts, notice_speech, bus=bus, muted=muted["on"], mic=mic, trigger=trigger)
 
     deep_res_engine.set_on_complete(_on_research_complete)
+
+    # Configure Smart Timers & Reminders Engine
+    from timer_engine import get_timer_engine
+    from briefing_engine import get_briefing_engine
+
+    timer_engine = get_timer_engine(bus)
+    briefing_engine = get_briefing_engine(bus)
+
+    def _on_timer_expiry(timer_data: dict) -> None:
+        import sounddevice as sd
+        is_spk = _speech_state.get("is_speaking", False)
+        if is_spk:
+            _speech_state["interrupted"] = True
+            try:
+                sd.stop()
+            except Exception:
+                pass
+
+        spoken = timer_data.get("spoken_text", "Timer alert!")
+        print(f"\n[⏰ Timer Alert] {spoken}", flush=True)
+        if bus is not None:
+            bus.set(phase="speaking", reply=spoken)
+            bus.log("INFO", f"⏰ Timer Alert: {spoken}")
+            bus.event("timer_notified", **timer_data)
+
+        _speak(tts, spoken, bus=bus, muted=muted["on"], mic=mic, trigger=trigger)
+
+    timer_engine.set_on_expiry(_on_timer_expiry)
 
     try:
         relisten_count = 0

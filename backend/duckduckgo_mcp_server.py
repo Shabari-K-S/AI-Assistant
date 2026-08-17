@@ -130,6 +130,12 @@ def perform_ddg_search(query: str, max_results: int = 5) -> list[dict[str, str]]
     return results
 
 
+def perform_ddg_news(query: str, max_results: int = 5) -> list[dict[str, str]]:
+    """Search news using DuckDuckGo search queries."""
+    news_q = f"{query} news" if "news" not in query.lower() else query
+    return perform_ddg_search(news_q, max_results=max_results)
+
+
 def handle_duckduckgo_search(args: dict[str, Any]) -> str:
     query = str(args.get("query", "")).strip()
     if not query:

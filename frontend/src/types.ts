@@ -135,4 +135,55 @@ export interface VaultNoteDetail {
   content: string
 }
 
+export interface ActiveTimer {
+  id: string
+  label: string
+  timer_type: 'timer' | 'pomodoro' | 'break' | 'reminder'
+  total_seconds: number
+  remaining_seconds: number
+  progress_percent: number
+  created_at: string
+  expires_at: number
+  status: 'running' | 'expired' | 'cancelled'
+  is_reminder?: boolean
+}
+
+export interface DailyBriefing {
+  ok: boolean
+  type: 'morning' | 'evening'
+  date: string
+  time: string
+  weather: {
+    city: string
+    temp_c: number
+    temp_f: number
+    condition: string
+    wind_kph: number
+    summary: string
+  }
+  todos: {
+    pending: string[]
+    completed: string[]
+    pending_count: number
+    completed_count: number
+  }
+  news: {
+    title: string
+    source: string
+    url: string
+    snippet: string
+  }[]
+  telemetry: {
+    cpu_percent: number
+    memory_percent: number
+    memory_used_gb: number
+    memory_total_gb: number
+    battery: string
+    hostname: string
+    os: string
+  }
+  spoken_summary: string
+  markdown_report: string
+}
+
 

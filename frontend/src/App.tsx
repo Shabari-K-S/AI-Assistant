@@ -10,9 +10,12 @@ import { CommandDeck } from './components/CommandDeck'
 import { TelemetryGauges } from './components/TelemetryGauges'
 import { McpConfigPanel } from './components/McpConfigPanel'
 import { NotesVaultPanel } from './components/NotesVaultPanel'
+import { ActiveTimersBar } from './components/ActiveTimersBar'
+import { BriefingModal } from './components/BriefingModal'
 import { useAssistant } from './hooks/useAssistant'
+import { useTimers } from './hooks/useTimers'
 import { soundFx } from './lib/soundFx'
-import { Sliders, MessageSquare, Eye, EyeOff, Radio, Cpu, Sparkles, BookOpen } from 'lucide-react'
+import { Sliders, MessageSquare, Eye, EyeOff, Radio, Cpu, Sparkles, BookOpen, Sun } from 'lucide-react'
 
 const PHASE_TAG: Record<string, string> = {
   standby: 'AWAITING WAKE WORD OR COMMAND',
@@ -36,6 +39,16 @@ export default function App() {
     triggerPtt,
     clearLogs,
   } = useAssistant()
+
+  const {
+    timers,
+    createTimer,
+    cancelTimer,
+    briefing,
+    setBriefing,
+    loadingBriefing,
+    fetchBriefing,
+  } = useTimers()
   const [showLeftSidebar, setShowLeftSidebar] = useState(true)
   const [showRightSidebar, setShowRightSidebar] = useState(true)
   const [scanlinesActive, setScanlinesActive] = useState(true)
@@ -99,6 +112,22 @@ export default function App() {
 
       {/* Top telemetry bar */}
       <StatusBar phase={activePhase} online={connected} wakeWord={snap.wake_word} />
+
+      {/* Active Timers & Pomodoro Bar */}
+      <ActiveTimersBar
+        timers={timers}
+        onCreateTimer={createTimer}
+        onCancelTimer={cancelTimer}
+      />
+
+      {/* Briefing Modal */}
+      {briefing && (
+        <BriefingModal
+          briefing={briefing}
+          onClose={() => setBriefing(null)}
+          onSendPrompt={handlePromptFromSubviews}
+        />
+      )}
 
       {/* Main command deck body */}
       <div className="relative z-10 flex min-h-0 flex-1 overflow-hidden">
@@ -328,6 +357,15 @@ export default function App() {
                     <Cpu size={11} className="text-[#41e6ff]" />
                     <span>MCP MODULES</span>
                     <span className="size-1.5 rounded-full bg-[#38ef7d] shadow-[0_0_4px_#38ef7d]" />
+                  </button>
+                  <button
+                    onClick={() => fetchBriefing('morning')}
+                    disabled={loadingBriefing}
+                    className="flex items-center gap-1 px-2 py-1 rounded font-mono text-[9px] sm:text-[10px] tracking-wider bg-[rgba(255,194,75,0.15)] text-[#ffc24b] border border-[rgba(255,194,75,0.3)] hover:bg-[rgba(255,194,75,0.25)] transition-all font-bold"
+                    title="Generate Daily Intelligence Briefing"
+                  >
+                    <Sun size={11} className={loadingBriefing ? 'animate-spin' : ''} />
+                    <span>{loadingBriefing ? 'BRIEFING...' : 'BRIEFING'}</span>
                   </button>
                 </div>
 
