@@ -32,7 +32,6 @@ export const CommandDeck = memo(function CommandDeck({
   const [transmitting, setTransmitting] = useState(false)
   const [isHolding, setIsHolding] = useState(false)
   const recognitionRef = useRef<any>(null)
-  const finalTranscriptRef = useRef<string>('')
   const speechTextRef = useRef<string>('')
   const isHoldingRef = useRef<boolean>(false)
 
@@ -64,6 +63,7 @@ export const CommandDeck = memo(function CommandDeck({
       try {
         recognitionRef.current.abort()
       } catch {}
+      recognitionRef.current = null
     }
 
     try {
@@ -71,7 +71,6 @@ export const CommandDeck = memo(function CommandDeck({
       isHoldingRef.current = true
       setIsHolding(true)
       onVoiceStateChange?.(true)
-      finalTranscriptRef.current = ''
       speechTextRef.current = ''
       setText('')
 
@@ -82,16 +81,11 @@ export const CommandDeck = memo(function CommandDeck({
       rec.maxAlternatives = 1
 
       rec.onresult = (event: any) => {
-        let interim = ''
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          const chunk = event.results[i][0].transcript
-          if (event.results[i].isFinal) {
-            finalTranscriptRef.current += (finalTranscriptRef.current ? ' ' : '') + chunk.trim()
-          } else {
-            interim += chunk
-          }
+        let full = ''
+        for (let i = 0; i < event.results.length; ++i) {
+          full += event.results[i][0].transcript
         }
-        const full = (finalTranscriptRef.current + (interim ? ' ' + interim : '')).trim()
+        full = full.trim()
         if (full) {
           speechTextRef.current = full
           setText(full)
@@ -107,16 +101,7 @@ export const CommandDeck = memo(function CommandDeck({
       }
 
       rec.onend = () => {
-        if (isHoldingRef.current) {
-          // Restart if still held (e.g. mobile audio packet timeout)
-          try {
-            rec.start()
-          } catch {
-            isHoldingRef.current = false
-            setIsHolding(false)
-            onVoiceStateChange?.(false)
-          }
-        } else {
+        if (!isHoldingRef.current) {
           setIsHolding(false)
           onVoiceStateChange?.(false)
         }
@@ -149,11 +134,21 @@ export const CommandDeck = memo(function CommandDeck({
       setTransmitting(true)
       await onSend(promptToSend)
       setText('')
-      finalTranscriptRef.current = ''
       speechTextRef.current = ''
       setTransmitting(false)
     }
   }, [text, transmitting, connected, onSend, onVoiceStateChange])
+
+  // Unified Pointer Handlers for Mobile Touch + Desktop Mouse
+  const handlePointerDown = (e: React.PointerEvent) => {
+    e.preventDefault()
+    startHoldVoice()
+  }
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+    e.preventDefault()
+    stopHoldVoice()
+  }
 
   // Desktop Spacebar Hotkey
   useEffect(() => {
@@ -191,7 +186,6 @@ export const CommandDeck = memo(function CommandDeck({
     setTransmitting(true)
     setText('')
     speechTextRef.current = ''
-    finalTranscriptRef.current = ''
     await onSend(trimmed)
     setTransmitting(false)
   }
@@ -208,16 +202,14 @@ export const CommandDeck = memo(function CommandDeck({
 
   return (
     <div className="w-full space-y-2.5">
-      {/* 1. Hold-To-Talk Voice Button (Hold while speaking, release to send) */}
+      {/* 1. Hold-To-Talk Voice Button (Unified Pointer Events) */}
       <div className="flex items-center gap-2">
         <button
           type="button"
-          onMouseDown={startHoldVoice}
-          onMouseUp={stopHoldVoice}
-          onMouseLeave={isHolding ? stopHoldVoice : undefined}
-          onTouchStart={startHoldVoice}
-          onTouchEnd={stopHoldVoice}
-          onTouchCancel={stopHoldVoice}
+          onPointerDown={handlePointerDown}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+          onPointerLeave={isHolding ? handlePointerUp : undefined}
           disabled={!connected || disabled}
           className={`flex-1 py-2.5 sm:py-3 px-4 rounded font-display text-[11px] sm:text-xs tracking-[0.2em] sm:tracking-[0.25em] font-bold flex items-center justify-center gap-2 transition-all select-none touch-none active:scale-[0.98] ${
             isHolding
