@@ -87,9 +87,9 @@ class AudioConfig:
 
 @dataclass(frozen=True)
 class STTConfig:
-    """Stage 2: STT settings (local faster-whisper, or cloud gemini/groq)."""
+    """Stage 2: STT settings (google free, local faster-whisper, or cloud gemini/groq)."""
 
-    provider: str = "local"  # local (faster-whisper) | gemini | groq | openai
+    provider: str = "local"  # google (Free SpeechRecognition) | local (faster-whisper) | gemini | groq
     model: str = "small"  # tiny/base/small/medium/large-v3 for local; gemini-2.5-flash / gemini-1.5-flash for gemini
     api_key: str = ""  # optional API key for cloud STT
     device: str = "cpu"  # cpu | cuda (see .env)
@@ -118,9 +118,9 @@ class LLMConfig:
 
 @dataclass(frozen=True)
 class TTSConfig:
-    """Stage 4: TTS settings (edge | piper | elevenlabs)."""
+    """Stage 4: TTS settings (edge | gtts | piper | elevenlabs)."""
 
-    provider: str = "edge"  # edge | piper | elevenlabs
+    provider: str = "edge"  # edge | gtts (Free Google TTS) | piper | elevenlabs
     edge_voice: str = "en-US-AriaNeural"
     edge_rate: str = "+0%"
     edge_pitch: str = "+0Hz"

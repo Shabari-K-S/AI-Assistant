@@ -1,4 +1,4 @@
-import { memo, useState, useEffect, useCallback } from 'react'
+import { memo, useState, useEffect, useCallback, useRef } from 'react'
 import { soundFx } from '../lib/soundFx'
 import { Send, Terminal, Activity, Cpu, CloudSun, Dices, GitBranch, FolderSearch, ExternalLink, Mic } from 'lucide-react'
 
@@ -30,17 +30,58 @@ export const CommandDeck = memo(function CommandDeck({
   const [text, setText] = useState('')
   const [transmitting, setTransmitting] = useState(false)
   const [isPttActive, setIsPttActive] = useState(false)
+  const recognitionRef = useRef<any>(null)
+
+  // Initialize browser Web Speech API for mobile Android / iOS speech recognition
+  useEffect(() => {
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (SpeechRecognition) {
+      try {
+        const rec = new SpeechRecognition()
+        rec.continuous = false
+        rec.interimResults = true
+        rec.lang = 'en-US'
+
+        rec.onresult = (event: any) => {
+          let transcript = ''
+          for (let i = 0; i < event.results.length; i++) {
+            transcript += event.results[i][0].transcript
+          }
+          if (transcript) {
+            setText(transcript)
+          }
+        }
+
+        rec.onerror = () => {
+          // ignore benign errors like no-speech
+        }
+
+        recognitionRef.current = rec
+      } catch {}
+    }
+  }, [])
 
   const handlePttPress = useCallback(() => {
     if (!connected || disabled || !onPtt) return
     setIsPttActive(true)
     onPtt('press')
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.start()
+      } catch {}
+    }
   }, [connected, disabled, onPtt])
 
   const handlePttRelease = useCallback(() => {
     if (!connected || disabled || !onPtt) return
     setIsPttActive(false)
     onPtt('release')
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop()
+      } catch {}
+    }
   }, [connected, disabled, onPtt])
 
   // Optional Spacebar hold-to-talk in browser when outside input fields

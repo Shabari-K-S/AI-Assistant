@@ -156,6 +156,36 @@ class STTEngine:
             log.exception("Groq Whisper transcription failed")
             return Transcription("", None, -2.0, audio.size / sample_rate)
 
+    def _transcribe_google_free(self, audio: np.ndarray, sample_rate: int) -> Transcription:
+        t0 = time.perf_counter()
+        wav_bytes = _audio_to_wav_bytes(audio, sample_rate)
+        import speech_recognition as sr
+
+        r = sr.Recognizer()
+        try:
+            with sr.AudioFile(io.BytesIO(wav_bytes)) as source:
+                audio_data = r.record(source)
+            lang = self._config.language or "en-US"
+            text = r.recognize_google(audio_data, language=lang)
+            text = str(text or "").strip()
+            elapsed = time.perf_counter() - t0
+            log.info(
+                "google speech recognition: %.2fs audio -> %.2fs compute | text=%.60r",
+                audio.size / sample_rate, elapsed, text,
+            )
+            return Transcription(
+                text=text,
+                language=lang,
+                confidence=0.0,
+                duration_s=audio.size / sample_rate,
+            )
+        except sr.UnknownValueError:
+            # Audio was silence or unparseable
+            return Transcription("", None, 0.0, audio.size / sample_rate)
+        except Exception:
+            log.exception("Google Speech Recognition failed")
+            return Transcription("", None, -2.0, audio.size / sample_rate)
+
     def _transcribe_local(self, audio: np.ndarray, sample_rate: int) -> Transcription:
         model = self._ensure_local_model()
         t0 = time.perf_counter()
@@ -191,23 +221,32 @@ class STTEngine:
         if audio.size == 0:
             return Transcription("", None, 0.0, 0.0)
 
-        # 1. Explicit Gemini / Cloud provider
+        # 1. Google Speech Recognition (100% Free, zero API key, zero C++ deps)
+        if self._provider in ("google", "speechrecognition", "speech_recognition", "free"):
+            return self._transcribe_google_free(audio, sample_rate)
+
+        # 2. Google Gemini API
         if self._provider == "gemini":
             return self._transcribe_gemini(audio, sample_rate)
 
-        # 2. Explicit Groq provider
+        # 3. Groq Whisper API
         if self._provider == "groq":
             return self._transcribe_groq(audio, sample_rate)
 
-        # 3. Local faster-whisper with automatic Gemini fallback for NetHunter/Termux
+        # 4. Local faster-whisper with automatic fallback for NetHunter / Termux
         try:
             return self._transcribe_local(audio, sample_rate)
         except (ImportError, RuntimeError, OSError) as exc:
-            if self._config.api_key:
-                log.warning(
-                    "Local faster-whisper unavailable (%s); automatically falling back to Gemini Cloud STT",
-                    exc,
-                )
-                self._provider = "gemini"
-                return self._transcribe_gemini(audio, sample_rate)
-            raise
+            log.warning(
+                "Local faster-whisper unavailable (%s); attempting Google Free SpeechRecognition fallback",
+                exc,
+            )
+            try:
+                self._provider = "google"
+                return self._transcribe_google_free(audio, sample_rate)
+            except Exception:
+                if self._config.api_key:
+                    log.warning("Falling back to Gemini Cloud STT")
+                    self._provider = "gemini"
+                    return self._transcribe_gemini(audio, sample_rate)
+                raise

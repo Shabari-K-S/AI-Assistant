@@ -179,11 +179,60 @@ class PiperTTS(TTSEngine):
         pass
 
 
+class GoogleTTS(TTSEngine):
+    """Free Google Text-to-Speech via gTTS (pure Python, zero C++ deps, natural female voice)."""
+
+    def __init__(self, config: TTSConfig) -> None:
+        self._config = config
+        self._lang = "en"
+        self._tld = "com"
+        log.info("GoogleTTS (gTTS) initialized with lang=%s, tld=%s", self._lang, self._tld)
+
+    def _decode_mp3_to_pcm16k(self, mp3_bytes: bytes) -> np.ndarray:
+        if not mp3_bytes:
+            return np.zeros(0, dtype=np.float32)
+        try:
+            import av
+
+            container = av.open(io.BytesIO(mp3_bytes))
+            stream = container.streams.audio[0]
+            resampler = av.AudioResampler(format="flt", layout="mono", rate=16000)
+            audio_frames = []
+            for frame in container.decode(stream):
+                for resampled in resampler.resample(frame):
+                    audio_frames.append(resampled.to_ndarray())
+            if not audio_frames:
+                return np.zeros(0, dtype=np.float32)
+            return np.concatenate(audio_frames, axis=1).squeeze(0).astype(np.float32)
+        except Exception:
+            log.exception("failed to decode gTTS mp3 stream via PyAV")
+            return np.zeros(0, dtype=np.float32)
+
+    def synthesize(self, text: str) -> np.ndarray:
+        if not text.strip():
+            return np.zeros(0, dtype=np.float32)
+        try:
+            from gtts import gTTS
+
+            tts = gTTS(text=text, lang=self._lang, tld=self._tld)
+            buf = io.BytesIO()
+            tts.write_to_fp(buf)
+            return self._decode_mp3_to_pcm16k(buf.getvalue())
+        except Exception:
+            log.exception("gTTS synthesis failed")
+            return np.zeros(0, dtype=np.float32)
+
+    def close(self) -> None:
+        pass
+
+
 def build_tts_engine(config: TTSConfig) -> TTSEngine:
-    """Select the TTS provider from config (edge | piper | elevenlabs)."""
+    """Select the TTS provider from config (edge | gtts | piper | elevenlabs)."""
     provider = config.provider.lower()
     if provider == "edge":
         return EdgeTTS(config)
+    if provider in ("gtts", "google"):
+        return GoogleTTS(config)
     if provider == "piper":
         return PiperTTS(config)
     if provider == "elevenlabs":

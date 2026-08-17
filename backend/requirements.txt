@@ -2,6 +2,7 @@
 sounddevice==0.5.5
 numpy==2.5.2
 faster-whisper==1.2.1
+SpeechRecognition>=3.14.0
 python-dotenv==1.2.2
 
 # System status tool (stage 3)
@@ -24,6 +25,7 @@ httpx==0.28.1
 
 # TTS (stage 4)
 edge-tts>=7.2.0
+gTTS>=2.5.0
 av>=14.0.0
 elevenlabs==2.64.0
 piper-tts==1.6.1
