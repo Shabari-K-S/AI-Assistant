@@ -68,8 +68,13 @@ def _setup_logging(level: str) -> None:
 # Shared audio plumbing
 # --------------------------------------------------------------------------- #
 def _start_audio(cfg, on_score=None):
-    """Start capture + trigger (wake word or push-to-talk). Returns (mic,
-    trigger) or exits with code 2."""
+    """Start capture + trigger (wake word, push-to-talk, or web mode). Returns (mic, trigger)."""
+    if cfg.audio.trigger in ("web", "none", "ui"):
+        log.info(
+            "Audio trigger is %r: running in pure Web HUD mode (no local microphone bound).",
+            cfg.audio.trigger,
+        )
+        return None, None
     try:
         if cfg.audio.trigger == "ptt":
             mic = MicCapture(cfg.audio)
@@ -368,12 +373,21 @@ def _run_assistant(cfg, once: bool, text: str | None) -> int:
 
     mic = trigger = stt = tts = None
     if text is None:
-        mic, trigger = _start_audio(cfg, on_score=lambda _ts, score, noise: bus.set(wake_score=score, noise_floor=noise))
-        if mic is None:
-            return 2
-        stt = STTEngine(cfg.stt)
-        prompt_str = _PROMPT_PTT if cfg.audio.trigger == "ptt" else _PROMPT_WAKE
-        print(prompt_str, flush=True)
+        if cfg.audio.trigger in ("web", "none", "ui"):
+            print(
+                "Web HUD Mode Active — speak or type via http://localhost:2026 (Ctrl+C to quit)...",
+                flush=True,
+            )
+        else:
+            mic, trigger = _start_audio(
+                cfg,
+                on_score=lambda _ts, score, noise: bus.set(wake_score=score, noise_floor=noise),
+            )
+            if mic is None:
+                return 2
+            stt = STTEngine(cfg.stt)
+            prompt_str = _PROMPT_PTT if cfg.audio.trigger == "ptt" else _PROMPT_WAKE
+            print(prompt_str, flush=True)
     try:
         tts = build_tts_engine(cfg.tts)
         log.info("tts provider: %s", cfg.tts.provider)
@@ -394,6 +408,10 @@ def _run_assistant(cfg, once: bool, text: str | None) -> int:
                     print(f"[uplink] {user_text}", flush=True)
                     bus.set(transcript=user_text)
                     bus.event("transcript", text=user_text, confidence=1.0)
+                elif mic is None:
+                    # In web mode without local microphone binding, wait for web prompts
+                    time.sleep(0.05)
+                    continue
                 else:
                     activated, audio = _capture_utterance(mic, trigger, cfg, bus=bus, timeout=0.2)
                     if not activated:
