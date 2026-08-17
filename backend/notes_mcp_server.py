@@ -42,9 +42,10 @@ def _init_vault() -> None:
     for cat in ["general", "deep-research", "work", "ideas", "todos"]:
         (VAULT_DIR / cat).mkdir(parents=True, exist_ok=True)
 
-    # Create welcome note if vault is empty
+    # Create welcome note if no content notes exist yet
     welcome_path = VAULT_DIR / "general" / "welcome_note.md"
-    if not welcome_path.exists() and not list(VAULT_DIR.glob("**/*.md")):
+    content_notes = [f for f in VAULT_DIR.glob("**/*.md") if f.name != "active_todos.md"]
+    if not welcome_path.exists() and not content_notes:
         _write_markdown_file(
             welcome_path,
             {
@@ -114,7 +115,10 @@ def _load_index() -> dict[str, Any]:
         return _rebuild_index()
     try:
         with open(INDEX_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
+            if not data.get("notes") and list(VAULT_DIR.glob("**/*.md")):
+                return _rebuild_index()
+            return data
     except Exception:
         return _rebuild_index()
 

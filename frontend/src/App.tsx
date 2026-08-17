@@ -9,9 +9,10 @@ import { AudioWaveform } from './components/AudioWaveform'
 import { CommandDeck } from './components/CommandDeck'
 import { TelemetryGauges } from './components/TelemetryGauges'
 import { McpConfigPanel } from './components/McpConfigPanel'
+import { NotesVaultPanel } from './components/NotesVaultPanel'
 import { useAssistant } from './hooks/useAssistant'
 import { soundFx } from './lib/soundFx'
-import { Sliders, MessageSquare, Eye, EyeOff, Radio, Cpu, Sparkles } from 'lucide-react'
+import { Sliders, MessageSquare, Eye, EyeOff, Radio, Cpu, Sparkles, BookOpen } from 'lucide-react'
 
 const PHASE_TAG: Record<string, string> = {
   standby: 'AWAITING WAKE WORD OR COMMAND',
@@ -20,8 +21,8 @@ const PHASE_TAG: Record<string, string> = {
   speaking: 'STREAMING AUDIO TRANSMISSION',
 }
 
-type MobileTab = 'mcp' | 'core' | 'logs'
-type CenterView = 'core' | 'mcp'
+type MobileTab = 'notes' | 'core' | 'mcp' | 'logs'
+type CenterView = 'core' | 'notes' | 'mcp'
 
 export default function App() {
   const {
@@ -81,7 +82,7 @@ export default function App() {
     setMobileTab(tab)
   }
 
-  const handlePromptFromMcp = (text: string) => {
+  const handlePromptFromSubviews = (text: string) => {
     sendPrompt(text)
     setCenterView('core')
     if (isMobile) setMobileTab('core')
@@ -111,8 +112,83 @@ export default function App() {
           />
         )}
 
-        {/* Center View: Either Core HUD or MCP Configuration Panel */}
-        {(!isMobile && centerView === 'mcp') || (isMobile && mobileTab === 'mcp') ? (
+        {/* Center View 1: Notes Vault Repository */}
+        {(!isMobile && centerView === 'notes') || (isMobile && mobileTab === 'notes') ? (
+          <main className="flex min-w-0 flex-1 flex-col overflow-hidden p-2.5 sm:p-4 md:p-5 pb-20 md:pb-5">
+            {/* Desktop Top Tab Navigation */}
+            {!isMobile && (
+              <div className="w-full flex items-center justify-between pb-3 mb-2 border-b border-[rgba(65,230,255,0.1)]">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={toggleLeft}
+                    title="Toggle Sensor Panel"
+                    className={`p-1.5 rounded border text-[10px] font-mono flex items-center gap-1.5 transition-all ${
+                      showLeftSidebar
+                        ? 'border-[#41e6ff] text-[#41e6ff] bg-[rgba(65,230,255,0.1)]'
+                        : 'border-[rgba(65,230,255,0.2)] text-[#7da4b8] bg-[rgba(6,14,21,0.6)]'
+                    }`}
+                  >
+                    <Sliders size={12} />
+                    <span>SENSORS</span>
+                  </button>
+
+                  {/* Desktop Center Switcher */}
+                  <div className="flex items-center gap-1 bg-[rgba(6,14,21,0.8)] p-1 rounded-lg border border-[rgba(65,230,255,0.2)]">
+                    <button
+                      onClick={() => {
+                        soundFx.click()
+                        setCenterView('core')
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1 rounded font-mono text-[10px] tracking-wider text-[#7da4b8] hover:text-[#e8fbff] transition-all"
+                    >
+                      <Radio size={11} />
+                      <span>CORE HUD</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        soundFx.click()
+                        setCenterView('notes')
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1 rounded font-mono text-[10px] tracking-wider bg-[rgba(65,230,255,0.2)] text-[#41e6ff] border border-[rgba(65,230,255,0.4)] shadow-[0_0_8px_rgba(65,230,255,0.3)] font-bold transition-all"
+                    >
+                      <BookOpen size={11} className="text-[#41e6ff]" />
+                      <span>NOTES VAULT</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        soundFx.click()
+                        setCenterView('mcp')
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1 rounded font-mono text-[10px] tracking-wider text-[#7da4b8] hover:text-[#e8fbff] transition-all"
+                    >
+                      <Cpu size={11} className="text-[#41e6ff]" />
+                      <span>MCP MODULES</span>
+                      <span className="size-1.5 rounded-full bg-[#38ef7d] shadow-[0_0_4px_#38ef7d]" />
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  onClick={toggleRight}
+                  title="Toggle Transmission Feed"
+                  className={`p-1.5 rounded border text-[10px] font-mono flex items-center gap-1.5 transition-all ${
+                    showRightSidebar
+                      ? 'border-[#41e6ff] text-[#41e6ff] bg-[rgba(65,230,255,0.1)]'
+                      : 'border-[rgba(65,230,255,0.2)] text-[#7da4b8] bg-[rgba(6,14,21,0.6)]'
+                  }`}
+                >
+                  <MessageSquare size={12} />
+                  <span>LOGS</span>
+                </button>
+              </div>
+            )}
+
+            <div className="flex-1 min-h-0">
+              <NotesVaultPanel onSendPrompt={handlePromptFromSubviews} />
+            </div>
+          </main>
+        ) : (!isMobile && centerView === 'mcp') || (isMobile && mobileTab === 'mcp') ? (
+          /* Center View 2: MCP Configuration Panel */
           <main className="flex min-w-0 flex-1 flex-col overflow-hidden pb-16 md:pb-0">
             {/* Desktop tab bar inside MCP view */}
             {!isMobile && (
@@ -145,6 +221,16 @@ export default function App() {
                     <button
                       onClick={() => {
                         soundFx.click()
+                        setCenterView('notes')
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1 rounded font-mono text-[10px] tracking-wider text-[#7da4b8] hover:text-[#e8fbff] transition-all"
+                    >
+                      <BookOpen size={11} className="text-[#41e6ff]" />
+                      <span>NOTES VAULT</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        soundFx.click()
                         setCenterView('mcp')
                       }}
                       className="flex items-center gap-1.5 px-3 py-1 rounded font-mono text-[10px] tracking-wider bg-[rgba(65,230,255,0.2)] text-[#41e6ff] border border-[rgba(65,230,255,0.4)] shadow-[0_0_8px_rgba(65,230,255,0.3)] font-bold transition-all"
@@ -172,11 +258,12 @@ export default function App() {
             )}
 
             <McpConfigPanel
-              onSendPrompt={handlePromptFromMcp}
+              onSendPrompt={handlePromptFromSubviews}
               onClose={isMobile ? () => switchMobileTab('core') : undefined}
             />
           </main>
         ) : (
+          /* Center View 3: Primary Core HUD & Visualizer */
           (!isMobile || mobileTab === 'core') && (
             <main className="flex min-w-0 flex-1 flex-col items-center justify-between p-2.5 sm:p-4 md:p-5 overflow-y-auto space-y-3 sm:space-y-4 pb-20 md:pb-5 touch-scroll">
               {/* Top banner controls (Desktop only) */}
@@ -220,6 +307,16 @@ export default function App() {
                   >
                     <Radio size={11} />
                     <span>CORE HUD</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      soundFx.click()
+                      setCenterView('notes')
+                    }}
+                    className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded font-mono text-[9px] sm:text-[10px] tracking-wider text-[#7da4b8] hover:text-[#e8fbff] hover:bg-[rgba(65,230,255,0.08)] transition-all"
+                  >
+                    <BookOpen size={11} className="text-[#41e6ff]" />
+                    <span>NOTES VAULT</span>
                   </button>
                   <button
                     onClick={() => {
@@ -313,14 +410,15 @@ export default function App() {
                   noiseFloor={snap.noise_floor}
                 />
 
-                {/* 4-Column Quick Telemetry Gauges */}
+                {/* System Telemetry Gauges */}
                 <TelemetryGauges snap={activeSnap} connected={connected} />
 
-                {/* Interactive Terminal Uplink Input & Push-To-Talk Button */}
+                {/* Command & Push-to-Talk Deck */}
                 <CommandDeck
                   onSend={sendPrompt}
                   onPtt={triggerPtt}
                   phase={activePhase}
+                  disabled={!connected}
                   connected={connected}
                   onVoiceStateChange={setWebListening}
                 />
@@ -340,25 +438,22 @@ export default function App() {
         )}
       </div>
 
-      {/* Cyberpunk Mobile Bottom Navigation Bar (3 items: MCP Config [Left] | Core HUD [Center] | Feed Logs [Right]) */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around h-14 bg-[rgba(4,9,15,0.95)] border-t border-[rgba(65,230,255,0.2)] backdrop-blur-lg pb-safe px-4 shadow-[0_-4px_20px_rgba(0,0,0,0.5)]">
-        {/* Left: MCP MODULES */}
+      {/* Cyberpunk Mobile Bottom Navigation Bar (4 items: Notes [1] | Core HUD [2] | MCP [3] | Logs [4]) */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around h-14 bg-[rgba(4,9,15,0.95)] border-t border-[rgba(65,230,255,0.2)] backdrop-blur-lg pb-safe px-2 shadow-[0_-4px_20px_rgba(0,0,0,0.5)]">
+        {/* 1. NOTES VAULT */}
         <button
-          onClick={() => switchMobileTab('mcp')}
+          onClick={() => switchMobileTab('notes')}
           className={`flex-1 flex flex-col items-center justify-center py-1 transition-all ${
-            mobileTab === 'mcp'
+            mobileTab === 'notes'
               ? 'text-[#41e6ff] drop-shadow-[0_0_10px_rgba(65,230,255,0.8)] scale-105'
               : 'text-[#7da4b8] opacity-70 hover:opacity-100'
           }`}
         >
-          <div className="relative flex items-center justify-center">
-            <Cpu size={19} className={mobileTab === 'mcp' ? 'text-[#41e6ff]' : 'text-[#7da4b8]'} />
-            <span className="absolute -top-0.5 -right-1 size-1.5 rounded-full bg-[#38ef7d] shadow-[0_0_4px_#38ef7d]" />
-          </div>
-          <span className="font-mono text-[9px] tracking-wider mt-0.5 font-bold">MCP CONFIG</span>
+          <BookOpen size={18} className={mobileTab === 'notes' ? 'text-[#41e6ff]' : 'text-[#7da4b8]'} />
+          <span className="font-mono text-[8.5px] tracking-wider mt-0.5 font-bold">NOTES</span>
         </button>
 
-        {/* Center: CORE HUD */}
+        {/* 2. CORE HUD */}
         <button
           onClick={() => switchMobileTab('core')}
           className={`flex-1 flex flex-col items-center justify-center py-1 transition-all ${
@@ -368,12 +463,28 @@ export default function App() {
           }`}
         >
           <div className={`p-1 rounded-full border ${mobileTab === 'core' ? 'border-[#41e6ff] bg-[rgba(65,230,255,0.2)] shadow-[0_0_8px_rgba(65,230,255,0.4)]' : 'border-transparent'}`}>
-            <Radio size={19} />
+            <Radio size={17} />
           </div>
-          <span className="font-mono text-[9px] tracking-wider mt-0.5 font-bold">CORE HUD</span>
+          <span className="font-mono text-[8.5px] tracking-wider mt-0.5 font-bold">CORE HUD</span>
         </button>
 
-        {/* Right: FEED LOGS */}
+        {/* 3. MCP MODULES */}
+        <button
+          onClick={() => switchMobileTab('mcp')}
+          className={`flex-1 flex flex-col items-center justify-center py-1 transition-all ${
+            mobileTab === 'mcp'
+              ? 'text-[#41e6ff] drop-shadow-[0_0_10px_rgba(65,230,255,0.8)] scale-105'
+              : 'text-[#7da4b8] opacity-70 hover:opacity-100'
+          }`}
+        >
+          <div className="relative flex items-center justify-center">
+            <Cpu size={18} className={mobileTab === 'mcp' ? 'text-[#41e6ff]' : 'text-[#7da4b8]'} />
+            <span className="absolute -top-0.5 -right-1 size-1.5 rounded-full bg-[#38ef7d] shadow-[0_0_4px_#38ef7d]" />
+          </div>
+          <span className="font-mono text-[8.5px] tracking-wider mt-0.5 font-bold">MCP</span>
+        </button>
+
+        {/* 4. FEED LOGS */}
         <button
           onClick={() => switchMobileTab('logs')}
           className={`flex-1 flex flex-col items-center justify-center py-1 transition-all ${
@@ -382,11 +493,10 @@ export default function App() {
               : 'text-[#7da4b8] opacity-70 hover:opacity-100'
           }`}
         >
-          <MessageSquare size={19} className={mobileTab === 'logs' ? 'text-[#41e6ff]' : 'text-[#7da4b8]'} />
-          <span className="font-mono text-[9px] tracking-wider mt-0.5 font-semibold">FEED LOGS</span>
+          <MessageSquare size={18} className={mobileTab === 'logs' ? 'text-[#41e6ff]' : 'text-[#7da4b8]'} />
+          <span className="font-mono text-[8.5px] tracking-wider mt-0.5 font-semibold">LOGS</span>
         </button>
       </nav>
     </div>
   )
 }
-

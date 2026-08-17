@@ -19,6 +19,7 @@ import logging
 import queue
 import threading
 import time
+import urllib.parse
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -177,7 +178,9 @@ class _Handler(BaseHTTPRequestHandler):
     # -- endpoints --------------------------------------------------------- #
     def do_GET(self) -> None:  # noqa: N802 - http.server API
         bus = self._bus
-        path = self.path.rstrip("/")
+        parsed_url = urllib.parse.urlparse(self.path)
+        path = parsed_url.path.rstrip("/")
+
         if path == "/state":
             body = json.dumps(bus.get()).encode()
             self.send_response(200)
@@ -203,6 +206,38 @@ class _Handler(BaseHTTPRequestHandler):
                 from mcp_client import MCPManager
                 status_data = MCPManager().get_all_status()
             self._json(status_data, 200)
+            return
+        if path == "/notes":
+            from notes_mcp_server import _load_index
+            index_data = _load_index()
+            self._json(index_data, 200)
+            return
+        if path == "/notes/read":
+            query_params = urllib.parse.parse_qs(parsed_url.query)
+            target = query_params.get("target", [""])[0].strip()
+            if not target:
+                self._json({"ok": False, "error": "target parameter is required"}, 400)
+                return
+            from notes_mcp_server import _find_note_file, _parse_markdown_frontmatter, DATA_DIR
+            file_path, meta = _find_note_file(target)
+            if not file_path or not file_path.exists():
+                self._json({"ok": False, "error": f"Note '{target}' not found in vault"}, 404)
+                return
+            frontmatter, body = _parse_markdown_frontmatter(file_path)
+            title = frontmatter.get("title") or (meta.get("title") if meta else file_path.stem.replace("_", " ").title())
+            category = frontmatter.get("category") or file_path.parent.name
+            created_at = frontmatter.get("created_at") or time.strftime("%Y-%m-%d %H:%M:%S")
+            self._json({
+                "ok": True,
+                "id": frontmatter.get("id") or (meta.get("id") if meta else file_path.stem),
+                "title": title,
+                "category": category,
+                "path": str(file_path.relative_to(DATA_DIR)),
+                "created_at": created_at,
+                "updated_at": frontmatter.get("updated_at"),
+                "tags": frontmatter.get("tags", []),
+                "content": body,
+            }, 200)
             return
         self.send_response(404)
         self._cors()
@@ -313,6 +348,41 @@ class _Handler(BaseHTTPRequestHandler):
                 bus.log("INFO", f"MCP: server '{name}' restarted")
                 bus.publish({"type": "mcp_changed", "server": name})
             self._json(res, 200 if res.get("ok") else 400)
+            return
+
+        if path == "/notes/save":
+            title = str(body.get("title", "")).strip()
+            content = str(body.get("content", "")).strip()
+            category = str(body.get("category", "general")).strip() or "general"
+            tags = body.get("tags", [])
+            target = str(body.get("target", "")).strip()
+            append = bool(body.get("append", False))
+
+            if not content and not title:
+                self._json({"ok": False, "error": "Content or title is required"}, 400)
+                return
+
+            from notes_mcp_server import handle_add_note, handle_edit_note
+            if target:
+                res_text = handle_edit_note({"note_id_or_title_or_path": target, "content": content, "append": append})
+            else:
+                res_text = handle_add_note({"title": title, "content": content, "category": category, "tags": tags})
+
+            bus.log("INFO", f"Notes Vault updated: {title or target}")
+            bus.publish({"type": "notes_changed"})
+            self._json({"ok": True, "result": res_text}, 200)
+            return
+
+        if path == "/notes/delete":
+            target = str(body.get("target", "")).strip()
+            if not target:
+                self._json({"ok": False, "error": "target note identifier is required"}, 400)
+                return
+            from notes_mcp_server import handle_delete_note
+            res_text = handle_delete_note({"note_id_or_title_or_path": target})
+            bus.log("INFO", f"Note deleted: {target}")
+            bus.publish({"type": "notes_changed"})
+            self._json({"ok": True, "result": res_text}, 200)
             return
 
         self.send_response(404)

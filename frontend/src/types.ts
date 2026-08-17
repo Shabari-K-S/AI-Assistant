@@ -107,3 +107,32 @@ export interface McpStatusResponse {
   active_servers: number
 }
 
+export interface VaultNote {
+  id: string
+  title: string
+  category: string
+  path: string
+  created_at: string
+  preview: string
+  tags?: string[]
+}
+
+export interface VaultIndexResponse {
+  updated_at: string
+  vault_path: string
+  notes: VaultNote[]
+}
+
+export interface VaultNoteDetail {
+  ok: boolean
+  id: string
+  title: string
+  category: string
+  path: string
+  created_at: string
+  updated_at?: string
+  tags?: string[]
+  content: string
+}
+
+
