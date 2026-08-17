@@ -211,6 +211,12 @@ class Trigger(ABC):
     def set_enabled(self, enabled: bool) -> None:  # noqa: ARG002 - base no-op
         """Ignore activations while disabled (EV busy)."""
 
+    def quiet_until(self, until: float) -> None:  # noqa: ARG002
+        """Temporarily mute wake detection until monotonic timestamp."""
+
+    def continue_listening(self) -> None:
+        """Keep listening without requiring a new wake trigger."""
+
     def press(self) -> None:
         """Manual / Web-triggered PTT press."""
 
@@ -238,6 +244,12 @@ class PushToTalk(Trigger):
         self._deactivated.set()  # start in the released state
         hook.on_press = self._on_press
         hook.on_release = self._on_release
+
+    def quiet_until(self, until: float) -> None:  # noqa: ARG002
+        pass
+
+    def continue_listening(self) -> None:
+        pass
 
     def press(self) -> None:
         """External software/web trigger press."""

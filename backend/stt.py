@@ -102,6 +102,12 @@ class STTEngine:
                 response = client.models.generate_content(
                     model=model_name,
                     contents=[part, prompt],
+                    config=types.GenerateContentConfig(
+                        automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                            disable=True
+                        ),
+                        temperature=0.0,
+                    ),
                 )
                 text = (response.text or "").strip()
                 elapsed = time.perf_counter() - t0
