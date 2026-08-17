@@ -1,6 +1,6 @@
 import { memo, useState, useEffect, useCallback, useRef } from 'react'
 import { soundFx } from '../lib/soundFx'
-import { Send, Terminal, Activity, Cpu, CloudSun, Dices, GitBranch, FolderSearch, ExternalLink, Mic } from 'lucide-react'
+import { Send, Terminal, Activity, Cpu, CloudSun, Dices, GitBranch, FolderSearch, ExternalLink, Mic, MicOff, Radio } from 'lucide-react'
 
 interface Props {
   onSend: (text: string) => Promise<boolean>
@@ -29,32 +29,42 @@ export const CommandDeck = memo(function CommandDeck({
 }: Props) {
   const [text, setText] = useState('')
   const [transmitting, setTransmitting] = useState(false)
-  const [isPttActive, setIsPttActive] = useState(false)
+  const [isRecording, setIsRecording] = useState(false)
+  const [isPttHeld, setIsPttHeld] = useState(false)
   const recognitionRef = useRef<any>(null)
+  const activeTranscriptRef = useRef('')
 
-  // Initialize browser Web Speech API for mobile Android / iOS speech recognition
+  // Initialize browser Web Speech API for mobile Android / iOS / Desktop browsers
   useEffect(() => {
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (SpeechRecognition) {
       try {
         const rec = new SpeechRecognition()
-        rec.continuous = false
+        rec.continuous = true
         rec.interimResults = true
         rec.lang = 'en-US'
 
         rec.onresult = (event: any) => {
-          let transcript = ''
+          let fullTranscript = ''
           for (let i = 0; i < event.results.length; i++) {
-            transcript += event.results[i][0].transcript
+            fullTranscript += event.results[i][0].transcript
           }
-          if (transcript) {
-            setText(transcript)
+          if (fullTranscript) {
+            activeTranscriptRef.current = fullTranscript
+            setText(fullTranscript)
           }
         }
 
-        rec.onerror = () => {
-          // ignore benign errors like no-speech
+        rec.onerror = (e: any) => {
+          if (e.error !== 'no-speech') {
+            console.debug('Browser speech recognition event:', e.error)
+          }
+        }
+
+        rec.onend = () => {
+          setIsRecording(false)
+          setIsPttHeld(false)
         }
 
         recognitionRef.current = rec
@@ -62,42 +72,75 @@ export const CommandDeck = memo(function CommandDeck({
     }
   }, [])
 
-  const handlePttPress = useCallback(() => {
-    if (!connected || disabled || !onPtt) return
-    setIsPttActive(true)
-    onPtt('press')
+  const startVoiceCapture = useCallback(() => {
+    if (!connected || disabled || transmitting) return
+    soundFx.click()
+    activeTranscriptRef.current = ''
+    setIsRecording(true)
+    if (onPtt) onPtt('press')
     if (recognitionRef.current) {
       try {
         recognitionRef.current.start()
       } catch {}
     }
-  }, [connected, disabled, onPtt])
+  }, [connected, disabled, transmitting, onPtt])
 
-  const handlePttRelease = useCallback(() => {
-    if (!connected || disabled || !onPtt) return
-    setIsPttActive(false)
-    onPtt('release')
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop()
-      } catch {}
+  const stopVoiceCapture = useCallback(
+    async (autoSubmit = true) => {
+      setIsRecording(false)
+      setIsPttHeld(false)
+      if (onPtt) onPtt('release')
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop()
+        } catch {}
+      }
+      const recorded = activeTranscriptRef.current.trim() || text.trim()
+      if (autoSubmit && recorded && !transmitting && connected) {
+        setTransmitting(true)
+        await onSend(recorded)
+        setText('')
+        activeTranscriptRef.current = ''
+        setTransmitting(false)
+      }
+    },
+    [onPtt, text, transmitting, connected, onSend],
+  )
+
+  const toggleRecording = useCallback(() => {
+    if (isRecording) {
+      stopVoiceCapture(true)
+    } else {
+      startVoiceCapture()
     }
-  }, [connected, disabled, onPtt])
+  }, [isRecording, stopVoiceCapture, startVoiceCapture])
 
-  // Optional Spacebar hold-to-talk in browser when outside input fields
+  // Hold-to-Talk Mouse / Touch Handlers
+  const handleHoldStart = useCallback(() => {
+    setIsPttHeld(true)
+    startVoiceCapture()
+  }, [startVoiceCapture])
+
+  const handleHoldEnd = useCallback(() => {
+    if (isPttHeld || isRecording) {
+      stopVoiceCapture(true)
+    }
+  }, [isPttHeld, isRecording, stopVoiceCapture])
+
+  // Spacebar Hotkey
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const tag = (document.activeElement?.tagName || '').toLowerCase()
       if (e.code === 'Space' && !e.repeat && tag !== 'input' && tag !== 'textarea') {
         e.preventDefault()
-        handlePttPress()
+        handleHoldStart()
       }
     }
     const handleKeyUp = (e: KeyboardEvent) => {
       const tag = (document.activeElement?.tagName || '').toLowerCase()
       if (e.code === 'Space' && tag !== 'input' && tag !== 'textarea') {
         e.preventDefault()
-        handlePttRelease()
+        handleHoldEnd()
       }
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -106,7 +149,7 @@ export const CommandDeck = memo(function CommandDeck({
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
     }
-  }, [handlePttPress, handlePttRelease])
+  }, [handleHoldStart, handleHoldEnd])
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault()
@@ -115,6 +158,7 @@ export const CommandDeck = memo(function CommandDeck({
 
     setTransmitting(true)
     setText('')
+    activeTranscriptRef.current = ''
     await onSend(trimmed)
     setTransmitting(false)
   }
@@ -127,44 +171,45 @@ export const CommandDeck = memo(function CommandDeck({
     setTransmitting(false)
   }
 
-  const isListening = phase === 'listening' || isPttActive
+  const isListening = phase === 'listening' || isRecording || isPttHeld
 
   return (
     <div className="w-full space-y-2.5">
-      {/* 1. Push-To-Talk (Hold-To-Talk) Voice Button */}
-      {onPtt && (
-        <div className="w-full">
-          <button
-            type="button"
-            onMouseDown={handlePttPress}
-            onMouseUp={handlePttRelease}
-            onMouseLeave={isPttActive ? handlePttRelease : undefined}
-            onTouchStart={handlePttPress}
-            onTouchEnd={handlePttRelease}
-            onTouchCancel={handlePttRelease}
-            disabled={!connected || disabled}
-            className={`w-full py-2.5 sm:py-3 px-4 rounded font-display text-[11px] sm:text-xs tracking-[0.2em] sm:tracking-[0.25em] font-bold flex items-center justify-center gap-2 transition-all select-none touch-none active:scale-[0.98] ${
-              isPttActive
-                ? 'bg-[#41e6ff] text-[#03070b] shadow-[0_0_20px_#41e6ff] animate-pulse border border-[#7ef3ff]'
-                : isListening
-                  ? 'bg-[rgba(65,230,255,0.2)] text-[#41e6ff] border border-[#41e6ff] shadow-[0_0_10px_rgba(65,230,255,0.4)]'
-                  : 'bg-[rgba(6,14,21,0.85)] text-[#7ef3ff] hover:text-[#e8fbff] border border-[rgba(65,230,255,0.3)] hover:border-[#41e6ff] hover:bg-[rgba(65,230,255,0.12)]'
-            } disabled:opacity-40 disabled:pointer-events-none`}
-          >
-            <Mic
-              size={15}
-              className={isPttActive ? 'animate-bounce text-[#03070b]' : 'text-[#41e6ff]'}
-            />
-            <span>
-              {isPttActive
-                ? 'RECORDING VOICE... RELEASE TO TRANSMIT'
-                : 'HOLD TO TALK // PUSH-TO-TALK'}
-            </span>
-          </button>
-        </div>
-      )}
+      {/* 1. Voice Capture Bar: Tap-to-Talk or Hold-to-Talk */}
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={toggleRecording}
+          onMouseDown={handleHoldStart}
+          onMouseUp={handleHoldEnd}
+          onMouseLeave={isPttHeld ? handleHoldEnd : undefined}
+          onTouchStart={handleHoldStart}
+          onTouchEnd={handleHoldEnd}
+          onTouchCancel={handleHoldEnd}
+          disabled={!connected || disabled}
+          className={`flex-1 py-2.5 sm:py-3 px-4 rounded font-display text-[11px] sm:text-xs tracking-[0.2em] sm:tracking-[0.25em] font-bold flex items-center justify-center gap-2 transition-all select-none touch-none active:scale-[0.98] ${
+            isRecording
+              ? 'bg-[#41e6ff] text-[#03070b] shadow-[0_0_22px_#41e6ff] animate-pulse border border-[#7ef3ff]'
+              : isListening
+                ? 'bg-[rgba(65,230,255,0.2)] text-[#41e6ff] border border-[#41e6ff] shadow-[0_0_10px_rgba(65,230,255,0.4)]'
+                : 'bg-[rgba(6,14,21,0.85)] text-[#7ef3ff] hover:text-[#e8fbff] border border-[rgba(65,230,255,0.3)] hover:border-[#41e6ff] hover:bg-[rgba(65,230,255,0.12)]'
+          } disabled:opacity-40 disabled:pointer-events-none`}
+        >
+          {isRecording ? (
+            <>
+              <Radio size={15} className="animate-spin text-[#03070b]" />
+              <span>RECORDING SPEECH... TAP OR RELEASE TO SEND</span>
+            </>
+          ) : (
+            <>
+              <Mic size={15} className="text-[#41e6ff]" />
+              <span>VOICE PROMPT // HOLD OR TAP TO SPEAK</span>
+            </>
+          )}
+        </button>
+      </div>
 
-      {/* 2. Quick Action Chips (Horizontally swipeable on mobile, wraps on larger screens) */}
+      {/* 2. Quick Action Chips */}
       <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar touch-scroll py-1 sm:flex-wrap">
         <span className="font-mono text-[9px] uppercase tracking-widest text-[#7da4b8] flex items-center gap-1 mr-1 shrink-0">
           <Terminal size={11} className="text-[#41e6ff]" /> Quick:
@@ -185,7 +230,7 @@ export const CommandDeck = memo(function CommandDeck({
         })}
       </div>
 
-      {/* 3. Terminal Input Bay */}
+      {/* 3. Terminal Input Bay with Integrated Mic and Transmit Buttons */}
       <form onSubmit={handleSubmit} className="relative flex items-center">
         <div className="absolute left-3.5 text-[#41e6ff] pointer-events-none flex items-center gap-1">
           <span className="font-mono text-xs font-bold">&gt;</span>
@@ -196,22 +241,46 @@ export const CommandDeck = memo(function CommandDeck({
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder={
-            connected
-              ? 'Enter command, tap Hold-To-Talk, or say "Sara..."'
-              : 'Assistant offline — start backend: ./run.sh'
+            isRecording
+              ? 'Listening to your voice...'
+              : connected
+                ? 'Type command, tap Mic, or speak into website...'
+                : 'Assistant offline — start backend: ./run.sh'
           }
           disabled={!connected || transmitting}
-          className="w-full pl-8 pr-28 py-2.5 font-mono text-xs tracking-wider bg-[rgba(6,14,21,0.85)] border border-[rgba(65,230,255,0.25)] focus:border-[#41e6ff] focus:ring-1 focus:ring-[#41e6ff] focus:outline-none rounded text-[#e8fbff] placeholder-[#3e5c6d] shadow-[inset_0_0_12px_rgba(0,0,0,0.5)] transition-all disabled:opacity-40"
+          className={`w-full pl-8 pr-36 py-2.5 font-mono text-xs tracking-wider bg-[rgba(6,14,21,0.85)] border ${
+            isRecording
+              ? 'border-[#41e6ff] shadow-[0_0_15px_rgba(65,230,255,0.35)]'
+              : 'border-[rgba(65,230,255,0.25)]'
+          } focus:border-[#41e6ff] focus:ring-1 focus:ring-[#41e6ff] focus:outline-none rounded text-[#e8fbff] placeholder-[#3e5c6d] shadow-[inset_0_0_12px_rgba(0,0,0,0.5)] transition-all disabled:opacity-40`}
         />
 
-        <button
-          type="submit"
-          disabled={!connected || !text.trim() || transmitting}
-          className="absolute right-1.5 px-3 py-1.5 font-display text-[10px] tracking-[0.18em] text-[#041018] bg-[#41e6ff] hover:bg-[#7ef3ff] disabled:bg-[#1d4a5c] disabled:text-[#7da4b8] rounded font-semibold transition-all flex items-center gap-1.5 shadow-[0_0_10px_rgba(65,230,255,0.4)] disabled:shadow-none active:scale-95"
-        >
-          <span>{transmitting ? 'SENDING' : 'TRANSMIT'}</span>
-          <Send size={11} />
-        </button>
+        <div className="absolute right-1.5 flex items-center gap-1.5">
+          {/* Quick In-Input Mic Toggle */}
+          <button
+            type="button"
+            onClick={toggleRecording}
+            disabled={!connected || transmitting}
+            title={isRecording ? 'Stop recording and send' : 'Speak command via microphone'}
+            className={`p-1.5 rounded transition-all flex items-center justify-center ${
+              isRecording
+                ? 'bg-[#ff3b69] text-white shadow-[0_0_12px_#ff3b69] animate-pulse'
+                : 'text-[#41e6ff] hover:text-[#e8fbff] bg-[rgba(65,230,255,0.1)] hover:bg-[rgba(65,230,255,0.25)] border border-[rgba(65,230,255,0.3)]'
+            } disabled:opacity-40`}
+          >
+            {isRecording ? <MicOff size={13} /> : <Mic size={13} />}
+          </button>
+
+          {/* Transmit Button */}
+          <button
+            type="submit"
+            disabled={!connected || !text.trim() || transmitting}
+            className="px-3 py-1.5 font-display text-[10px] tracking-[0.18em] text-[#041018] bg-[#41e6ff] hover:bg-[#7ef3ff] disabled:bg-[#1d4a5c] disabled:text-[#7da4b8] rounded font-semibold transition-all flex items-center gap-1.5 shadow-[0_0_10px_rgba(65,230,255,0.4)] disabled:shadow-none active:scale-95"
+          >
+            <span>{transmitting ? 'SENDING' : 'TRANSMIT'}</span>
+            <Send size={11} />
+          </button>
+        </div>
       </form>
     </div>
   )
