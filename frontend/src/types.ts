@@ -49,3 +49,52 @@ export const DEFAULT_SNAPSHOT: Snapshot = {
  */
 export const BRIDGE_URL =
   new URLSearchParams(window.location.search).get('bridge') ?? '/bridge'
+
+export interface McpTool {
+  name: string
+  description?: string
+  inputSchema?: {
+    type?: string
+    properties?: Record<string, { type?: string; description?: string }>
+    required?: string[]
+  }
+}
+
+export interface McpServerInfo {
+  name?: string
+  version?: string
+}
+
+export interface McpServerConfig {
+  name: string
+  command: string
+  args: string[]
+  env?: Record<string, string>
+  enabled: boolean
+  running: boolean
+  tools_count: number
+  tools: McpTool[]
+  server_info?: McpServerInfo
+  error?: string
+}
+
+export interface McpCatalogItem {
+  id: string
+  name: string
+  description: string
+  category: 'utilities' | 'productivity' | 'developer' | 'search'
+  icon: string
+  command: string
+  args: string[]
+  env?: Record<string, string>
+  preinstalled: boolean
+}
+
+export interface McpStatusResponse {
+  ok: boolean
+  servers: McpServerConfig[]
+  catalog: McpCatalogItem[]
+  total_tools: number
+  active_servers: number
+}
+

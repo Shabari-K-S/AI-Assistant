@@ -1,6 +1,6 @@
 import { memo, useState, useEffect, useCallback, useRef } from 'react'
 import { soundFx } from '../lib/soundFx'
-import { Send, Terminal, Activity, Cpu, CloudSun, Dices, GitBranch, FolderSearch, ExternalLink, Mic, Radio } from 'lucide-react'
+import { Send, Terminal, Activity, Cpu, CloudSun, Dices, GitBranch, FolderSearch, ExternalLink, Mic, Radio, BookOpen } from 'lucide-react'
 
 interface Props {
   onSend: (text: string) => Promise<boolean>
@@ -14,10 +14,11 @@ interface Props {
 const QUICK_ACTIONS = [
   { label: 'System Status', query: 'What is the current system status, memory, and active window?', icon: Activity },
   { label: 'CPU & Load', query: 'Check CPU utilization and load average.', icon: Cpu },
+  { label: 'MCP Weather', query: 'Sara, what is the weather in Chennai, Tamil Nadu, India according to the MCP weather tool?', icon: CloudSun },
+  { label: 'MCP Notes', query: 'Sara, list my saved notes and active tasks from memory.', icon: BookOpen },
   { label: 'Code Git Status', query: 'Sara, what is the git status and active branch in our project workspace?', icon: GitBranch },
   { label: 'Code Search', query: 'Sara, search the codebase for where MCPManager is defined.', icon: FolderSearch },
   { label: 'Open in VS Code', query: 'Sara, open the application project in VS Code.', icon: ExternalLink },
-  { label: 'MCP Weather', query: 'Sara, what is the weather in Tokyo according to the MCP weather tool?', icon: CloudSun },
   { label: 'MCP Dice', query: 'Sara, roll two 20-sided dice via the MCP tool.', icon: Dices },
 ]
 

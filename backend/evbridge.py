@@ -54,6 +54,16 @@ class Bus:
         self._controls: dict[str, object] = {}
         self._boot_lines: deque[str] = deque(maxlen=MAX_LOG_LINES)
         self._prompts: queue.Queue[str] = queue.Queue()
+        self._mcp_manager: object | None = None
+
+    # -- mcp manager attachment -------------------------------------------- #
+    def set_mcp_manager(self, manager: object) -> None:
+        with self._lock:
+            self._mcp_manager = manager
+
+    def get_mcp_manager(self) -> object | None:
+        with self._lock:
+            return self._mcp_manager
 
     # -- prompt injection -------------------------------------------------- #
     def inject_prompt(self, text: str) -> None:
@@ -167,7 +177,8 @@ class _Handler(BaseHTTPRequestHandler):
     # -- endpoints --------------------------------------------------------- #
     def do_GET(self) -> None:  # noqa: N802 - http.server API
         bus = self._bus
-        if self.path.rstrip("/") == "/state":
+        path = self.path.rstrip("/")
+        if path == "/state":
             body = json.dumps(bus.get()).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -176,13 +187,22 @@ class _Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
-        if self.path.rstrip("/") == "/stream":
+        if path == "/stream":
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Connection", "keep-alive")
             self._cors()
             self.end_headers()
             self._stream(bus)
+            return
+        if path == "/mcp":
+            mgr = bus.get_mcp_manager()
+            if mgr and hasattr(mgr, "get_all_status"):
+                status_data = mgr.get_all_status()
+            else:
+                from mcp_client import MCPManager
+                status_data = MCPManager().get_all_status()
+            self._json(status_data, 200)
             return
         self.send_response(404)
         self._cors()
@@ -240,6 +260,59 @@ class _Handler(BaseHTTPRequestHandler):
                     bus.log("INFO", f"speech {'muted' if muted else 'unmuted'}")
                     applied.append("muted")
             self._json({"ok": True, "applied": applied})
+            return
+
+        if path == "/mcp/toggle":
+            name = str(body.get("name", "")).strip()
+            enabled = bool(body.get("enabled", True))
+            mgr = bus.get_mcp_manager()
+            if not mgr:
+                from mcp_client import MCPManager
+                mgr = MCPManager()
+            res = mgr.toggle_server(name, enabled)
+            if res.get("ok"):
+                bus.log("INFO", f"MCP: server '{name}' {'enabled' if enabled else 'disabled'}")
+                bus.publish({"type": "mcp_changed", "server": name, "enabled": enabled})
+            self._json(res, 200 if res.get("ok") else 400)
+            return
+
+        if path == "/mcp/save":
+            name = str(body.get("name", "")).strip()
+            mgr = bus.get_mcp_manager()
+            if not mgr:
+                from mcp_client import MCPManager
+                mgr = MCPManager()
+            res = mgr.save_server(name, body)
+            if res.get("ok"):
+                bus.log("INFO", f"MCP: server '{name}' config updated")
+                bus.publish({"type": "mcp_changed", "server": name})
+            self._json(res, 200 if res.get("ok") else 400)
+            return
+
+        if path == "/mcp/delete":
+            name = str(body.get("name", "")).strip()
+            mgr = bus.get_mcp_manager()
+            if not mgr:
+                from mcp_client import MCPManager
+                mgr = MCPManager()
+            res = mgr.delete_server(name)
+            if res.get("ok"):
+                bus.log("INFO", f"MCP: server '{name}' deleted")
+                bus.publish({"type": "mcp_changed", "server": name})
+            self._json(res, 200 if res.get("ok") else 400)
+            return
+
+        if path == "/mcp/restart":
+            name = str(body.get("name", "")).strip()
+            mgr = bus.get_mcp_manager()
+            if not mgr:
+                from mcp_client import MCPManager
+                mgr = MCPManager()
+            res = mgr.restart_server(name)
+            if res.get("ok"):
+                bus.log("INFO", f"MCP: server '{name}' restarted")
+                bus.publish({"type": "mcp_changed", "server": name})
+            self._json(res, 200 if res.get("ok") else 400)
             return
 
         self.send_response(404)

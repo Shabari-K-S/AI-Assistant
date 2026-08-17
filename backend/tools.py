@@ -455,6 +455,24 @@ class ToolRegistry:
     def _register(self, tool: Tool) -> None:
         self._tools[tool.name] = tool
 
+    def unregister(self, name: str) -> bool:
+        """Unregister a tool by name."""
+        if name in self._tools:
+            del self._tools[name]
+            log.info("Tool unregistered: %s", name)
+            return True
+        return False
+
+    def unregister_server_tools(self, server_name: str) -> int:
+        """Unregister all tools registered by a specific MCP server."""
+        prefix = f"[MCP: {server_name}]"
+        to_remove = [k for k, t in self._tools.items() if t.description.startswith(prefix)]
+        for k in to_remove:
+            del self._tools[k]
+        if to_remove:
+            log.info("Unregistered %d tools for MCP server %r: %s", len(to_remove), server_name, to_remove)
+        return len(to_remove)
+
     def schemas(self, format: str = "anthropic") -> list[dict]:
         """Tool declarations in the requested provider format:
         'gemini' (function_declarations), 'openai' (function wrapper), 'anthropic'."""

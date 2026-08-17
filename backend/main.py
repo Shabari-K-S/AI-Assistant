@@ -266,7 +266,8 @@ def _speak(
         if mic is not None:
             mic.flush(time.monotonic())
         if trigger is not None:
-            trigger.reset_audio()
+            if hasattr(trigger, "reset_audio"):
+                trigger.reset_audio()
             trigger.quiet_until(time.monotonic() + 0.8)
     except Exception:  # noqa: BLE001 - speaking must never break the loop
         log.exception("tts failed")
@@ -317,6 +318,7 @@ def _build_agent(cfg):
 
     registry = ToolRegistry(cfg.tools, confirm=_confirm_terminal)
     mcp_manager = MCPManager()
+    mcp_manager.set_registry(registry)
     try:
         mcp_manager.start_servers()
         mcp_count = mcp_manager.register_into_tool_registry(registry)
@@ -347,6 +349,8 @@ def _run_assistant(cfg, once: bool, text: str | None) -> int:
         return 2
 
     bus = evbridge.get_bus()
+    if mcp_manager:
+        bus.set_mcp_manager(mcp_manager)
     muted = {"on": False}
 
     def _set_muted(value: bool) -> None:

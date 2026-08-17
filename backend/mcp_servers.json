@@ -2,15 +2,29 @@
   "mcpServers": {
     "dummy-demo": {
       "command": ".venv/bin/python3",
-      "args": ["dummy_mcp_server.py"],
-      "env": {}
+      "args": [
+        "dummy_mcp_server.py"
+      ],
+      "env": {},
+      "enabled": true
+    },
+    "notes-memory": {
+      "command": ".venv/bin/python3",
+      "args": [
+        "notes_mcp_server.py"
+      ],
+      "env": {},
+      "enabled": true
     },
     "opencode": {
       "command": ".venv/bin/python3",
-      "args": ["opencode_mcp_server.py"],
+      "args": [
+        "opencode_mcp_server.py"
+      ],
       "env": {
         "WORKSPACE_ROOT": "/home/shabari/projects"
-      }
+      },
+      "enabled": true
     }
   }
 }

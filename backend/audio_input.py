@@ -223,6 +223,9 @@ class Trigger(ABC):
     def release(self) -> None:
         """Manual / Web-triggered PTT release."""
 
+    def reset_audio(self) -> None:  # noqa: ARG002 - base no-op
+        """Reset internal frame buffers after speech output."""
+
     def close(self) -> None:  # optional cleanup
         pass
 
@@ -484,6 +487,13 @@ class WakeWordTrigger(Trigger):
         (used after a noise-caused empty turn)."""
         with self._lock:
             self._quiet_until = max(self._quiet_until, until)
+            self._consecutive = 0
+
+    def reset_audio(self) -> None:
+        """Reset internal frame buffers and state after audio playback."""
+        with self._lock:
+            self._frame_buf = []
+            self._quiet_frames = 0
             self._consecutive = 0
 
     def continue_listening(self) -> None:

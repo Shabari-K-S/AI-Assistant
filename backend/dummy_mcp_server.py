@@ -101,16 +101,16 @@ def handle_calculate(args: dict) -> str:
 TOOLS = [
     {
         "name": "mcp_get_weather",
-        "description": "Fetch simulated real-time weather and forecast data for any city worldwide via MCP.",
+        "description": "Fetch simulated real-time weather and forecast data for any city worldwide via MCP (default: Chennai, Tamil Nadu, India).",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "city": {
                     "type": "string",
-                    "description": "City or location name (e.g., 'Tokyo', 'London', 'New York', 'Paris')",
+                    "description": "City or location name (default: 'Chennai, Tamil Nadu, India', or 'London', 'New York', 'Paris')",
                 }
             },
-            "required": ["city"],
+            "required": [],
         },
     },
     {
@@ -125,6 +125,28 @@ TOOLS = [
                 }
             },
             "required": ["expression"],
+        },
+    },
+    {
+        "name": "mcp_unit_converter",
+        "description": "Convert units for everyday calculations (temperature, length, weight, speed, data storage) via MCP.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "value": {
+                    "type": "number",
+                    "description": "Numerical value to convert",
+                },
+                "from_unit": {
+                    "type": "string",
+                    "description": "Source unit (e.g., 'celsius', 'fahrenheit', 'km', 'miles', 'kg', 'lbs', 'gb', 'mb')",
+                },
+                "to_unit": {
+                    "type": "string",
+                    "description": "Target unit (e.g., 'fahrenheit', 'celsius', 'miles', 'km', 'lbs', 'kg', 'mb', 'gb')",
+                },
+            },
+            "required": ["value", "from_unit", "to_unit"],
         },
     },
     {
@@ -156,16 +178,25 @@ TOOLS = [
 
 
 def handle_get_weather(args: dict) -> str:
-    city = str(args.get("city", "Unknown")).strip().title()
+    raw_city = str(args.get("city") or "").strip()
+    if not raw_city or raw_city.lower() in ("unknown", "none", "default"):
+        city = "Chennai, Tamil Nadu, India"
+    else:
+        city = raw_city.title()
+
     # Deterministic yet diverse pseudo-weather based on city name hash
     seed = sum(ord(c) for c in city)
     random.seed(seed + int(time.time() // 3600))
     conditions = ["Sunny", "Partly Cloudy", "Cloudy", "Light Rain", "Clear Skies", "Breezy", "Scattered Showers"]
     cond = random.choice(conditions)
-    temp_c = random.randint(12, 32)
+    # Chennai tropical warm weather profile
+    if "chennai" in city.lower() or "tamil nadu" in city.lower():
+        temp_c = random.randint(28, 36)
+    else:
+        temp_c = random.randint(12, 32)
     temp_f = int(temp_c * 9 / 5 + 32)
-    humidity = random.randint(35, 85)
-    wind_speed = random.randint(4, 22)
+    humidity = random.randint(55, 88) if ("chennai" in city.lower()) else random.randint(35, 85)
+    wind_speed = random.randint(8, 24)
     wind_dirs = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
     wind_dir = random.choice(wind_dirs)
     return (
@@ -174,8 +205,55 @@ def handle_get_weather(args: dict) -> str:
         f"• Temperature: {temp_c}°C ({temp_f}°F)\n"
         f"• Humidity: {humidity}%\n"
         f"• Wind: {wind_speed} km/h {wind_dir}\n"
-        f"• Forecast: Stable conditions expected over the next 12 hours."
+        f"• Region: South Asia / Coastal Bay of Bengal\n"
+        f"• Forecast: Stable tropical atmospheric conditions."
     )
+
+
+def handle_unit_converter(args: dict) -> str:
+    val = float(args.get("value", 0))
+    u_from = str(args.get("from_unit", "")).strip().lower()
+    u_to = str(args.get("to_unit", "")).strip().lower()
+
+    # Temperature
+    if u_from in ("c", "celsius") and u_to in ("f", "fahrenheit"):
+        res = (val * 9 / 5) + 32
+        return f"Unit Conversion (MCP): {val}°C = {res:.2f}°F"
+    if u_from in ("f", "fahrenheit") and u_to in ("c", "celsius"):
+        res = (val - 32) * 5 / 9
+        return f"Unit Conversion (MCP): {val}°F = {res:.2f}°C"
+
+    # Length
+    if u_from in ("km", "kilometer", "kilometers") and u_to in ("mi", "mile", "miles"):
+        res = val * 0.621371
+        return f"Unit Conversion (MCP): {val} km = {res:.2f} miles"
+    if u_from in ("mi", "mile", "miles") and u_to in ("km", "kilometer", "kilometers"):
+        res = val * 1.60934
+        return f"Unit Conversion (MCP): {val} miles = {res:.2f} km"
+    if u_from in ("m", "meter", "meters") and u_to in ("ft", "feet", "foot"):
+        res = val * 3.28084
+        return f"Unit Conversion (MCP): {val} m = {res:.2f} ft"
+    if u_from in ("ft", "feet", "foot") and u_to in ("m", "meter", "meters"):
+        res = val * 0.3048
+        return f"Unit Conversion (MCP): {val} ft = {res:.2f} m"
+
+    # Weight
+    if u_from in ("kg", "kilogram", "kilograms") and u_to in ("lb", "lbs", "pound", "pounds"):
+        res = val * 2.20462
+        return f"Unit Conversion (MCP): {val} kg = {res:.2f} lbs"
+    if u_from in ("lb", "lbs", "pound", "pounds") and u_to in ("kg", "kilogram", "kilograms"):
+        res = val * 0.453592
+        return f"Unit Conversion (MCP): {val} lbs = {res:.2f} kg"
+
+    # Data storage
+    if u_from in ("gb", "gigabyte") and u_to in ("mb", "megabyte"):
+        res = val * 1024
+        return f"Unit Conversion (MCP): {val} GB = {res:.0f} MB"
+    if u_from in ("mb", "megabyte") and u_to in ("gb", "gigabyte"):
+        res = val / 1024
+        return f"Unit Conversion (MCP): {val} MB = {res:.3f} GB"
+
+    return f"Unit Conversion (MCP): Unable to convert directly from {u_from} to {u_to}."
 
 
 def handle_dice_roll(args: dict) -> str:
@@ -206,6 +284,7 @@ def handle_server_info(args: dict) -> str:
 TOOL_HANDLERS = {
     "mcp_get_weather": handle_get_weather,
     "mcp_calculate": handle_calculate,
+    "mcp_unit_converter": handle_unit_converter,
     "mcp_dice_roll": handle_dice_roll,
     "mcp_server_info": handle_server_info,
 }
