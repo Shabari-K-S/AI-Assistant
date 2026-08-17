@@ -451,12 +451,14 @@ class MCPManager:
             def make_handler(c: MCPProcessClient, t_name: str, server: str) -> Callable[[dict], str]:
                 def handler(args: dict) -> str:
                     if "terminal" in t_name.lower() or "shell" in t_name.lower():
-                        if hasattr(self.registry, "_cfg") and hasattr(self.registry, "_confirm"):
-                            policy = getattr(self.registry._cfg, "confirm_shell", "ask")
-                            cmd = str(args.get("command", "")).strip()
-                            if policy == "always" or policy == "ask":
-                                if not self.registry._confirm(f"run MCP [{server}] command: {cmd!r}"):
-                                    raise PermissionError(f"declined by user: {cmd!r}")
+                        from tools import is_safe_read_only_command
+                        cmd = str(args.get("command", "")).strip()
+                        if not is_safe_read_only_command(cmd):
+                            if hasattr(self.registry, "_cfg") and hasattr(self.registry, "_confirm"):
+                                policy = getattr(self.registry._cfg, "confirm_shell", "ask")
+                                if policy == "always" or policy == "ask":
+                                    if not self.registry._confirm(f"run MCP [{server}] command: {cmd!r}"):
+                                        raise PermissionError(f"declined by user: {cmd!r}")
                     return c.call_tool(t_name, args)
                 return handler
 

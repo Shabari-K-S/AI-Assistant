@@ -20,7 +20,7 @@ const PHASE_TAG: Record<string, string> = {
   speaking: 'STREAMING AUDIO TRANSMISSION',
 }
 
-type MobileTab = 'core' | 'mcp' | 'sensors' | 'logs'
+type MobileTab = 'mcp' | 'core' | 'logs'
 type CenterView = 'core' | 'mcp'
 
 export default function App() {
@@ -100,14 +100,13 @@ export default function App() {
 
       {/* Main command deck body */}
       <div className="relative z-10 flex min-h-0 flex-1 overflow-hidden">
-        {/* Left Sensor Matrix (Desktop sidebar or Mobile Tab) */}
-        {((!isMobile && showLeftSidebar) || (isMobile && mobileTab === 'sensors')) && (
+        {/* Left Sensor Matrix (Desktop only) */}
+        {!isMobile && showLeftSidebar && (
           <SensorPanel
             snap={activeSnap}
             connected={connected}
             onThreshold={setThreshold}
             onMuted={setMuted}
-            onClose={isMobile ? () => switchMobileTab('core') : undefined}
           />
         )}
 
@@ -209,8 +208,8 @@ export default function App() {
                   </button>
                 </div>
 
-                {/* Deck Tab Switcher (Desktop) */}
-                <div className="flex items-center gap-1 bg-[rgba(6,14,21,0.7)] p-1 rounded-lg border border-[rgba(65,230,255,0.2)]">
+                {/* Deck Tab Switcher (Desktop only) */}
+                <div className="hidden md:flex items-center gap-1 bg-[rgba(6,14,21,0.7)] p-1 rounded-lg border border-[rgba(65,230,255,0.2)]">
                   <button
                     onClick={() => {
                       soundFx.click()
@@ -320,59 +319,50 @@ export default function App() {
         )}
       </div>
 
-      {/* Cyberpunk Mobile Bottom Navigation Bar (< 768px) */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around h-14 bg-[rgba(4,9,15,0.95)] border-t border-[rgba(65,230,255,0.2)] backdrop-blur-lg pb-safe px-2">
-        <button
-          onClick={() => switchMobileTab('sensors')}
-          className={`flex-1 flex flex-col items-center justify-center py-1.5 transition-all ${
-            mobileTab === 'sensors'
-              ? 'text-[#41e6ff] drop-shadow-[0_0_8px_rgba(65,230,255,0.6)]'
-              : 'text-[#7da4b8] opacity-70'
-          }`}
-        >
-          <Sliders size={17} />
-          <span className="font-mono text-[8.5px] tracking-wider mt-0.5 font-semibold">SENSORS</span>
-        </button>
-
-        <button
-          onClick={() => switchMobileTab('core')}
-          className={`flex-1 flex flex-col items-center justify-center py-1.5 transition-all ${
-            mobileTab === 'core'
-              ? 'text-[#41e6ff] drop-shadow-[0_0_10px_rgba(65,230,255,0.8)] scale-105'
-              : 'text-[#7da4b8] opacity-70'
-          }`}
-        >
-          <div className={`p-1 rounded-full border ${mobileTab === 'core' ? 'border-[#41e6ff] bg-[rgba(65,230,255,0.15)]' : 'border-transparent'}`}>
-            <Radio size={17} />
-          </div>
-          <span className="font-mono text-[8.5px] tracking-wider mt-0.5 font-bold">CORE HUD</span>
-        </button>
-
+      {/* Cyberpunk Mobile Bottom Navigation Bar (3 items: MCP Config [Left] | Core HUD [Center] | Feed Logs [Right]) */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around h-14 bg-[rgba(4,9,15,0.95)] border-t border-[rgba(65,230,255,0.2)] backdrop-blur-lg pb-safe px-4 shadow-[0_-4px_20px_rgba(0,0,0,0.5)]">
+        {/* Left: MCP MODULES */}
         <button
           onClick={() => switchMobileTab('mcp')}
-          className={`flex-1 flex flex-col items-center justify-center py-1.5 transition-all ${
+          className={`flex-1 flex flex-col items-center justify-center py-1 transition-all ${
             mobileTab === 'mcp'
               ? 'text-[#41e6ff] drop-shadow-[0_0_10px_rgba(65,230,255,0.8)] scale-105'
-              : 'text-[#7da4b8] opacity-70'
+              : 'text-[#7da4b8] opacity-70 hover:opacity-100'
           }`}
         >
-          <div className="relative">
-            <Cpu size={17} />
-            <span className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-[#38ef7d]" />
+          <div className="relative flex items-center justify-center">
+            <Cpu size={19} className={mobileTab === 'mcp' ? 'text-[#41e6ff]' : 'text-[#7da4b8]'} />
+            <span className="absolute -top-0.5 -right-1 size-1.5 rounded-full bg-[#38ef7d] shadow-[0_0_4px_#38ef7d]" />
           </div>
-          <span className="font-mono text-[8.5px] tracking-wider mt-0.5 font-bold">MCP CONFIG</span>
+          <span className="font-mono text-[9px] tracking-wider mt-0.5 font-bold">MCP CONFIG</span>
         </button>
 
+        {/* Center: CORE HUD */}
         <button
-          onClick={() => switchMobileTab('logs')}
-          className={`flex-1 flex flex-col items-center justify-center py-1.5 transition-all ${
-            mobileTab === 'logs'
-              ? 'text-[#41e6ff] drop-shadow-[0_0_8px_rgba(65,230,255,0.6)]'
-              : 'text-[#7da4b8] opacity-70'
+          onClick={() => switchMobileTab('core')}
+          className={`flex-1 flex flex-col items-center justify-center py-1 transition-all ${
+            mobileTab === 'core'
+              ? 'text-[#41e6ff] drop-shadow-[0_0_12px_rgba(65,230,255,0.9)] scale-105'
+              : 'text-[#7da4b8] opacity-70 hover:opacity-100'
           }`}
         >
-          <MessageSquare size={17} />
-          <span className="font-mono text-[8.5px] tracking-wider mt-0.5 font-semibold">FEED LOGS</span>
+          <div className={`p-1 rounded-full border ${mobileTab === 'core' ? 'border-[#41e6ff] bg-[rgba(65,230,255,0.2)] shadow-[0_0_8px_rgba(65,230,255,0.4)]' : 'border-transparent'}`}>
+            <Radio size={19} />
+          </div>
+          <span className="font-mono text-[9px] tracking-wider mt-0.5 font-bold">CORE HUD</span>
+        </button>
+
+        {/* Right: FEED LOGS */}
+        <button
+          onClick={() => switchMobileTab('logs')}
+          className={`flex-1 flex flex-col items-center justify-center py-1 transition-all ${
+            mobileTab === 'logs'
+              ? 'text-[#41e6ff] drop-shadow-[0_0_10px_rgba(65,230,255,0.8)] scale-105'
+              : 'text-[#7da4b8] opacity-70 hover:opacity-100'
+          }`}
+        >
+          <MessageSquare size={19} className={mobileTab === 'logs' ? 'text-[#41e6ff]' : 'text-[#7da4b8]'} />
+          <span className="font-mono text-[9px] tracking-wider mt-0.5 font-semibold">FEED LOGS</span>
         </button>
       </nav>
     </div>

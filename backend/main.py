@@ -278,6 +278,17 @@ def _speak(
             bus.set(phase="standby")
 
 
+_AFFIRMATIVE_WORDS = {
+    "yes", "yeah", "yup", "sure", "proceed", "go ahead", "okay", "ok",
+    "run it", "do it", "confirm", "confirmed", "yep", "affirmative", "correct", "y", "please do", "execute",
+}
+
+_NEGATIVE_WORDS = {
+    "no", "nah", "nope", "stop", "cancel", "don't", "dont", "abort",
+    "never mind", "decline", "n", "refuse", "negative", "do not",
+}
+
+
 def _confirm_terminal(prompt: str) -> bool:
     """y/N confirmation prompt used by the tool layer for side-effect tools."""
     try:
@@ -285,6 +296,109 @@ def _confirm_terminal(prompt: str) -> bool:
     except (EOFError, KeyboardInterrupt):
         return False
     return reply in {"y", "yes"}
+
+
+def _make_voice_or_terminal_confirm(context_holder: dict) -> Callable[[str], bool]:
+    """Creates an interactive voice confirmation handler that speaks modifying action requests
+    out loud and listens for the user's voice reply (with web HUD & terminal fallback)."""
+
+    def confirm_action(prompt: str) -> bool:
+        bus = context_holder.get("bus")
+        tts = context_holder.get("tts")
+        mic = context_holder.get("mic")
+        trigger = context_holder.get("trigger")
+        stt = context_holder.get("stt")
+        cfg = context_holder.get("cfg")
+        muted = context_holder.get("muted", {"on": False})
+
+        # Formulate human-friendly spoken sentence
+        if "command:" in prompt:
+            m = re.search(r"command:\s*['\"]?(.*?)['\"]?$", prompt)
+            cmd_snippet = m.group(1) if m else prompt
+            spoken_text = f"I need your confirmation to execute the modifying command: {cmd_snippet}. Should I proceed?"
+        else:
+            spoken_text = f"I need your confirmation to {prompt}. Should I proceed?"
+
+        log.info("Requesting user confirmation: %s", prompt)
+        print(f"\n⚠️  [CONFIRMATION REQUIRED]: {prompt}", flush=True)
+        print("   Listening for voice ('yes'/'proceed'/'no') or input (8s timeout)...", flush=True)
+
+        if bus is not None:
+            bus.set(phase="speaking", reply=spoken_text)
+            bus.log("WARN", f"Confirmation required: {prompt}")
+            bus.event("confirmation_request", prompt=prompt, spoken=spoken_text)
+
+        # 1. Speak the confirmation request out loud
+        _speak(tts, spoken_text, bus=bus, muted=muted.get("on", False), mic=mic, trigger=trigger)
+
+        if bus is not None:
+            bus.set(phase="listening", transcript="[Listening for Voice Confirmation...]")
+
+        confirmed = None
+
+        # 2. Listen for voice response if microphone & STT are available
+        if mic is not None and trigger is not None and stt is not None and cfg is not None:
+            mic.flush(time.monotonic())
+            if hasattr(trigger, "reset_audio"):
+                trigger.reset_audio()
+
+            activated, audio = _capture_utterance(mic, trigger, cfg, bus=bus, timeout=7.0)
+            if activated and audio is not None:
+                transcription = _transcribe(mic, stt, cfg, audio, bus=bus)
+                if transcription:
+                    user_reply = transcription.strip().lower()
+                    print(f"[voice confirmation response]: '{user_reply}'", flush=True)
+                    if bus is not None:
+                        bus.log("INFO", f"Voice confirmation answer: '{user_reply}'")
+
+                    words = set(re.findall(r"\b\w+\b", user_reply))
+                    if words & _AFFIRMATIVE_WORDS or any(w in user_reply for w in _AFFIRMATIVE_WORDS):
+                        confirmed = True
+                    elif words & _NEGATIVE_WORDS or any(w in user_reply for w in _NEGATIVE_WORDS):
+                        confirmed = False
+
+        # 3. Check for web HUD prompt if voice not definitive
+        if confirmed is None and bus is not None:
+            injected = bus.get_injected_prompt(timeout=0.5)
+            if injected:
+                inj_lower = injected.strip().lower()
+                if any(w in inj_lower for w in _AFFIRMATIVE_WORDS):
+                    confirmed = True
+                elif any(w in inj_lower for w in _NEGATIVE_WORDS):
+                    confirmed = False
+
+        # 4. Terminal fallback if in interactive terminal
+        if confirmed is None and sys.stdin.isatty():
+            try:
+                import select
+                print(f"{prompt} [y/N]: ", end="", flush=True)
+                r, _, _ = select.select([sys.stdin], [], [], 2.0)
+                if r:
+                    reply = sys.stdin.readline().strip().lower()
+                    if reply in ("y", "yes", "proceed"):
+                        confirmed = True
+                    else:
+                        confirmed = False
+            except Exception:
+                pass
+
+        # Conclude and feedback
+        if confirmed is True:
+            log.info("Action confirmed by user.")
+            if bus is not None:
+                bus.log("INFO", "Action confirmed by user.")
+                bus.set(phase="processing")
+            _speak(tts, "Confirmed. Proceeding with execution.", bus=bus, muted=muted.get("on", False), mic=mic, trigger=trigger)
+            return True
+        else:
+            log.warning("Action declined or timed out.")
+            if bus is not None:
+                bus.log("WARN", "Action declined or confirmation timed out.")
+                bus.set(phase="standby")
+            _speak(tts, "Action cancelled.", bus=bus, muted=muted.get("on", False), mic=mic, trigger=trigger)
+            return False
+
+    return confirm_action
 
 
 def _llm_error_message(exc) -> str:
@@ -309,14 +423,14 @@ def _llm_error_message(exc) -> str:
     return f"unexpected LLM error: {type(exc).__name__}: {exc}"
 
 
-def _build_agent(cfg):
+def _build_agent(cfg, confirm_fn: Callable[[str], bool] | None = None):
     """Assemble Conversation + ToolRegistry + MCPManager + LLM engine. Returns (conv, engine,
     registry, mcp_manager) or exits with code 2 when the setup is incomplete."""
     from llm import Conversation, build_llm
     from mcp_client import MCPManager
     from tools import ToolRegistry
 
-    registry = ToolRegistry(cfg.tools, confirm=_confirm_terminal)
+    registry = ToolRegistry(cfg.tools, confirm=confirm_fn or _confirm_terminal)
     mcp_manager = MCPManager()
     mcp_manager.set_registry(registry)
     try:
@@ -344,14 +458,18 @@ def _build_agent(cfg):
 
 
 def _run_assistant(cfg, once: bool, text: str | None) -> int:
-    conversation, engine, registry, mcp_manager = _build_agent(cfg)
+    bus = evbridge.get_bus()
+    muted = {"on": False}
+
+    context_holder = {"cfg": cfg, "bus": bus, "muted": muted}
+    confirm_handler = _make_voice_or_terminal_confirm(context_holder)
+
+    conversation, engine, registry, mcp_manager = _build_agent(cfg, confirm_fn=confirm_handler)
     if engine is None:
         return 2
 
-    bus = evbridge.get_bus()
     if mcp_manager:
         bus.set_mcp_manager(mcp_manager)
-    muted = {"on": False}
 
     def _set_muted(value: bool) -> None:
         muted["on"] = bool(value)
@@ -397,6 +515,14 @@ def _run_assistant(cfg, once: bool, text: str | None) -> int:
         log.info("tts provider: %s", cfg.tts.provider)
     except Exception as exc:  # noqa: BLE001 - text output still works without TTS
         log.warning("tts unavailable (text only): %s", exc)
+
+    # Attach live audio objects into confirmation context
+    context_holder.update({
+        "mic": mic,
+        "trigger": trigger,
+        "stt": stt,
+        "tts": tts,
+    })
 
     try:
         relisten_count = 0

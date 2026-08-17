@@ -15,6 +15,7 @@ import datetime
 import logging
 import os
 import platform
+import re
 import shlex
 import subprocess
 import time
@@ -26,6 +27,76 @@ from config import ToolsConfig
 log = logging.getLogger("ev.tools")
 
 ConfirmFn = Callable[[str], bool]
+
+
+SAFE_COMMAND_NAMES = {
+    # System inspection & resources
+    "uptime", "whoami", "id", "uname", "hostname", "date", "cal",
+    "df", "du", "free", "top", "htop", "ps", "pgrep", "lsof", "netstat", "ss",
+    "which", "whereis", "type", "echo", "printf", "env", "printenv",
+    # Filesystem read-only exploration
+    "ls", "dir", "tree", "cat", "head", "tail", "less", "more", "bat",
+    "file", "stat", "wc", "nl", "grep", "rg", "ag", "ack", "diff",
+    # Git read-only inspection
+    "git",
+    # Network / Web read-only requests
+    "curl", "wget", "http", "ping",
+    # Dev & compilation checks (read-only / syntax verification)
+    "python", "python3", "node", "npm", "tsc", "oxlint", "pytest",
+}
+
+SAFE_GIT_SUBCOMMANDS = {
+    "status", "log", "diff", "branch", "show", "tag", "remote",
+    "rev-parse", "describe", "config", "stash", "blame", "shortlog",
+}
+
+DANGEROUS_PATTERNS = [
+    # Deletion & destructive actions
+    r"\brm\b", r"\brmdir\b", r"\bunlink\b", r"\bshred\b", r"\bdd\b", r"\bmkfs\b", r"\bformat\b",
+    # Permissions / privileges
+    r"\bsudo\b", r"\bsu\b", r"\bdoas\b", r"\bchmod\b", r"\bchown\b", r"\bchgrp\b",
+    # Process & system management
+    r"\bkill\b", r"\bpkill\b", r"\bkillall\b", r"\breboot\b", r"\bshutdown\b", r"\bpoweroff\b", r"\bsystemctl\b", r"\bservice\b",
+    # Destructive git commands
+    r"\bgit\s+reset\b", r"\bgit\s+clean\b", r"\bgit\s+checkout\s+--\b", r"\bgit\s+restore\b", r"\bgit\s+push\s+--force\b",
+    # File write / output redirection (e.g. > file, >> file)
+    r">\s*[^/&|]", r">>",
+    # In-place file modification
+    r"\bsed\s+-i\b", r"\btruncate\b",
+]
+
+
+def is_safe_read_only_command(command: str) -> bool:
+    """Analyze whether a shell command is strictly read-only / informational (e.g. weather, git status, system load)."""
+    cmd = command.strip()
+    if not cmd:
+        return True
+
+    # Check for explicitly dangerous keywords or destructive file redirections
+    for pattern in DANGEROUS_PATTERNS:
+        if re.search(pattern, cmd, re.IGNORECASE):
+            return False
+
+    # Check each pipeline stage
+    pipeline_parts = [p.strip() for p in re.split(r"[|;&]+", cmd) if p.strip()]
+    for part in pipeline_parts:
+        try:
+            sub_tokens = shlex.split(part)
+        except Exception:
+            return False
+        if not sub_tokens:
+            continue
+        first = sub_tokens[0].split("/")[-1].lower()
+        if first not in SAFE_COMMAND_NAMES:
+            return False
+
+        # If it's git, ensure it's a read-only git subcommand
+        if first == "git" and len(sub_tokens) > 1:
+            git_sub = sub_tokens[1].lower()
+            if git_sub not in SAFE_GIT_SUBCOMMANDS:
+                return False
+
+    return True
 
 
 @dataclass(frozen=True)
@@ -65,19 +136,23 @@ def _make_run_shell_command(
         head = argv[0]
         has_shell_meta = any(char in command for char in [";", "&", "|", "`", "$", "(", ")", ">", "<", "\n"])
         in_allowlist = (head in allowlist) and not has_shell_meta
+        is_safe_info = is_safe_read_only_command(command)
 
         if policy == "always":
             _confirm_or_raise(f"run shell command: {command!r}", confirm, refuse=False)
             use_shell = True
-        elif not in_allowlist:
+        elif is_safe_info or in_allowlist:
+            # Informational / safe read-only command (weather, sys load, uptime, ls, git status)
+            # Runs automatically without user interruption!
+            use_shell = True
+        else:
+            # Mutating / modifying or untrusted command — ask for confirmation
             _confirm_or_raise(
                 f"run shell command: {command!r}",
                 confirm,
                 refuse=policy == "never",
             )
             use_shell = True
-        else:
-            use_shell = False
 
         try:
             print(f"$ {command}", flush=True)
