@@ -35,6 +35,7 @@ export default function App() {
   const [showLeftSidebar, setShowLeftSidebar] = useState(true)
   const [showRightSidebar, setShowRightSidebar] = useState(true)
   const [scanlinesActive, setScanlinesActive] = useState(true)
+  const [webListening, setWebListening] = useState(false)
   const [mobileTab, setMobileTab] = useState<MobileTab>('core')
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768)
 
@@ -50,8 +51,11 @@ export default function App() {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
+  const activePhase = webListening ? 'listening' : snap.phase
+  const activeSnap = webListening ? { ...snap, phase: 'listening' as const, wake_score: 1.0 } : snap
+
   const phaseLabel =
-    PHASE_TAG[snap.phase] ?? (connected ? 'SYSTEM ACTIVE' : 'HOST BACKEND OFFLINE')
+    PHASE_TAG[activePhase] ?? (connected ? 'SYSTEM ACTIVE' : 'HOST BACKEND OFFLINE')
 
   const toggleLeft = () => {
     soundFx.click()
@@ -83,14 +87,14 @@ export default function App() {
       )}
 
       {/* Top telemetry bar */}
-      <StatusBar phase={snap.phase} online={connected} wakeWord={snap.wake_word} />
+      <StatusBar phase={activePhase} online={connected} wakeWord={snap.wake_word} />
 
       {/* Main command deck body */}
       <div className="relative z-10 flex min-h-0 flex-1 overflow-hidden">
         {/* Left Sensor Matrix (Desktop sidebar or Mobile Tab) */}
         {((!isMobile && showLeftSidebar) || (isMobile && mobileTab === 'sensors')) && (
           <SensorPanel
-            snap={snap}
+            snap={activeSnap}
             connected={connected}
             onThreshold={setThreshold}
             onMuted={setMuted}
@@ -151,7 +155,7 @@ export default function App() {
 
             {/* Core Orb & Reactor Display */}
             <div className="flex flex-col items-center justify-center my-auto py-1 sm:py-2">
-              <CoreOrb size={isMobile ? 140 : 190} phase={snap.phase} online={connected} />
+              <CoreOrb size={isMobile ? 140 : 190} phase={activePhase} online={connected} />
 
               {/* Dynamic Phase Display */}
               <div className="text-center mt-2 sm:mt-3">
@@ -159,14 +163,16 @@ export default function App() {
                   className={`font-display text-xl sm:text-2xl md:text-3xl font-bold tracking-[0.28em] sm:tracking-[0.35em] transition-colors duration-500 ${
                     !connected
                       ? 'text-[#ff5d5d]'
-                      : snap.phase === 'speaking'
+                      : activePhase === 'speaking'
                         ? 'text-[#ffc24b] drop-shadow-[0_0_12px_rgba(255,194,75,0.6)]'
-                        : snap.phase === 'processing'
+                        : activePhase === 'processing'
                           ? 'text-[#ba68ff] drop-shadow-[0_0_12px_rgba(186,104,255,0.6)]'
-                          : 'text-[#e8fbff] drop-shadow-[0_0_12px_rgba(65,230,255,0.5)]'
+                          : activePhase === 'listening'
+                            ? 'text-[#41e6ff] drop-shadow-[0_0_15px_rgba(65,230,255,0.8)]'
+                            : 'text-[#e8fbff] drop-shadow-[0_0_12px_rgba(65,230,255,0.5)]'
                   }`}
                 >
-                  {connected ? snap.phase.toUpperCase() : 'OFFLINE'}
+                  {connected ? activePhase.toUpperCase() : 'OFFLINE'}
                   <span className="cursor-blink ml-1" aria-hidden />
                 </div>
                 <div className="mt-1 font-mono text-[9.5px] sm:text-[10.5px] md:text-xs tracking-[0.18em] sm:tracking-[0.22em] text-[#7da4b8] px-2 max-w-sm sm:max-w-none truncate">
@@ -179,28 +185,29 @@ export default function App() {
             <div className="w-full max-w-2xl space-y-2.5 sm:space-y-3">
               {/* Audio Waveform Oscilloscope */}
               <AudioWaveform
-                phase={snap.phase}
+                phase={activePhase}
                 online={connected}
-                wakeScore={snap.wake_score}
+                wakeScore={activeSnap.wake_score}
                 noiseFloor={snap.noise_floor}
               />
 
               {/* Wake Word Sensitivity Meter */}
               <WakeMeter
-                score={snap.wake_score}
+                score={activeSnap.wake_score}
                 threshold={snap.threshold}
                 noiseFloor={snap.noise_floor}
               />
 
               {/* 4-Column Quick Telemetry Gauges */}
-              <TelemetryGauges snap={snap} connected={connected} />
+              <TelemetryGauges snap={activeSnap} connected={connected} />
 
               {/* Interactive Terminal Uplink Input & Push-To-Talk Button */}
               <CommandDeck
                 onSend={sendPrompt}
                 onPtt={triggerPtt}
-                phase={snap.phase}
+                phase={activePhase}
                 connected={connected}
+                onVoiceStateChange={setWebListening}
               />
             </div>
           </main>
@@ -209,7 +216,7 @@ export default function App() {
         {/* Right Transmission & Telemetry Feed (Desktop sidebar or Mobile Tab) */}
         {((!isMobile && showRightSidebar) || (isMobile && mobileTab === 'logs')) && (
           <FeedPanel
-            snap={snap}
+            snap={activeSnap}
             logs={logs}
             onClearLogs={clearLogs}
             onClose={isMobile ? () => switchMobileTab('core') : undefined}
