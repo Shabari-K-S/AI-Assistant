@@ -49,9 +49,11 @@ import evbridge  # noqa: E402  (web HUD — optional, never blocks the loop)
 
 log = logging.getLogger("ev.main")
 
-_PROMPT = 'Say "sara" to talk (Ctrl+C to quit)...'
+_PROMPT_WAKE = 'Say "sara" to talk (Ctrl+C to quit)...'
+_PROMPT_PTT = 'Hold Space or tap Hold-To-Talk in Web HUD to speak (Ctrl+C to quit)...'
 _WAKE_REQUIRED_HINT = "you have to say my name first — try \"sara, ...\""
-_SILENCE_RETRY_HINT = "didn't catch that — say \"sara, ...\" and try again"
+_SILENCE_RETRY_HINT_WAKE = "didn't catch that — say \"sara, ...\" and try again"
+_SILENCE_RETRY_HINT_PTT = "didn't catch that — try speaking into your microphone or hold-to-talk button again"
 
 
 def _setup_logging(level: str) -> None:
@@ -142,6 +144,9 @@ def _has_wake_phrase(text: str, phrases: tuple[str, ...]) -> bool:
 
 def _transcribe(mic, stt, cfg, audio, bus=None) -> str | None:
     """Transcribe audio; prints hints on failure/silence. None = retry turn."""
+    silence_hint = (
+        _SILENCE_RETRY_HINT_WAKE if cfg.audio.trigger == "wakeword" else _SILENCE_RETRY_HINT_PTT
+    )
     try:
         result = stt.transcribe(audio, mic.sample_rate)
     except Exception as exc:  # noqa: BLE001 - keep the loop alive on STT failure
@@ -151,14 +156,14 @@ def _transcribe(mic, stt, cfg, audio, bus=None) -> str | None:
             bus.event("error", msg=f"transcription error: {exc}")
         return None
     if result.is_empty:
-        print(_SILENCE_RETRY_HINT, flush=True)
+        print(silence_hint, flush=True)
         if bus is not None:
             bus.set(phase="standby")
-            bus.log("WARN", _SILENCE_RETRY_HINT)
+            bus.log("WARN", silence_hint)
         return None
     if result.confidence < -1.1:  # whisper hallucination on noise, not real speech
         log.info("low-confidence transcript (%.2f) — treating as silence", result.confidence)
-        print(_SILENCE_RETRY_HINT, flush=True)
+        print(silence_hint, flush=True)
         if bus is not None:
             bus.set(phase="standby")
             bus.log("WARN", f"low-confidence transcript ({result.confidence:.2f}) — treating as silence")
@@ -367,7 +372,8 @@ def _run_assistant(cfg, once: bool, text: str | None) -> int:
         if mic is None:
             return 2
         stt = STTEngine(cfg.stt)
-        print(_PROMPT, flush=True)
+        prompt_str = _PROMPT_PTT if cfg.audio.trigger == "ptt" else _PROMPT_WAKE
+        print(prompt_str, flush=True)
     try:
         tts = build_tts_engine(cfg.tts)
         log.info("tts provider: %s", cfg.tts.provider)
@@ -437,10 +443,13 @@ def _run_assistant(cfg, once: bool, text: str | None) -> int:
                             continue
                         if trigger is not None:
                             trigger.quiet_until(time.monotonic() + cfg.audio.wake_empty_cooldown)
-                        print(_SILENCE_RETRY_HINT, flush=True)
+                        silence_hint = (
+                            _SILENCE_RETRY_HINT_WAKE if is_wakeword_mode else _SILENCE_RETRY_HINT_PTT
+                        )
+                        print(silence_hint, flush=True)
                         if bus is not None:
                             bus.set(phase="standby")
-                            bus.log("WARN", _SILENCE_RETRY_HINT)
+                            bus.log("WARN", silence_hint)
                         if once:
                             return 0
                         continue
@@ -512,7 +521,8 @@ def _run_transcribe_loop(cfg, once: bool) -> int:
     if mic is None:
         return 2
     stt = STTEngine(cfg.stt)
-    print(_PROMPT, flush=True)
+    prompt_str = _PROMPT_PTT if cfg.audio.trigger == "ptt" else _PROMPT_WAKE
+    print(prompt_str, flush=True)
     try:
         while True:
             activated, audio = _capture_utterance(mic, trigger, cfg)

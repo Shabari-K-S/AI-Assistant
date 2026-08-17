@@ -25,8 +25,25 @@ log = logging.getLogger("ev.stt")
 
 
 def _audio_to_wav_bytes(audio: np.ndarray, sample_rate: int = 16000) -> bytes:
-    """Convert float32 mono numpy array to 16-bit PCM WAV bytes in memory."""
-    pcm16 = np.clip(audio * 32767.0, -32768, 32767).astype(np.int16)
+    """Convert float32 mono numpy array to 16-bit PCM WAV bytes in memory with audio peak gain normalization."""
+    if audio.size == 0:
+        return b""
+
+    # Peak normalization: boost low-gain phone microphone audio to audible levels
+    peak = float(np.max(np.abs(audio))) if audio.size > 0 else 0.0
+    if peak > 0.001:
+        # Scale to ~90% full scale if quiet (capped to 50x gain)
+        gain = min(0.90 / peak, 50.0)
+        norm_audio = audio * gain
+    else:
+        norm_audio = audio
+        log.warning(
+            "Audio recording is silent (peak amplitude %.5f). "
+            "If in Termux, check microphone permission or use Web UI Hold-To-Talk.",
+            peak,
+        )
+
+    pcm16 = np.clip(norm_audio * 32767.0, -32768, 32767).astype(np.int16)
     buf = io.BytesIO()
     with wave.open(buf, "wb") as wf:
         wf.setnchannels(1)
