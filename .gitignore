@@ -24,3 +24,10 @@ dist-ssr/
 .DS_Store
 Thumbs.db
 /tmp/
+
+# Personal User Data & Notes Vault
+backend/data/
+**/data/notes/
+**/data/notes_index.json
+**/data/user_notes.json
+

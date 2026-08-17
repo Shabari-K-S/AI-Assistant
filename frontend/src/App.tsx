@@ -11,7 +11,7 @@ import { TelemetryGauges } from './components/TelemetryGauges'
 import { McpConfigPanel } from './components/McpConfigPanel'
 import { useAssistant } from './hooks/useAssistant'
 import { soundFx } from './lib/soundFx'
-import { Sliders, MessageSquare, Eye, EyeOff, Radio, Cpu } from 'lucide-react'
+import { Sliders, MessageSquare, Eye, EyeOff, Radio, Cpu, Sparkles } from 'lucide-react'
 
 const PHASE_TAG: Record<string, string> = {
   standby: 'AWAITING WAKE WORD OR COMMAND',
@@ -27,6 +27,7 @@ export default function App() {
   const {
     snap,
     logs,
+    researchState,
     connected,
     setThreshold,
     setMuted,
@@ -277,6 +278,26 @@ export default function App() {
 
               {/* Lower Control Stack (Visualizer + Gauges + WakeMeter + Terminal Deck) */}
               <div className="w-full max-w-2xl space-y-2.5 sm:space-y-3">
+                {/* Active Deep Research Background Task Card */}
+                {researchState.active && (
+                  <div className="w-full p-2.5 sm:p-3 rounded-lg bg-[rgba(186,104,255,0.12)] border border-[rgba(186,104,255,0.4)] shadow-[0_0_15px_rgba(186,104,255,0.25)] flex items-center justify-between animate-pulse">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-1.5 rounded-md bg-[rgba(186,104,255,0.2)] text-[#ba68ff]">
+                        <Sparkles size={16} />
+                      </div>
+                      <div>
+                        <div className="font-mono text-[10px] sm:text-[11px] font-bold text-[#ba68ff] tracking-wider">
+                          AUTONOMOUS DEEP RESEARCH ACTIVE: {researchState.topic?.toUpperCase()}
+                        </div>
+                        <div className="font-mono text-[9px] sm:text-[10px] text-[#e8fbff] opacity-80 mt-0.5">
+                          Step {researchState.step ?? 1}/{researchState.total ?? 4}: {researchState.stage}
+                        </div>
+                      </div>
+                    </div>
+                    <span className="size-2 rounded-full bg-[#ba68ff] shadow-[0_0_6px_#ba68ff]" />
+                  </div>
+                )}
+
                 {/* Audio Waveform Oscilloscope */}
                 <AudioWaveform
                   phase={activePhase}

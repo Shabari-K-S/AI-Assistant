@@ -233,19 +233,21 @@ def _is_self_echo(user_text: str, last_reply: str) -> bool:
 # --------------------------------------------------------------------------- #
 # Stage 3: Claude + tools
 # --------------------------------------------------------------------------- #
-def _speak(
-    tts: TTSEngine | None,
-    text: str,
-    bus=None,
-    muted: bool = False,
-    mic=None,
-    trigger=None,
-) -> None:
-    """Synthesize and play a reply through the speaker with acoustic echo flushing."""
+_speech_state = {
+    "is_speaking": False,
+    "interrupted": False,
+}
+
+
+def _speak(tts, text: str, bus=None, muted: bool = False, mic=None, trigger=None) -> None:
+    if not text.strip():
+        return
     if bus is not None:
         bus.set(phase="speaking")
     if trigger is not None:
         trigger.set_enabled(False)
+    _speech_state["is_speaking"] = True
+    _speech_state["interrupted"] = False
     try:
         if tts is None:
             return
@@ -259,8 +261,8 @@ def _speak(
         if not muted:
             sd.play(audio, 16000)
             sd.wait()
-            # Speaker reverb decay pause (350ms) to let room acoustics settle
-            time.sleep(0.35)
+            if not _speech_state["interrupted"]:
+                time.sleep(0.35)
 
         # Discard any audio frames buffered during speaker playback
         if mic is not None:
@@ -272,9 +274,10 @@ def _speak(
     except Exception:  # noqa: BLE001 - speaking must never break the loop
         log.exception("tts failed")
     finally:
+        _speech_state["is_speaking"] = False
         if trigger is not None:
             trigger.set_enabled(True)
-        if bus is not None:
+        if bus is not None and not _speech_state["interrupted"]:
             bus.set(phase="standby")
 
 
@@ -523,6 +526,41 @@ def _run_assistant(cfg, once: bool, text: str | None) -> int:
         "stt": stt,
         "tts": tts,
     })
+
+    # Configure Autonomous Deep Research Engine
+    from deep_research import get_deep_research_engine
+    deep_res_engine = get_deep_research_engine()
+    deep_res_engine.set_engine(engine)
+    deep_res_engine.set_bus(bus)
+
+    def _on_research_complete(topic: str, summary: str, note_path: str) -> None:
+        import sounddevice as sd
+        is_spk = _speech_state.get("is_speaking", False)
+        if is_spk:
+            _speech_state["interrupted"] = True
+            try:
+                sd.stop()
+            except Exception:
+                pass
+            notice_speech = (
+                f"Sorry to interrupt, the deep research about {topic} is completed and available in the notes. "
+                f"If you want a summary, I can provide one for you."
+            )
+        else:
+            notice_speech = (
+                f"Hi, the deep research on {topic} is completed and available in the notes. "
+                f"If you would like a summary, I can provide one for you."
+            )
+
+        print(f"\n[🔬 Deep Research Alert] {notice_speech}", flush=True)
+        if bus is not None:
+            bus.set(phase="speaking", reply=notice_speech)
+            bus.log("INFO", f"🔬 Deep Research Finished: '{topic}'")
+            bus.event("deep_research_notified", topic=topic, spoken=notice_speech, note_path=note_path)
+
+        _speak(tts, notice_speech, bus=bus, muted=muted["on"], mic=mic, trigger=trigger)
+
+    deep_res_engine.set_on_complete(_on_research_complete)
 
     try:
         relisten_count = 0

@@ -1,106 +1,302 @@
 #!/usr/bin/env python3
-"""Personal Notes & Memory MCP Server for S.A.R.A.
+"""Personal Notes & Markdown Vault MCP Server for S.A.R.A.
 
 Implements JSON-RPC 2.0 stdio Model Context Protocol (2024-11-05 spec) to provide
-persistent personal notes, scratchpad, thoughts, and to-do list management for everyday users.
+a folder-based Markdown (.md) vault, personal notes, deep research reports,
+and to-do checklist management for S.A.R.A.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
 from typing import Any
 
 SERVER_NAME = "notes-memory"
-SERVER_VERSION = "1.0.0"
+SERVER_VERSION = "2.0.0"
 PROTOCOL_VERSION = "2024-11-05"
 START_TIME = time.time()
 
-# Storage directory
+# Storage directory structure
 DATA_DIR = Path(__file__).resolve().parent / "data"
-NOTES_FILE = DATA_DIR / "user_notes.json"
+VAULT_DIR = DATA_DIR / "notes"
+INDEX_FILE = DATA_DIR / "notes_index.json"
+TODOS_FILE = VAULT_DIR / "todos" / "active_todos.md"
 
 
-def _load_data() -> dict[str, Any]:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    if not NOTES_FILE.exists():
-        initial = {
-            "notes": [
-                {
-                    "id": "note-1",
-                    "title": "Welcome to S.A.R.A. Notes",
-                    "content": "You can ask S.A.R.A. to save thoughts, reminders, notes, and tasks anytime.",
-                    "category": "general",
-                    "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-                }
-            ],
-            "todos": [
-                {
-                    "id": 1,
-                    "task": "Explore S.A.R.A. voice and MCP module configuration",
-                    "priority": "normal",
-                    "completed": False,
-                    "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-                }
-            ],
-        }
-        _save_data(initial)
-        return initial
+def _slugify(text: str) -> str:
+    """Convert text into a safe, clean file slug."""
+    text = text.lower().strip()
+    text = re.sub(r"[^\w\s-]", "", text)
+    text = re.sub(r"[\s_-]+", "_", text)
+    return text.strip("_") or "untitled"
+
+
+def _init_vault() -> None:
+    """Ensure vault category folders and initial notes exist."""
+    VAULT_DIR.mkdir(parents=True, exist_ok=True)
+    for cat in ["general", "deep-research", "work", "ideas", "todos"]:
+        (VAULT_DIR / cat).mkdir(parents=True, exist_ok=True)
+
+    # Create welcome note if vault is empty
+    welcome_path = VAULT_DIR / "general" / "welcome_note.md"
+    if not welcome_path.exists() and not list(VAULT_DIR.glob("**/*.md")):
+        _write_markdown_file(
+            welcome_path,
+            {
+                "id": "note-1",
+                "title": "Welcome to S.A.R.A. Markdown Vault",
+                "category": "general",
+                "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "tags": ["welcome", "getting-started"],
+            },
+            "# Welcome to S.A.R.A. Notes & Research Vault\n\nYou can ask S.A.R.A. to save thoughts, markdown notes, tasks, and autonomous deep research briefs.\n\nAll notes are stored as organized `.md` files.",
+        )
+
+    if not TODOS_FILE.exists():
+        TODOS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        TODOS_FILE.write_text(
+            "# Active To-Do Checklist\n\n- [ ] #1 Explore S.A.R.A. voice and MCP modules (priority: normal)\n",
+            encoding="utf-8",
+        )
+
+
+def _parse_markdown_frontmatter(file_path: Path) -> tuple[dict[str, Any], str]:
+    """Parse YAML-style frontmatter and Markdown body from a .md file."""
+    if not file_path.exists():
+        return {}, ""
     try:
-        with open(NOTES_FILE, "r", encoding="utf-8") as f:
+        raw = file_path.read_text(encoding="utf-8")
+        if raw.startswith("---"):
+            parts = raw.split("---", 2)
+            if len(parts) >= 3:
+                front_raw = parts[1].strip()
+                body = parts[2].strip()
+                meta: dict[str, Any] = {}
+                for line in front_raw.splitlines():
+                    if ":" in line:
+                        k, v = line.split(":", 1)
+                        k = k.strip()
+                        v = v.strip()
+                        if v.startswith("[") and v.endswith("]"):
+                            meta[k] = [x.strip().strip("'\"") for x in v[1:-1].split(",") if x.strip()]
+                        else:
+                            meta[k] = v.strip("'\"")
+                return meta, body
+        return {}, raw.strip()
+    except Exception:
+        return {}, ""
+
+
+def _write_markdown_file(file_path: Path, frontmatter: dict[str, Any], body: str) -> None:
+    """Write markdown file with YAML frontmatter."""
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    fm_lines = ["---"]
+    for k, v in frontmatter.items():
+        if isinstance(v, list):
+            items_str = ", ".join(f'"{x}"' for x in v)
+            fm_lines.append(f"{k}: [{items_str}]")
+        else:
+            fm_lines.append(f"{k}: {v}")
+    fm_lines.append("---")
+    full_text = "\n".join(fm_lines) + "\n\n" + body.strip() + "\n"
+    file_path.write_text(full_text, encoding="utf-8")
+
+
+def _load_index() -> dict[str, Any]:
+    """Load or rebuild notes index."""
+    _init_vault()
+    if not INDEX_FILE.exists():
+        return _rebuild_index()
+    try:
+        with open(INDEX_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception:
-        return {"notes": [], "todos": []}
+        return _rebuild_index()
 
 
-def _save_data(data: dict[str, Any]) -> None:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with open(NOTES_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+def _rebuild_index() -> dict[str, Any]:
+    """Scan all .md files in the vault and generate notes_index.json."""
+    _init_vault()
+    notes: list[dict[str, Any]] = []
+    for md_file in VAULT_DIR.glob("**/*.md"):
+        if md_file.name == "active_todos.md":
+            continue
+        meta, body = _parse_markdown_frontmatter(md_file)
+        rel_path = str(md_file.relative_to(DATA_DIR))
+        cat = md_file.parent.name
+        title = meta.get("title") or md_file.stem.replace("_", " ").title()
+        note_id = meta.get("id") or f"note-{int(md_file.stat().st_mtime * 1000) % 1000000}"
+        created_at = meta.get("created_at") or time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(md_file.stat().st_ctime))
+        preview = (body[:160] + "...") if len(body) > 160 else body
 
+        notes.append({
+            "id": note_id,
+            "title": title,
+            "category": cat,
+            "path": rel_path,
+            "created_at": created_at,
+            "preview": preview,
+            "tags": meta.get("tags", []),
+        })
+
+    index_data = {
+        "updated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "vault_path": str(VAULT_DIR),
+        "notes": notes,
+    }
+    with open(INDEX_FILE, "w", encoding="utf-8") as f:
+        json.dump(index_data, f, indent=2, ensure_ascii=False)
+    return index_data
+
+
+def _find_note_file(target: str) -> tuple[Path | None, dict[str, Any] | None]:
+    """Find a note file by ID, title, filename, or partial path."""
+    target_clean = target.strip().lower()
+    index_data = _load_index()
+
+    for item in index_data.get("notes", []):
+        if (
+            item.get("id", "").lower() == target_clean
+            or item.get("title", "").lower() == target_clean
+            or item.get("path", "").lower().endswith(target_clean)
+            or Path(item.get("path", "")).stem.lower() == target_clean
+        ):
+            full_path = DATA_DIR / item["path"]
+            if full_path.exists():
+                return full_path, item
+
+    # Direct filesystem check
+    for md_file in VAULT_DIR.glob("**/*.md"):
+        if md_file.stem.lower() == target_clean or md_file.name.lower() == target_clean:
+            return md_file, None
+
+    return None, None
+
+
+# --------------------------------------------------------------------------- #
+# Tool Handlers
+# --------------------------------------------------------------------------- #
 
 def handle_add_note(args: dict[str, Any]) -> str:
     title = str(args.get("title", "")).strip()
     content = str(args.get("content", "")).strip()
     category = str(args.get("category", "general")).strip().lower() or "general"
+    tags = args.get("tags", [])
+    if isinstance(tags, str):
+        tags = [t.strip() for t in tags.split(",") if t.strip()]
 
     if not title and not content:
         return "Error: Note title or content is required."
     if not title:
-        title = content[:30] + ("..." if len(content) > 30 else "")
+        title = content[:35] + ("..." if len(content) > 35 else "")
 
-    data = _load_data()
+    slug = _slugify(title)
+    cat_dir = VAULT_DIR / category
+    cat_dir.mkdir(parents=True, exist_ok=True)
+
+    file_path = cat_dir / f"{slug}.md"
+    # Prevent collision
+    counter = 1
+    while file_path.exists():
+        file_path = cat_dir / f"{slug}_{counter}.md"
+        counter += 1
+
     note_id = f"note-{int(time.time() * 1000) % 1000000}"
-    new_note = {
+    created_at = time.strftime("%Y-%m-%d %H:%M:%S")
+
+    frontmatter = {
         "id": note_id,
         "title": title,
-        "content": content,
         "category": category,
-        "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "created_at": created_at,
+        "tags": tags,
     }
-    data.setdefault("notes", []).append(new_note)
-    _save_data(data)
-    return f"Note Saved (MCP):\n• Title: {title}\n• Category: {category}\n• ID: {note_id}\n• Content: {content}"
+
+    _write_markdown_file(file_path, frontmatter, content)
+    _rebuild_index()
+
+    return (
+        f"Markdown Note Created (MCP Vault):\n"
+        f"• Title: {title}\n"
+        f"• Category: {category}\n"
+        f"• File: {file_path.relative_to(DATA_DIR)}\n"
+        f"• ID: {note_id}\n"
+        f"• Content Length: {len(content)} chars"
+    )
+
+
+def handle_read_note(args: dict[str, Any]) -> str:
+    target = str(args.get("note_id_or_title_or_path", "")).strip()
+    if not target:
+        return "Error: note_id_or_title_or_path is required."
+
+    file_path, meta = _find_note_file(target)
+    if not file_path or not file_path.exists():
+        return f"Error: Note '{target}' not found in Markdown vault."
+
+    frontmatter, body = _parse_markdown_frontmatter(file_path)
+    title = frontmatter.get("title") or (meta.get("title") if meta else file_path.stem)
+    category = frontmatter.get("category") or file_path.parent.name
+    created_at = frontmatter.get("created_at", "unknown")
+
+    return (
+        f"📄 Markdown Note: {title} [{category.upper()}]\n"
+        f"📁 Path: {file_path.relative_to(DATA_DIR)} | Date: {created_at}\n"
+        f"{'━' * 60}\n\n"
+        f"{body}"
+    )
+
+
+def handle_edit_note(args: dict[str, Any]) -> str:
+    target = str(args.get("note_id_or_title_or_path", "")).strip()
+    content = str(args.get("content", "")).strip()
+    append = bool(args.get("append", False))
+
+    if not target:
+        return "Error: note_id_or_title_or_path is required."
+    if not content:
+        return "Error: content is required for editing."
+
+    file_path, meta = _find_note_file(target)
+    if not file_path or not file_path.exists():
+        return f"Error: Note '{target}' not found to edit."
+
+    frontmatter, existing_body = _parse_markdown_frontmatter(file_path)
+    if append:
+        new_body = existing_body + "\n\n" + content
+    else:
+        new_body = content
+
+    frontmatter["updated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    _write_markdown_file(file_path, frontmatter, new_body)
+    _rebuild_index()
+
+    action = "Appended content to" if append else "Updated"
+    return f"Successfully {action} note '{frontmatter.get('title', file_path.name)}' ({file_path.relative_to(DATA_DIR)})."
 
 
 def handle_list_notes(args: dict[str, Any]) -> str:
     category = str(args.get("category", "")).strip().lower()
-    data = _load_data()
-    notes = data.get("notes", [])
+    index_data = _load_index()
+    notes = index_data.get("notes", [])
 
     if category:
         notes = [n for n in notes if n.get("category", "").lower() == category]
 
     if not notes:
-        return f"No notes found{' in category ' + category if category else ''}."
+        return f"No markdown notes found{' in category ' + category if category else ''}."
 
-    lines = [f"Personal Notes ({len(notes)} items):"]
+    lines = [f"Markdown Vault Notes ({len(notes)} items):\n"]
     for i, n in enumerate(notes, 1):
-        lines.append(f"{i}. [{n.get('category', 'general').upper()}] {n.get('title')}: {n.get('content')} ({n.get('created_at')})")
-    return "\n".join(lines)
+        lines.append(f"{i}. [{n.get('category', 'general').upper()}] {n.get('title')} (ID: {n.get('id')})")
+        lines.append(f"   File: {n.get('path')}")
+        lines.append(f"   Preview: {n.get('preview')}\n")
+    return "\n".join(lines).strip()
 
 
 def handle_search_notes(args: dict[str, Any]) -> str:
@@ -108,43 +304,49 @@ def handle_search_notes(args: dict[str, Any]) -> str:
     if not query:
         return "Error: Search query cannot be empty."
 
-    data = _load_data()
-    notes = data.get("notes", [])
-    matches = [
-        n for n in notes
-        if query in n.get("title", "").lower() or query in n.get("content", "").lower() or query in n.get("category", "").lower()
-    ]
-    if not matches:
-        return f"No notes matching '{query}' found."
+    index_data = _load_index()
+    notes = index_data.get("notes", [])
+    matches: list[tuple[dict[str, Any], str]] = []
 
-    lines = [f"Search Results for '{query}' ({len(matches)} matches):"]
-    for n in matches:
-        lines.append(f"• [{n.get('category')}] {n.get('title')}: {n.get('content')}")
-    return "\n".join(lines)
+    for n in notes:
+        full_path = DATA_DIR / n["path"]
+        if full_path.exists():
+            _, body = _parse_markdown_frontmatter(full_path)
+            if (
+                query in n.get("title", "").lower()
+                or query in body.lower()
+                or query in n.get("category", "").lower()
+                or any(query in str(t).lower() for t in n.get("tags", []))
+            ):
+                snippet = body[:200] + ("..." if len(body) > 200 else "")
+                matches.append((n, snippet))
+
+    if not matches:
+        return f"No markdown notes matching '{query}' found."
+
+    lines = [f"🔍 Search Results in Vault for '{query}' ({len(matches)} matches):\n"]
+    for item, snippet in matches:
+        lines.append(f"• [{item.get('category').upper()}] {item.get('title')} (File: {item.get('path')})")
+        lines.append(f"  Content: {snippet}\n")
+    return "\n".join(lines).strip()
 
 
 def handle_delete_note(args: dict[str, Any]) -> str:
-    target = str(args.get("note_id_or_title", "")).strip().lower()
+    target = str(args.get("note_id_or_title_or_path", "")).strip()
     if not target:
-        return "Error: note_id_or_title is required."
+        return "Error: note_id_or_title_or_path is required."
 
-    data = _load_data()
-    notes = data.get("notes", [])
-    remaining = []
-    deleted = []
+    file_path, _ = _find_note_file(target)
+    if not file_path or not file_path.exists():
+        return f"No note matching '{target}' was found in vault."
 
-    for n in notes:
-        if n.get("id", "").lower() == target or n.get("title", "").lower() == target:
-            deleted.append(n)
-        else:
-            remaining.append(n)
-
-    if not deleted:
-        return f"No note matching '{target}' was found to delete."
-
-    data["notes"] = remaining
-    _save_data(data)
-    return f"Successfully deleted {len(deleted)} note(s): {', '.join(d.get('title', '') for d in deleted)}"
+    file_name = file_path.name
+    try:
+        file_path.unlink()
+        _rebuild_index()
+        return f"Successfully deleted markdown note: {file_name}"
+    except Exception as exc:
+        return f"Error deleting note '{file_name}': {exc}"
 
 
 def handle_add_todo(args: dict[str, Any]) -> str:
@@ -155,148 +357,177 @@ def handle_add_todo(args: dict[str, Any]) -> str:
     if not task:
         return "Error: Task description is required."
 
-    data = _load_data()
-    todos = data.setdefault("todos", [])
-    next_id = max([t.get("id", 0) for t in todos], default=0) + 1
+    _init_vault()
+    raw = TODOS_FILE.read_text(encoding="utf-8") if TODOS_FILE.exists() else "# Active To-Do Checklist\n\n"
 
-    new_todo = {
-        "id": next_id,
-        "task": task,
-        "priority": priority,
-        "completed": False,
-        "due_date": due_date,
-        "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-    }
-    todos.append(new_todo)
-    _save_data(data)
-    return f"To-Do Created (MCP):\n• Task #{next_id}: {task}\n• Priority: {priority}{f' (Due: {due_date})' if due_date else ''}"
+    # Find highest task ID
+    existing_ids = [int(m) for m in re.findall(r"- \[[ xX]\] #(\d+)", raw)]
+    next_id = max(existing_ids, default=0) + 1
+
+    due_str = f" (due: {due_date})" if due_date else ""
+    new_entry = f"- [ ] #{next_id} {task} [priority: {priority}]{due_str}\n"
+    TODOS_FILE.write_text(raw.strip() + "\n" + new_entry, encoding="utf-8")
+
+    return f"To-Do Added to Vault:\n• Task #{next_id}: {task}\n• Priority: {priority}{due_str}\n• Saved in: notes/todos/active_todos.md"
 
 
 def handle_list_todos(args: dict[str, Any]) -> str:
     status = str(args.get("status", "all")).strip().lower()
-    data = _load_data()
-    todos = data.get("todos", [])
+    _init_vault()
+    if not TODOS_FILE.exists():
+        return "No tasks found in vault."
 
-    if status == "active" or status == "pending":
-        todos = [t for t in todos if not t.get("completed")]
-    elif status == "completed" or status == "done":
-        todos = [t for t in todos if t.get("completed")]
+    raw = TODOS_FILE.read_text(encoding="utf-8")
+    lines = [line.strip() for line in raw.splitlines() if line.strip().startswith("- [")]
 
-    if not todos:
-        return f"No {status if status != 'all' else ''} tasks found."
+    filtered = []
+    for l in lines:
+        is_done = l.startswith("- [x]") or l.startswith("- [X]")
+        if status in ("active", "pending") and is_done:
+            continue
+        if status in ("completed", "done") and not is_done:
+            continue
+        filtered.append(l)
 
-    lines = [f"To-Do List ({len(todos)} tasks):"]
-    for t in todos:
-        mark = "✓" if t.get("completed") else "◻"
-        due = f" [Due: {t.get('due_date')}]" if t.get("due_date") else ""
-        lines.append(f"#{t.get('id')} {mark} [{t.get('priority', 'normal').upper()}] {t.get('task')}{due}")
-    return "\n".join(lines)
+    if not filtered:
+        return f"No {status if status != 'all' else ''} tasks found in active_todos.md."
+
+    out = [f"To-Do Checklist ({len(filtered)} tasks in notes/todos/active_todos.md):"]
+    out.extend(filtered)
+    return "\n".join(out)
 
 
 def handle_complete_todo(args: dict[str, Any]) -> str:
     try:
         task_id = int(args.get("task_id", 0))
     except (ValueError, TypeError):
-        return "Error: task_id must be a valid integer number."
+        return "Error: task_id must be an integer."
 
-    data = _load_data()
-    todos = data.get("todos", [])
-    found = False
-    task_name = ""
+    _init_vault()
+    if not TODOS_FILE.exists():
+        return "Error: active_todos.md does not exist."
 
-    for t in todos:
-        if t.get("id") == task_id:
-            t["completed"] = True
-            t["completed_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
-            found = True
-            task_name = t.get("task", "")
-            break
+    raw = TODOS_FILE.read_text(encoding="utf-8")
+    pattern = rf"- \[ \] #{task_id}\b"
 
-    if not found:
-        return f"Task #{task_id} not found."
+    if not re.search(pattern, raw):
+        return f"Active task #{task_id} not found."
 
-    _save_data(data)
-    return f"Completed Task #{task_id}: {task_name}"
+    updated = re.sub(pattern, f"- [x] #{task_id}", raw)
+    TODOS_FILE.write_text(updated, encoding="utf-8")
+    return f"Marked Task #{task_id} as completed in active_todos.md."
 
 
 def handle_notes_summary(args: dict[str, Any]) -> str:
     del args
-    data = _load_data()
-    notes = data.get("notes", [])
-    todos = data.get("todos", [])
-    active_todos = [t for t in todos if not t.get("completed")]
+    index_data = _load_index()
+    notes = index_data.get("notes", [])
+    categories = set(n.get("category", "general") for n in notes)
+
+    todo_count = 0
+    done_count = 0
+    if TODOS_FILE.exists():
+        raw = TODOS_FILE.read_text(encoding="utf-8")
+        todo_count = len(re.findall(r"- \[ \]", raw))
+        done_count = len(re.findall(r"- \[[xX]\]", raw))
 
     return (
-        f"Personal Notes & Memory Hub:\n"
-        f"• Total Saved Notes: {len(notes)}\n"
-        f"• Active Pending Tasks: {len(active_todos)}\n"
-        f"• Completed Tasks: {len(todos) - len(active_todos)}\n"
-        f"• Categories: {', '.join(set(n.get('category', 'general') for n in notes)) or 'None'}"
+        f"Markdown Notes & Research Vault:\n"
+        f"• Total Markdown Notes: {len(notes)}\n"
+        f"• Categories: {', '.join(sorted(categories)) or 'general'}\n"
+        f"• Pending To-Dos: {todo_count}\n"
+        f"• Completed Tasks: {done_count}\n"
+        f"• Storage Location: backend/data/notes/"
     )
 
 
 TOOLS = [
     {
         "name": "notes_add_note",
-        "description": "Save a new personal note, thought, snippet, or reminder into user memory via MCP.",
+        "description": "Create and save a new Markdown (.md) note into the user's organized note vault.",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "title": {"type": "string", "description": "Short summary title of the note"},
-                "content": {"type": "string", "description": "Detailed text content or thought"},
-                "category": {"type": "string", "description": "Category tag, e.g., 'work', 'personal', 'ideas', 'general'"},
+                "title": {"type": "string", "description": "Title or headline of the note"},
+                "content": {"type": "string", "description": "Markdown formatted content, article, or thoughts"},
+                "category": {"type": "string", "description": "Category folder: 'general', 'deep-research', 'work', 'ideas', etc."},
+                "tags": {"type": "array", "items": {"type": "string"}, "description": "Optional list of tags"},
             },
             "required": ["content"],
         },
     },
     {
-        "name": "notes_list_notes",
-        "description": "List saved notes from user memory, optionally filtering by category.",
+        "name": "notes_read_note",
+        "description": "Read the full Markdown content and metadata of a specific note by ID, title, or filename.",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "category": {"type": "string", "description": "Optional category filter (e.g. 'work', 'personal')"},
+                "note_id_or_title_or_path": {"type": "string", "description": "Note ID (e.g. 'note-1'), title, or filename (e.g. 'quantum_computing.md')"},
+            },
+            "required": ["note_id_or_title_or_path"],
+        },
+    },
+    {
+        "name": "notes_edit_note",
+        "description": "Edit or append markdown text to an existing note in the vault.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "note_id_or_title_or_path": {"type": "string", "description": "Note ID, title, or filename"},
+                "content": {"type": "string", "description": "New markdown content to write or append"},
+                "append": {"type": "boolean", "description": "If true, appends content to the end of the note instead of overwriting", "default": False},
+            },
+            "required": ["note_id_or_title_or_path", "content"],
+        },
+    },
+    {
+        "name": "notes_list_notes",
+        "description": "List all Markdown files in the vault with categories, file paths, and summaries.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "category": {"type": "string", "description": "Optional category filter ('deep-research', 'general', 'work')"},
             },
         },
     },
     {
         "name": "notes_search_notes",
-        "description": "Search saved notes and thoughts by keywords.",
+        "description": "Full-text search across all Markdown notes and deep research files in the vault.",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "query": {"type": "string", "description": "Search keyword or phrase"},
+                "query": {"type": "string", "description": "Search keyword, topic, or phrase"},
             },
             "required": ["query"],
         },
     },
     {
         "name": "notes_delete_note",
-        "description": "Delete a note from memory by its ID or title.",
+        "description": "Delete a Markdown note file from the vault by its ID, title, or filename.",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "note_id_or_title": {"type": "string", "description": "ID (e.g. 'note-1') or exact title of note"},
+                "note_id_or_title_or_path": {"type": "string", "description": "Note ID, title, or filename to delete"},
             },
-            "required": ["note_id_or_title"],
+            "required": ["note_id_or_title_or_path"],
         },
     },
     {
         "name": "notes_add_todo",
-        "description": "Add a new task or to-do item to the user's checklist.",
+        "description": "Add a task item to the active To-Do checklist file in the vault.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "task": {"type": "string", "description": "Actionable task description"},
                 "priority": {"type": "string", "description": "'low', 'normal', 'high', or 'urgent' (default: 'normal')"},
-                "due_date": {"type": "string", "description": "Optional due date, e.g., 'today', 'tomorrow', 'Friday'"},
+                "due_date": {"type": "string", "description": "Optional due date"},
             },
             "required": ["task"],
         },
     },
     {
         "name": "notes_list_todos",
-        "description": "List checklist tasks and to-dos (active, completed, or all).",
+        "description": "List tasks and checklist items from active_todos.md.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -306,18 +537,18 @@ TOOLS = [
     },
     {
         "name": "notes_complete_todo",
-        "description": "Mark a task or to-do item as completed by task ID.",
+        "description": "Mark a task item as completed by task ID in active_todos.md.",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "task_id": {"type": "integer", "description": "Numeric ID of the task to complete (e.g. 1, 2)"},
+                "task_id": {"type": "integer", "description": "Task ID number"},
             },
             "required": ["task_id"],
         },
     },
     {
         "name": "notes_summary",
-        "description": "Get a high-level summary count of notes, categories, and pending tasks.",
+        "description": "Get high-level statistics on total Markdown notes, categories, and tasks.",
         "inputSchema": {
             "type": "object",
             "properties": {},
@@ -327,6 +558,8 @@ TOOLS = [
 
 TOOL_HANDLERS = {
     "notes_add_note": handle_add_note,
+    "notes_read_note": handle_read_note,
+    "notes_edit_note": handle_edit_note,
     "notes_list_notes": handle_list_notes,
     "notes_search_notes": handle_search_notes,
     "notes_delete_note": handle_delete_note,
@@ -344,6 +577,7 @@ def send_response(response: dict) -> None:
 
 
 def main() -> None:
+    _init_vault()
     for line in sys.stdin:
         line = line.strip()
         if not line:

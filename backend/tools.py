@@ -522,6 +522,37 @@ class ToolRegistry:
             )
         )
 
+        # 6. Autonomous Deep Research
+        def _handle_start_deep_research(args: dict) -> str:
+            topic = str(args.get("topic", "")).strip()
+            if not topic:
+                return "error: topic parameter is required"
+            from deep_research import get_deep_research_engine
+            engine = get_deep_research_engine()
+            return engine.start_research(topic)
+
+        self._register(
+            Tool(
+                name="start_deep_research",
+                description=(
+                    "Start an autonomous multi-source deep research task on a topic in a separate background thread. "
+                    "Performs web searches, scrapes articles, synthesizes an analyst-grade report into Markdown notes vault, "
+                    "and notifies the user with voice when finished."
+                ),
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "topic": {
+                            "type": "string",
+                            "description": "The specific research topic or question to investigate deeply",
+                        }
+                    },
+                    "required": ["topic"],
+                },
+                handler=_handle_start_deep_research,
+            )
+        )
+
     def register(self, tool: Tool) -> None:
         """Register a dynamic tool (e.g. from an MCP server or plugin)."""
         self._tools[tool.name] = tool

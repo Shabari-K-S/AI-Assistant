@@ -4,6 +4,7 @@ import {
   DEFAULT_SNAPSHOT,
   type LogLine,
   type Snapshot,
+  type DeepResearchState,
 } from '../types'
 import { soundFx } from '../lib/soundFx'
 
@@ -16,6 +17,7 @@ let logSeq = 0
 export function useAssistant() {
   const [snap, setSnap] = useState<Snapshot>(DEFAULT_SNAPSHOT)
   const [logs, setLogs] = useState<LogLine[]>([])
+  const [researchState, setResearchState] = useState<DeepResearchState>({ active: false })
   const [connected, setConnected] = useState(false)
   const prevPhaseRef = useRef(snap.phase)
 
@@ -99,6 +101,45 @@ export function useAssistant() {
       } catch {
         /* ignore */
       }
+    })
+
+    es.addEventListener('deep_research_started', (e) => {
+      try {
+        const data = JSON.parse((e as MessageEvent).data)
+        setResearchState({
+          active: true,
+          topic: data.topic,
+          stage: 'Initializing research vectors...',
+          step: 1,
+          total: 4,
+        })
+      } catch {}
+    })
+
+    es.addEventListener('deep_research_progress', (e) => {
+      try {
+        const data = JSON.parse((e as MessageEvent).data)
+        setResearchState({
+          active: true,
+          topic: data.topic,
+          stage: data.stage,
+          step: data.step,
+          total: data.total,
+        })
+      } catch {}
+    })
+
+    es.addEventListener('deep_research_completed', (e) => {
+      try {
+        const data = JSON.parse((e as MessageEvent).data)
+        soundFx.responseReady()
+        setResearchState({
+          active: false,
+          topic: data.topic,
+          stage: 'Completed & Saved to Vault',
+          file: data.file,
+        })
+      } catch {}
     })
 
     return () => {
@@ -187,6 +228,7 @@ export function useAssistant() {
   return {
     snap,
     logs,
+    researchState,
     connected,
     setThreshold,
     setMuted,

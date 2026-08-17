@@ -26,6 +26,15 @@ export interface LogLine {
   t: number
 }
 
+export interface DeepResearchState {
+  active: boolean
+  topic?: string
+  stage?: string
+  step?: number
+  total?: number
+  file?: string
+}
+
 export const DEFAULT_SNAPSHOT: Snapshot = {
   online: false,
   phase: 'standby',

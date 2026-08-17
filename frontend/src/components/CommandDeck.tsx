@@ -1,6 +1,6 @@
 import { memo, useState, useEffect, useCallback, useRef } from 'react'
 import { soundFx } from '../lib/soundFx'
-import { Send, Terminal, Activity, Cpu, CloudSun, Dices, GitBranch, FolderSearch, ExternalLink, Mic, Radio, BookOpen } from 'lucide-react'
+import { Send, Terminal, Activity, Cpu, CloudSun, Dices, GitBranch, FolderSearch, ExternalLink, Mic, Radio, BookOpen, Sparkles } from 'lucide-react'
 
 interface Props {
   onSend: (text: string) => Promise<boolean>
@@ -12,6 +12,7 @@ interface Props {
 }
 
 const QUICK_ACTIONS = [
+  { label: 'Deep Research', query: 'Sara, run deep research on solid-state battery technology and breakthroughs.', icon: Sparkles },
   { label: 'System Status', query: 'What is the current system status, memory, and active window?', icon: Activity },
   { label: 'CPU & Load', query: 'Check CPU utilization and load average.', icon: Cpu },
   { label: 'MCP Weather', query: 'Sara, what is the weather in Chennai, Tamil Nadu, India according to the MCP weather tool?', icon: CloudSun },
