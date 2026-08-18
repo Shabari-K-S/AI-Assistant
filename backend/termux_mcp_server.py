@@ -494,7 +494,17 @@ def handle_camera_vision(args: dict[str, Any]) -> str:
                 },
             }
 
-            vision_models = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.5-pro", "gemini-1.5-pro"]
+            custom_vision_model = os.environ.get("EV_VISION_MODEL", "").strip()
+            vision_models = [
+                m for m in [
+                    custom_vision_model,
+                    "gemini-2.5-flash-lite",
+                    "gemini-2.0-flash-lite",
+                    "gemini-2.5-flash",
+                    "gemini-1.5-flash",
+                    "gemini-2.5-pro",
+                ] if m
+            ]
             analysis = None
             last_err = None
 
