@@ -216,7 +216,12 @@ class MCPProcessClient:
                 line = line.strip()
                 if not line:
                     continue
-                data = json.loads(line)
+                try:
+                    data = json.loads(line)
+                except json.JSONDecodeError:
+                    log.debug("MCP [%s] non-JSON stdout ignored: %s", self.name, line[:160])
+                    continue
+
                 req_id = data.get("id")
                 if req_id is not None:
                     with self._lock:

@@ -462,9 +462,9 @@ def handle_camera_vision(args: dict[str, Any]) -> str:
             f"💡 **Android 16 Tip:** Make sure **Termux:API** has **Camera** permission granted in Android Settings -> Apps -> Termux:API -> Permissions."
         )
 
-    # Shutter haptic pulse & console progress
+    # Shutter haptic pulse & stderr progress log
     _run_termux_cmd(["termux-vibrate", "-d", "40"], timeout=1.0)
-    print(f"\n[📸 Pocket Vision] Photo captured ({photo_path.name}). Analyzing scene with Gemini Flash-Lite...", flush=True)
+    print(f"[📸 Pocket Vision] Photo captured ({photo_path.name}). Analyzing scene with Gemini Flash-Lite...", file=sys.stderr, flush=True)
 
     # Analyze with Gemini Multimodal Vision (Pure-Python REST with zero C/pydantic dependencies)
     api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
