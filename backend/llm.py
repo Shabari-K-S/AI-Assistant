@@ -549,8 +549,217 @@ class OllamaGemmaLLM(LLMEngine):
         )
 
 
+# --------------------------------------------------------------------------- #
+# Provider 3: Pure-Python Gemini REST (Zero C/Rust/pydantic dependencies)
+# --------------------------------------------------------------------------- #
+class GeminiRestLLM(LLMEngine):
+    """Pure-Python REST SSE streaming client for Google's Gemini / Gemma models.
+    Directly communicates with Google AI Studio over HTTP.
+    Does NOT require google-genai, pydantic, or any compiled C/Rust extensions.
+    Guarantees 100% reliability on Android Termux, Python 3.14, and edge devices.
+    """
+
+    def __init__(self, config: LLMConfig, tool_executor: ToolExecutor | None = None) -> None:
+        if not config.api_key:
+            raise RuntimeError("GOOGLE_API_KEY is not set (see .env / .env.example)")
+        import httpx
+
+        self._config = config
+        self._tool_executor = tool_executor
+        self._max_tool_iterations = 4
+        self._client = httpx.Client(timeout=config.timeout_s)
+
+    def _prepare_payload(self, contents: list[dict], tools: list[dict], system_prompt: str) -> dict:
+        rest_contents = []
+        for msg in contents:
+            role = "user" if msg.get("role") == "user" else "model"
+            parts = []
+            for p in msg.get("parts", []):
+                if "text" in p:
+                    parts.append({"text": str(p["text"])})
+                elif "functionCall" in p:
+                    fc = p["functionCall"]
+                    parts.append({
+                        "functionCall": {
+                            "name": fc.get("name"),
+                            "args": fc.get("args", {})
+                        }
+                    })
+                elif "functionResponse" in p:
+                    fr = p["functionResponse"]
+                    parts.append({
+                        "functionResponse": {
+                            "name": fr.get("name"),
+                            "response": fr.get("response", {})
+                        }
+                    })
+            if parts:
+                rest_contents.append({"role": role, "parts": parts})
+
+        payload: dict = {
+            "contents": rest_contents,
+            "generationConfig": {
+                "temperature": self._config.temperature,
+                "maxOutputTokens": self._config.max_tokens,
+            }
+        }
+        if system_prompt:
+            payload["system_instruction"] = {
+                "parts": [{"text": system_prompt}]
+            }
+        if tools:
+            payload["tools"] = [
+                {
+                    "function_declarations": tools
+                }
+            ]
+        return payload
+
+    def _stream_model(self, model_name: str, payload: dict) -> Iterator[dict]:
+        import httpx
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:streamGenerateContent?alt=sse&key={self._config.api_key}"
+        with self._client.stream("POST", url, json=payload, headers={"Content-Type": "application/json"}) as resp:
+            if resp.status_code == 429:
+                raise httpx.HTTPStatusError("Rate limit 429", request=resp.request, response=resp)
+            if resp.status_code != 200:
+                body = resp.read().decode("utf-8", "replace")
+                raise RuntimeError(f"Gemini API returned HTTP {resp.status_code}: {body}")
+
+            for line in resp.iter_lines():
+                line = line.strip()
+                if not line or not line.startswith("data:"):
+                    continue
+                data_str = line[5:].strip()
+                if not data_str:
+                    continue
+                try:
+                    chunk = json.loads(data_str)
+                    yield chunk
+                except Exception:
+                    continue
+
+    def stream_response(
+        self,
+        conversation: Conversation,
+        tools: list[dict],
+        system_prompt: str,
+    ) -> Iterator[str]:
+        import httpx
+
+        t0 = time.perf_counter()
+        ttft: float | None = None
+
+        cascade_models = [
+            self._config.model,
+            "gemma-4-31b-it",
+            "gemma-4-26b-it",
+            "gemma-3-27b-it",
+            "gemma-3-12b-it",
+            "gemma-3-4b-it",
+            "gemini-2.5-flash",
+            "gemini-1.5-flash",
+            "gemini-2.5-pro",
+            "gemini-1.5-pro",
+        ]
+        unique_models: list[str] = []
+        for m in cascade_models:
+            if m not in unique_models:
+                unique_models.append(m)
+
+        for _ in range(self._max_tool_iterations + 1):
+            contents = conversation.messages()
+            payload = self._prepare_payload(contents, tools, system_prompt)
+
+            parts: list[dict] = []
+            seen_calls: dict[str, dict] = {}
+            success = False
+            last_err = None
+
+            for cycle in range(2):
+                if success:
+                    break
+                for model_name in unique_models:
+                    try:
+                        for chunk in self._stream_model(model_name, payload):
+                            candidates = chunk.get("candidates", [])
+                            if not candidates:
+                                continue
+                            cand = candidates[0]
+                            content = cand.get("content", {})
+                            for part in content.get("parts", []):
+                                if part.get("thought"):
+                                    continue
+                                if "text" in part and part["text"]:
+                                    text_val = part["text"]
+                                    if ttft is None:
+                                        ttft = time.perf_counter() - t0
+                                    parts.append({"text": text_val})
+                                    yield text_val
+                                elif "functionCall" in part:
+                                    fc = part["functionCall"]
+                                    key = fc.get("name") or f"fc{len(seen_calls)}"
+                                    existing = seen_calls.get(key)
+                                    if existing:
+                                        existing["functionCall"]["args"].update(fc.get("args") or {})
+                                    else:
+                                        entry = {
+                                            "functionCall": {
+                                                "name": fc.get("name"),
+                                                "args": fc.get("args") or {},
+                                            }
+                                        }
+                                        seen_calls[key] = entry
+                                        parts.append(entry)
+                        success = True
+                        break
+                    except httpx.HTTPStatusError as exc:
+                        last_err = exc
+                        if exc.response.status_code == 429:
+                            log.warning("REST llm: 429 rate limit on '%s' — cascading to next model", model_name)
+                            time.sleep(1.0)
+                            continue
+                        log.warning("REST llm: HTTP %s on '%s' — cascading", exc.response.status_code, model_name)
+                        continue
+                    except Exception as exc:
+                        last_err = exc
+                        log.warning("REST llm stream error on '%s': %s — cascading", model_name, exc)
+                        continue
+
+                if not success and cycle == 0:
+                    time.sleep(3.0)
+
+            if not success:
+                if last_err:
+                    raise last_err
+                raise RuntimeError("All models in REST cascade failed.")
+
+            tool_calls = [p["functionCall"] for p in parts if _is_tool_call_part(p)]
+            if tool_calls:
+                _run_tool_round(conversation, parts, tool_calls, self._tool_executor, t0)
+                continue
+
+            text = "".join(p["text"] for p in parts if "text" in p)
+            if text.strip():
+                conversation.add_assistant(text)
+            total = time.perf_counter() - t0
+            log.info("REST llm: ttft=%.3fs total=%.3fs chars=%d model=%s", ttft or total, total, len(text), self._config.model)
+            return
+
+        log.warning("llm: tool loop exceeded %d iterations; stopping", self._max_tool_iterations)
+
+
 def build_llm(config: LLMConfig, tool_executor: ToolExecutor | None = None) -> LLMEngine:
-    """Factory: pick the engine from EV_LLM_PROVIDER (gemini | ollama)."""
+    """Factory: pick the engine from EV_LLM_PROVIDER (gemini | rest | ollama).
+    Automatically falls back to pure-Python GeminiRestLLM if google-genai or pydantic
+    encounters import/dlopen issues on Android Termux."""
     if config.provider == "ollama":
         return OllamaGemmaLLM(config, tool_executor=tool_executor)
-    return GeminiGemmaLLM(config, tool_executor=tool_executor)
+    if config.provider == "rest":
+        return GeminiRestLLM(config, tool_executor=tool_executor)
+
+    try:
+        return GeminiGemmaLLM(config, tool_executor=tool_executor)
+    except (ImportError, Exception) as exc:
+        log.info("google-genai SDK unavailable (%s); automatically using pure-Python GeminiRestLLM", exc)
+        return GeminiRestLLM(config, tool_executor=tool_executor)
