@@ -310,6 +310,19 @@ CURATED_MCP_CATALOG: list[dict[str, Any]] = [
         "preinstalled": True,
     },
     {
+        "id": "security-audit",
+        "name": "Security & Bug Bounty Auditor",
+        "description": "Vulnerability scanning, offline CVE searchsploit lookups, passive subdomain recon, SAST code analysis, and HTTP header auditing.",
+        "category": "developer",
+        "icon": "ShieldCheck",
+        "command": ".venv/bin/python3",
+        "args": ["security_mcp_server.py"],
+        "env": {
+            "SECURITY_TARGET_ALLOWLIST": "localhost,127.0.0.1,::1,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12"
+        },
+        "preinstalled": True,
+    },
+    {
         "id": "puppeteer",
         "name": "Puppeteer Headless Browser",
         "description": "Automate headless Chromium browser to navigate pages, capture screenshots, and scrape dynamic JS content.",
