@@ -146,6 +146,8 @@ def _rebuild_index() -> dict[str, Any]:
             "created_at": created_at,
             "preview": preview,
             "tags": meta.get("tags", []),
+            "sources_count": meta.get("sources_count"),
+            "model_used": meta.get("model_used"),
         })
 
     index_data = {

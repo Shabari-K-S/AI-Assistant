@@ -232,6 +232,11 @@ class _Handler(BaseHTTPRequestHandler):
                 "id": frontmatter.get("id") or (meta.get("id") if meta else file_path.stem),
                 "title": title,
                 "category": category,
+                "path": str(file_path.relative_to(DATA_DIR)),
+                "created_at": created_at,
+                "tags": frontmatter.get("tags", []),
+                "sources_count": frontmatter.get("sources_count") or (meta.get("sources_count") if meta else None),
+                "model_used": frontmatter.get("model_used") or (meta.get("model_used") if meta else None),
                 "content": body,
             }, 200)
             return

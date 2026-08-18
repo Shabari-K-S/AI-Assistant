@@ -66,25 +66,94 @@ def _clean_html(raw_html: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-def perform_ddg_search(query: str, max_results: int = 5) -> list[dict[str, str]]:
-    """Query DuckDuckGo HTML endpoint and parse results."""
-    encoded_query = urllib.parse.urlencode({"q": query, "b": ""})
-    url = f"https://html.duckduckgo.com/html/?{encoded_query}"
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-
-    results: list[dict[str, str]] = []
+def _fetch_wikipedia_results(query: str, max_results: int = 4) -> list[dict[str, str]]:
+    """Fetch encyclopedic articles from Wikipedia Search API."""
     try:
-        with urllib.request.urlopen(req, timeout=8) as response:
+        w_q = urllib.parse.quote(query)
+        w_url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={w_q}&utf8=&format=json"
+        req = urllib.request.Request(w_url, headers={"User-Agent": "SARA-Research-Intelligence/2.0"})
+        with urllib.request.urlopen(req, timeout=6) as response:
+            data = json.loads(response.read().decode("utf-8", errors="replace"))
+            search_items = data.get("query", {}).get("search", [])
+            out = []
+            for item in search_items[:max_results]:
+                title = item.get("title", "")
+                snippet = _clean_html(item.get("snippet", ""))
+                article_url = f"https://en.wikipedia.org/wiki/{urllib.parse.quote(title.replace(' ', '_'))}"
+                out.append({
+                    "title": f"{title} (Wikipedia Encyclopedia)",
+                    "url": article_url,
+                    "snippet": snippet or "Wikipedia article entry.",
+                })
+            return out
+    except Exception as exc:
+        log_msg = str(exc)
+        return []
+
+
+def _fetch_arxiv_results(query: str, max_results: int = 4) -> list[dict[str, str]]:
+    """Fetch published academic papers from the ArXiv API."""
+    try:
+        import xml.etree.ElementTree as ET
+        clean_q = re.sub(r"[^\w\s]", " ", query).strip()
+        a_q = urllib.parse.quote(clean_q)
+        a_url = f"http://export.arxiv.org/api/query?search_query=all:{a_q}&start=0&max_results={max_results}"
+        req = urllib.request.Request(a_url, headers={"User-Agent": "SARA-Research-Intelligence/2.0"})
+        with urllib.request.urlopen(req, timeout=7) as response:
+            root = ET.fromstring(response.read())
+            entries = root.findall("{http://www.w3.org/2005/Atom}entry")
+            out = []
+            for entry in entries:
+                title_elem = entry.find("{http://www.w3.org/2005/Atom}title")
+                id_elem = entry.find("{http://www.w3.org/2005/Atom}id")
+                summary_elem = entry.find("{http://www.w3.org/2005/Atom}summary")
+
+                t = title_elem.text.strip().replace("\n", " ") if title_elem is not None and title_elem.text else "ArXiv Paper"
+                link = id_elem.text.strip() if id_elem is not None and id_elem.text else ""
+                s = summary_elem.text.strip().replace("\n", " ") if summary_elem is not None and summary_elem.text else ""
+
+                if link:
+                    out.append({
+                        "title": f"{t} (ArXiv Research Paper)",
+                        "url": link,
+                        "snippet": s[:350] if s else "ArXiv scientific preprint.",
+                    })
+            return out
+    except Exception:
+        return []
+
+
+def perform_ddg_search(query: str, max_results: int = 5) -> list[dict[str, str]]:
+    """Perform multi-source web and academic search via DuckDuckGo, ArXiv, and Wikipedia."""
+    results: list[dict[str, str]] = []
+    seen_urls = set()
+
+    # 1. Attempt DuckDuckGo HTML endpoint
+    try:
+        encoded_query = urllib.parse.urlencode({"q": query, "b": ""})
+        url = f"https://html.duckduckgo.com/html/?{encoded_query}"
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": USER_AGENT,
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.5",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=6) as response:
             content = response.read().decode("utf-8", errors="replace")
 
-        # Extract result blocks from DuckDuckGo HTML
         blocks = re.findall(r'<div[^>]*class="[^"]*result\s+results_links[^"]*"[^>]*>(.*?)</div>\s*</div>', content, re.DOTALL)
         if not blocks:
             blocks = re.findall(r'<div[^>]*class="[^"]*result__body[^"]*"[^>]*>(.*?)</div>', content, re.DOTALL)
+        if not blocks:
+            blocks = re.findall(r'<div[^>]*class="[^"]*web-result[^"]*"[^>]*>(.*?)</div>', content, re.DOTALL)
 
         for block in blocks:
             title_match = re.search(r'<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>(.*?)</a>', block, re.DOTALL)
-            link_match = re.search(r'<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', block, re.DOTALL)
+            link_match = re.search(r'<a[^>]*class="[^"]*(?:result__a|result__url)[^"]*"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', block, re.DOTALL)
+            if not link_match:
+                link_match = re.search(r'<a[^>]*href="([^"]+)"[^>]*>(.*?)</a>', block, re.DOTALL)
 
             title = ""
             raw_url = ""
@@ -102,7 +171,7 @@ def perform_ddg_search(query: str, max_results: int = 5) -> list[dict[str, str]]
                 if snip_div:
                     snippet = _clean_html(snip_div.group(1))
 
-            # Decode DuckDuckGo redirect link /l/?kh=-1&uddg=https%3A%2F%2F...
+            # Decode redirect link
             if "/l/?" in raw_url and "uddg=" in raw_url:
                 parsed = urllib.parse.parse_qs(urllib.parse.urlparse(raw_url).query)
                 if "uddg" in parsed:
@@ -110,24 +179,37 @@ def perform_ddg_search(query: str, max_results: int = 5) -> list[dict[str, str]]
             elif raw_url.startswith("//"):
                 raw_url = "https:" + raw_url
 
-            if title and (snippet or raw_url):
-                results.append({
-                    "title": title,
-                    "url": raw_url,
-                    "snippet": snippet or "No snippet available",
-                })
+            if raw_url and raw_url.startswith("http") and not raw_url.startswith("https://duckduckgo.com/"):
+                if raw_url not in seen_urls:
+                    seen_urls.add(raw_url)
+                    results.append({
+                        "title": title or raw_url,
+                        "url": raw_url,
+                        "snippet": snippet or "No snippet available",
+                    })
 
             if len(results) >= max_results:
                 break
+    except Exception:
+        pass
 
-    except Exception as exc:
-        results.append({
-            "title": f"Search execution for: '{query}'",
-            "url": "https://duckduckgo.com/?q=" + urllib.parse.quote(query),
-            "snippet": f"DuckDuckGo search query result: {exc}.",
-        })
+    # 2. Supplement with ArXiv Scholarly Papers (especially for technical/research topics)
+    if len(results) < max_results:
+        arxiv_items = _fetch_arxiv_results(query, max_results=max(3, max_results - len(results)))
+        for item in arxiv_items:
+            if item["url"] not in seen_urls:
+                seen_urls.add(item["url"])
+                results.append(item)
 
-    return results
+    # 3. Supplement with Wikipedia Technical & Conceptual Articles
+    if len(results) < max_results:
+        wiki_items = _fetch_wikipedia_results(query, max_results=max(3, max_results - len(results)))
+        for item in wiki_items:
+            if item["url"] not in seen_urls:
+                seen_urls.add(item["url"])
+                results.append(item)
+
+    return results[:max_results]
 
 
 def perform_ddg_news(query: str, max_results: int = 5) -> list[dict[str, str]]:
@@ -140,7 +222,7 @@ def handle_duckduckgo_search(args: dict[str, Any]) -> str:
     query = str(args.get("query", "")).strip()
     if not query:
         return "error: query parameter is required"
-    max_res = min(10, max(1, int(args.get("max_results", 5))))
+    max_res = min(15, max(1, int(args.get("max_results", 5))))
 
     results = perform_ddg_search(query, max_results=max_res)
     if not results:

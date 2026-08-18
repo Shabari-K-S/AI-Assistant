@@ -115,6 +115,8 @@ export interface VaultNote {
   created_at: string
   preview: string
   tags?: string[]
+  sources_count?: number
+  model_used?: string
 }
 
 export interface VaultIndexResponse {
@@ -132,6 +134,8 @@ export interface VaultNoteDetail {
   created_at: string
   updated_at?: string
   tags?: string[]
+  sources_count?: number
+  model_used?: string
   content: string
 }
 

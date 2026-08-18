@@ -422,7 +422,7 @@ function renderFormattedText(text: string) {
   const parts: (string | ReactNode)[] = []
   let keyIndex = 0
 
-  const tokenRegex = /(\*\*.*?\*\*|`.*?`|\[.*?\]\(.*?\))/g
+  const tokenRegex = /(\[\d+\]|\*\*.*?\*\*|`.*?`|\[.*?\]\(.*?\))/g
   let lastIndex = 0
   let match: RegExpExecArray | null
 
@@ -432,7 +432,17 @@ function renderFormattedText(text: string) {
     }
 
     const token = match[0]
-    if (token.startsWith('**') && token.endsWith('**')) {
+    if (/^\[\d+\]$/.test(token)) {
+      parts.push(
+        <span
+          key={keyIndex++}
+          className="inline-flex items-center justify-center font-mono text-[10px] font-bold px-1.5 py-0.5 mx-0.5 rounded bg-[rgba(186,104,255,0.18)] text-[#ba68ff] border border-[rgba(186,104,255,0.4)] shadow-[0_0_6px_rgba(186,104,255,0.3)] align-baseline select-all"
+          title={`Citation Source Reference ${token}`}
+        >
+          {token}
+        </span>,
+      )
+    } else if (token.startsWith('**') && token.endsWith('**')) {
       parts.push(
         <strong key={keyIndex++} className="font-bold text-[#ffffff] drop-shadow-[0_0_4px_rgba(65,230,255,0.4)]">
           {token.slice(2, -2)}
@@ -695,7 +705,7 @@ export function NotesVaultPanel({ onSendPrompt }: Props) {
               </button>
 
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span
                     className={`font-mono text-[9px] px-2 py-0.5 rounded border uppercase tracking-wider ${
                       getCategoryStyle(selectedNote.category).bg
@@ -710,6 +720,21 @@ export function NotesVaultPanel({ onSendPrompt }: Props) {
                     <Calendar size={11} />
                     {selectedNote.created_at}
                   </span>
+                  {selectedNote.category?.toLowerCase() === 'deep-research' && (
+                    <span className="font-mono text-[9px] px-1.5 py-0.5 rounded bg-[rgba(186,104,255,0.15)] text-[#ba68ff] border border-[rgba(186,104,255,0.35)] shadow-[0_0_6px_rgba(186,104,255,0.2)]">
+                      COLLEGE PROJECT PAPER
+                    </span>
+                  )}
+                  {selectedNote.sources_count && (
+                    <span className="font-mono text-[9px] px-1.5 py-0.5 rounded bg-[rgba(65,230,255,0.12)] text-[#41e6ff] border border-[rgba(65,230,255,0.3)]">
+                      📚 {selectedNote.sources_count} VERIFIED SOURCES
+                    </span>
+                  )}
+                  {selectedNote.model_used && (
+                    <span className="font-mono text-[9px] px-1.5 py-0.5 rounded bg-[rgba(77,255,145,0.12)] text-[#4dff91] border border-[rgba(77,255,145,0.3)]">
+                      ⚡ {selectedNote.model_used.toUpperCase()}
+                    </span>
+                  )}
                 </div>
                 <h3 className="font-display text-sm sm:text-base md:text-lg font-bold tracking-wide text-[#e8fbff] mt-1">
                   {selectedNote.title}
@@ -733,10 +758,11 @@ export function NotesVaultPanel({ onSendPrompt }: Props) {
               </button>
               <button
                 onClick={handleCopyMarkdown}
-                className="p-1.5 rounded bg-[rgba(65,230,255,0.08)] border border-[rgba(65,230,255,0.2)] text-[#7da4b8] hover:text-[#41e6ff] hover:border-[#41e6ff] transition-all"
-                title="Copy Markdown"
+                className="px-2 py-1 rounded bg-[rgba(65,230,255,0.08)] border border-[rgba(65,230,255,0.2)] text-[#7da4b8] hover:text-[#41e6ff] hover:border-[#41e6ff] transition-all font-mono text-[11px] flex items-center gap-1"
+                title="Copy Markdown Document"
               >
-                {copied ? <Check size={14} className="text-[#4dff91]" /> : <Copy size={14} />}
+                {copied ? <Check size={13} className="text-[#4dff91]" /> : <Copy size={13} />}
+                <span>{copied ? 'COPIED' : 'COPY MD'}</span>
               </button>
               <button
                 onClick={() => startEditNote(selectedNote)}
