@@ -328,12 +328,15 @@ def _speak(tts, text: str, bus=None, muted: bool = False, mic=None, trigger=None
 
 _AFFIRMATIVE_WORDS = {
     "yes", "yeah", "yup", "sure", "proceed", "go ahead", "okay", "ok",
-    "run it", "do it", "confirm", "confirmed", "yep", "affirmative", "correct", "y", "please do", "execute",
+    "run it", "do it", "confirm", "confirmed", "yep", "affirmative", "correct",
+    "y", "please do", "execute", "go for it", "sure thing", "all good",
+    "permission granted", "yes please", "do that", "allow", "yes do it",
 }
 
 _NEGATIVE_WORDS = {
     "no", "nah", "nope", "stop", "cancel", "don't", "dont", "abort",
-    "never mind", "decline", "n", "refuse", "negative", "do not",
+    "never mind", "decline", "n", "refuse", "negative", "do not", "skip",
+    "skip it", "no way", "disallow", "deny",
 }
 
 
@@ -363,13 +366,13 @@ def _make_voice_or_terminal_confirm(context_holder: dict) -> Callable[[str], boo
         if "command:" in prompt:
             m = re.search(r"command:\s*['\"]?(.*?)['\"]?$", prompt)
             cmd_snippet = m.group(1) if m else prompt
-            spoken_text = f"I need your confirmation to execute the modifying command: {cmd_snippet}. Should I proceed?"
+            spoken_text = f"I need your confirmation to execute the high-risk command: {clean_for_speech(cmd_snippet)}. Should I proceed?"
         else:
-            spoken_text = f"I need your confirmation to {prompt}. Should I proceed?"
+            spoken_text = f"I need your confirmation to {clean_for_speech(prompt)}. Should I proceed?"
 
         log.info("Requesting user confirmation: %s", prompt)
-        print(f"\n⚠️  [CONFIRMATION REQUIRED]: {prompt}", flush=True)
-        print("   Listening for voice ('yes'/'proceed'/'no') or input (8s timeout)...", flush=True)
+        print(f"\n⚠️  [HIGH-RISK ACTION CONFIRMATION REQUIRED]: {prompt}", flush=True)
+        print("   Listening for voice response ('yes'/'proceed'/'no') or HUD/terminal input (8s timeout)...", flush=True)
 
         if bus is not None:
             bus.set(phase="speaking", reply=spoken_text)
@@ -384,13 +387,19 @@ def _make_voice_or_terminal_confirm(context_holder: dict) -> Callable[[str], boo
 
         confirmed = None
 
-        # 2. Listen for voice response if microphone & STT are available
+        # 2. Listen for voice response without requiring a wakeword
         if mic is not None and trigger is not None and stt is not None and cfg is not None:
             mic.flush(time.monotonic())
             if hasattr(trigger, "reset_audio"):
                 trigger.reset_audio()
 
-            activated, audio = _capture_utterance(mic, trigger, cfg, bus=bus, timeout=7.0)
+            # Bypass wake-word trigger so user can directly say "Yes" or "Proceed"
+            if hasattr(trigger, "continue_listening"):
+                trigger.continue_listening()
+            elif hasattr(trigger, "press"):
+                trigger.press()
+
+            activated, audio = _capture_utterance(mic, trigger, cfg, bus=bus, timeout=8.0)
             if activated and audio is not None:
                 transcription = _transcribe(mic, stt, cfg, audio, bus=bus)
                 if transcription:
