@@ -214,14 +214,19 @@ def handle_cve_search(args: dict[str, Any]) -> str:
     query = str(args.get("query", "")).strip()
     if not query:
         return "Error: query parameter is required."
-    max_res = min(20, max(1, int(args.get("max_results", 8))))
+    
+    # Strip any leading hyphens to prevent CLI option injection
+    query = re.sub(r"^-+", "", query).strip()
+    if not query:
+        return "Error: query parameter is invalid."
 
+    max_res = min(20, max(1, int(args.get("max_results", 8))))
     results = []
 
     # 1. Try searchsploit CLI if available
     try:
         proc = subprocess.run(
-            ["searchsploit", "--json", query],
+            ["searchsploit", "--json", "--", query],
             capture_output=True,
             text=True,
             timeout=8,
@@ -338,6 +343,11 @@ def handle_header_audit(args: dict[str, Any]) -> str:
     raw_url = str(args.get("url", "")).strip()
     if not raw_url:
         return "Error: url parameter is required."
+
+    # SSRF Protection: Block cloud instance metadata addresses
+    blocked_patterns = ["169.254.169.254", "metadata.google.internal", "100.100.100.200", "fd00:ec2::254"]
+    if any(b in raw_url.lower() for b in blocked_patterns):
+        return "🚫 [PERMISSION DENIED - SSRF]: Probing cloud instance metadata endpoints is strictly blocked."
 
     if not raw_url.startswith("http://") and not raw_url.startswith("https://"):
         raw_url = "http://" + raw_url
@@ -545,6 +555,10 @@ def handle_port_scan(args: dict[str, Any]) -> str:
     if not target:
         return "Error: target parameter is required."
 
+    # Validate target character set and prevent CLI option injection (starts with '-')
+    if not re.match(r"^[a-zA-Z0-9\.\:\-]+$", target) or target.startswith("-"):
+        return f"Error: Invalid target format '{target}'. Hostnames or IP addresses only."
+
     # Validate Scope Boundary
     if not _is_target_in_scope(target):
         return (
@@ -570,21 +584,31 @@ def handle_port_scan(args: dict[str, Any]) -> str:
         "common": [21, 22, 23, 25, 53, 80, 110, 111, 135, 139, 143, 443, 445, 993, 995, 1723, 3306, 3389, 5432, 5900, 8080],
     }
 
-    if port_spec in ports_map:
-        target_ports = ports_map[port_spec]
-    elif "," in port_spec:
-        target_ports = [int(p.strip()) for p in port_spec.split(",") if p.strip().isdigit()]
-    elif "-" in port_spec:
-        start_p, end_p = port_spec.split("-", 1)
-        target_ports = list(range(int(start_p), min(int(end_p) + 1, int(start_p) + 200)))
-    else:
+    try:
+        if port_spec in ports_map:
+            target_ports = ports_map[port_spec]
+        elif "," in port_spec:
+            target_ports = [int(p.strip()) for p in port_spec.split(",") if p.strip().isdigit() and 1 <= int(p.strip()) <= 65535]
+            if not target_ports:
+                target_ports = ports_map["top20"]
+        elif "-" in port_spec:
+            start_p, end_p = port_spec.split("-", 1)
+            if start_p.strip().isdigit() and end_p.strip().isdigit():
+                s_val = int(start_p.strip())
+                e_val = int(end_p.strip())
+                target_ports = list(range(max(1, s_val), min(65535, min(e_val + 1, s_val + 200))))
+            else:
+                target_ports = ports_map["top20"]
+        else:
+            target_ports = ports_map["top20"]
+    except Exception:
         target_ports = ports_map["top20"]
 
-    # Try Nmap if available
+    # Try Nmap if available (with '--' separator to guarantee target is treated positionally)
     try:
         port_list_str = ",".join(str(p) for p in target_ports[:30])
         proc = subprocess.run(
-            ["nmap", "-sV", "-T4", "-p", port_list_str, "--open", target],
+            ["nmap", "-sV", "-T4", "-p", port_list_str, "--open", "--", target],
             capture_output=True,
             text=True,
             timeout=25,

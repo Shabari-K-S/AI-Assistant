@@ -732,6 +732,107 @@ class ToolRegistry:
             )
         )
 
+        # 12. Long-Term Semantic Vector Memory
+        def _handle_remember_fact(args: dict) -> str:
+            fact = str(args.get("fact", "")).strip()
+            if not fact:
+                return "error: fact parameter is required"
+            category = str(args.get("category", "general")).strip().lower()
+            from memory_engine import get_memory_engine
+            engine = get_memory_engine()
+            mem_id = engine.store_fact(fact, category=category)
+            return f"Successfully stored in long-term memory [{mem_id}]: '{fact}' (Category: {category})"
+
+        self._register(
+            Tool(
+                name="remember_fact",
+                description=(
+                    "Store a piece of knowledge, user preference, technical configuration, server detail, "
+                    "or personal habit in permanent long-term vector memory."
+                ),
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "fact": {
+                            "type": "string",
+                            "description": "The exact fact, preference, or technical configuration to remember permanently",
+                        },
+                        "category": {
+                            "type": "string",
+                            "enum": ["preference", "credential", "project", "personal", "habit", "general"],
+                            "description": "Category tag for the memory",
+                        },
+                    },
+                    "required": ["fact"],
+                },
+                handler=_handle_remember_fact,
+            )
+        )
+
+        def _handle_recall_memory(args: dict) -> str:
+            query = str(args.get("query", "")).strip()
+            if not query:
+                return "error: query parameter is required"
+            limit = min(10, max(1, int(args.get("limit", 4))))
+            from memory_engine import get_memory_engine
+            engine = get_memory_engine()
+            results = engine.recall(query, limit=limit)
+            if not results:
+                return f"No relevant long-term memories found for query: '{query}'"
+            lines = [f"🧠 Long-Term Memory Recall for: '{query}' ({len(results)} items found)\n"]
+            for i, r in enumerate(results, 1):
+                lines.append(f"{i}. [{r['category'].upper()}] {r['text']} (Match Score: {r['score']})")
+            return "\n".join(lines)
+
+        self._register(
+            Tool(
+                name="recall_memory",
+                description="Search permanent long-term vector memory using semantic similarity to recall historical facts, preferences, and configurations.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Natural language question or search phrase to recall from memory",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum number of memories to return (default: 4)",
+                        },
+                    },
+                    "required": ["query"],
+                },
+                handler=_handle_recall_memory,
+            )
+        )
+
+        # 13. Ambient RGB Lighting Sync Control
+        def _handle_set_rgb_lighting(args: dict) -> str:
+            phase = str(args.get("phase", "standby")).strip().lower()
+            from rgb_sync import get_rgb_manager
+            manager = get_rgb_manager()
+            manager.set_phase(phase)
+            return f"Ambient RGB lighting transitioned to phase: '{phase}'"
+
+        self._register(
+            Tool(
+                name="set_ambient_rgb_lighting",
+                description="Manually control ambient room/desk smart lighting phase (standby, listening, processing, speaking, security, deep_research).",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "phase": {
+                            "type": "string",
+                            "enum": ["standby", "listening", "processing", "speaking", "security", "deep_research"],
+                            "description": "Target lighting color/animation phase",
+                        }
+                    },
+                    "required": ["phase"],
+                },
+                handler=_handle_set_rgb_lighting,
+            )
+        )
+
     def register(self, tool: Tool) -> None:
         """Register a dynamic tool (e.g. from an MCP server or plugin)."""
         self._tools[tool.name] = tool

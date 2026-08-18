@@ -152,6 +152,15 @@ class WebUIConfig:
 
 
 @dataclass(frozen=True)
+class RGBConfig:
+    """Ambient Smart RGB lighting synchronization."""
+    enabled: bool = True
+    backend: str = "mock"  # mock | wled | openrgb | webhook
+    target: str = "127.0.0.1"  # IP address or webhook URL
+    brightness: int = 200  # 0-255
+
+
+@dataclass(frozen=True)
 class Config:
     audio: AudioConfig
     stt: STTConfig
@@ -159,6 +168,7 @@ class Config:
     tts: TTSConfig
     tools: ToolsConfig
     webui: WebUIConfig = WebUIConfig()
+    rgb: RGBConfig = RGBConfig()
     log_level: str = "INFO"
 
 
@@ -251,6 +261,12 @@ def load_config() -> Config:
         webui=WebUIConfig(
             enabled=_env_bool("EV_WEBUI_ENABLED", True),
             port=_env_int("EV_WEBUI_PORT", 2027, minimum=1024),
+        ),
+        rgb=RGBConfig(
+            enabled=_env_bool("EV_RGB_ENABLED", True),
+            backend=_env("EV_RGB_BACKEND", "mock").lower(),
+            target=_env("EV_RGB_TARGET", "127.0.0.1"),
+            brightness=_env_int("EV_RGB_BRIGHTNESS", 200),
         ),
         log_level=_env("EV_LOG_LEVEL", "INFO").upper(),
     )

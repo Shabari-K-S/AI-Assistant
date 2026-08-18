@@ -56,6 +56,12 @@ class Bus:
         self._boot_lines: deque[str] = deque(maxlen=MAX_LOG_LINES)
         self._prompts: queue.Queue[str] = queue.Queue()
         self._mcp_manager: object | None = None
+        self._phase_callbacks: list[Any] = []
+
+    # -- phase callbacks --------------------------------------------------- #
+    def on_phase_change(self, callback: Any) -> None:
+        with self._lock:
+            self._phase_callbacks.append(callback)
 
     # -- mcp manager attachment -------------------------------------------- #
     def set_mcp_manager(self, manager: object) -> None:
@@ -81,9 +87,20 @@ class Bus:
 
     # -- snapshot ---------------------------------------------------------- #
     def set(self, **fields: object) -> None:
+        callbacks = []
+        phase_val = fields.get("phase")
         with self._lock:
             self._snapshot.update(fields)
             self._rev += 1
+            if phase_val and self._phase_callbacks:
+                callbacks = list(self._phase_callbacks)
+
+        if phase_val and callbacks:
+            for cb in callbacks:
+                try:
+                    cb(str(phase_val))
+                except Exception:
+                    pass
 
     def get(self) -> dict[str, object]:
         with self._lock:

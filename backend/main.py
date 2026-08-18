@@ -600,6 +600,22 @@ def _run_assistant(cfg, once: bool, text: str | None) -> int:
 
     timer_engine.set_on_expiry(_on_timer_expiry)
 
+    # Configure Long-Term Vector Memory & Knowledge Graph
+    from memory_engine import get_memory_engine
+    memory_engine = get_memory_engine()
+
+    # Configure Ambient RGB Lighting Sync Manager
+    from rgb_sync import get_rgb_manager
+    rgb_manager = get_rgb_manager(
+        enabled=cfg.rgb.enabled,
+        backend=cfg.rgb.backend,
+        target=cfg.rgb.target,
+        brightness=cfg.rgb.brightness,
+        bus=bus,
+    )
+    if bus is not None:
+        bus.on_phase_change(rgb_manager.set_phase)
+
     try:
         relisten_count = 0
         last_reply = ""
@@ -692,17 +708,33 @@ def _run_assistant(cfg, once: bool, text: str | None) -> int:
             relisten_count = 0
             if trigger is not None:
                 trigger.set_enabled(False)
+            # Auto-learn explicit facts if user says "remember that ..."
+            rem_match = re.search(r"(?i)\b(?:remember that|don't forget that|keep in mind that)\s+(.*)", user_text)
+            if rem_match:
+                fact_text = rem_match.group(1).strip()
+                if fact_text:
+                    memory_engine.store_fact(fact_text, category="preference")
+
             conversation.add_user(user_text)
             if bus is not None:
                 bus.set(phase="processing")
                 bus.log("INFO", "processing…")
+
+            # Retrieve relevant long-term memory context for this turn
+            mem_context = memory_engine.get_relevant_context_prompt(user_text)
+            active_system_prompt = (cfg.llm.system_prompt + "\n" + mem_context).strip() if mem_context else cfg.llm.system_prompt
+            if mem_context:
+                log.info("Injected long-term memory:\n%s", mem_context.strip())
+                if bus is not None:
+                    bus.log("INFO", "🧠 Recalled relevant long-term memory facts")
+
             reply_parts: list[str] = []
             try:
                 tools = registry.schemas(
                     format="gemini" if cfg.llm.provider == "gemini" else "openai"
                 )
                 for token in engine.stream_response(
-                    conversation, tools, cfg.llm.system_prompt
+                    conversation, tools, active_system_prompt
                 ):
                     if token:
                         reply_parts.append(token)
