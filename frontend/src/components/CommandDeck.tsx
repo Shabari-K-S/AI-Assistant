@@ -40,13 +40,10 @@ export const CommandDeck = memo(function CommandDeck({
 
   const recognitionRef = useRef<any>(null)
   const wakeRecRef = useRef<any>(null)
-  const audioCtxRef = useRef<AudioContext | null>(null)
-  const micStreamRef = useRef<MediaStream | null>(null)
   const speechTextRef = useRef<string>('')
   const isHoldingRef = useRef<boolean>(false)
   const isWokenRef = useRef<boolean>(false)
   const wakeDebounceRef = useRef<any>(null)
-  const isListeningSpeechRef = useRef<boolean>(false)
 
   // Save handsfree preference
   const toggleHandsFree = () => {
@@ -54,195 +51,180 @@ export const CommandDeck = memo(function CommandDeck({
     const next = !handsFree
     setHandsFree(next)
     localStorage.setItem('sara_handsfree_wake', String(next))
-    if (!next) {
-      cleanupSilentVad()
-    }
-  }
-
-  const cleanupSilentVad = () => {
-    if (wakeRecRef.current) {
+    if (!next && wakeRecRef.current) {
       try {
         wakeRecRef.current.abort()
       } catch {}
       wakeRecRef.current = null
+      setIsWoken(false)
+      isWokenRef.current = false
     }
-    if (micStreamRef.current) {
-      micStreamRef.current.getTracks().forEach((t) => t.stop())
-      micStreamRef.current = null
-    }
-    if (audioCtxRef.current) {
-      try {
-        audioCtxRef.current.close()
-      } catch {}
-      audioCtxRef.current = null
-    }
-    setIsWoken(false)
-    isWokenRef.current = false
-    isListeningSpeechRef.current = false
   }
 
-  // Silent Web Audio API VAD (Eliminates Android System Mic Beep)
+  // Smooth Hands-Free "Hey S.A.R.A." Continuous Speech Engine
   useEffect(() => {
     if (!handsFree || !connected || disabled || isHolding) {
-      cleanupSilentVad()
-      return
-    }
-
-    if (phase === 'processing' || phase === 'speaking') {
-      // Pause speech capture during assistant reply to avoid self-echo
       if (wakeRecRef.current) {
         try {
           wakeRecRef.current.abort()
         } catch {}
         wakeRecRef.current = null
       }
-      isListeningSpeechRef.current = false
+      setIsWoken(false)
+      isWokenRef.current = false
       return
     }
 
-    let isCancelled = false
-    let animFrame: number | null = null
+    // Do not listen for wake word if assistant is already processing or speaking
+    if (phase === 'processing' || phase === 'speaking') {
+      if (wakeRecRef.current) {
+        try {
+          wakeRecRef.current.abort()
+        } catch {}
+        wakeRecRef.current = null
+      }
+      setIsWoken(false)
+      isWokenRef.current = false
+      return
+    }
 
-    const startSilentVoicePipeline = async () => {
+    const SpeechRec =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+
+    if (!SpeechRec) return
+
+    let active = true
+    let restartTimer: any = null
+
+    const startRecognitionSession = () => {
+      if (!active || !handsFree || phase !== 'standby' || isHoldingRef.current) return
+
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
-        })
+        const rec = new SpeechRec()
+        rec.continuous = true
+        rec.interimResults = true
+        rec.lang = 'en-US'
+        rec.maxAlternatives = 1
 
-        if (isCancelled) {
-          stream.getTracks().forEach((t) => t.stop())
-          return
-        }
+        rec.onresult = (event: any) => {
+          let fullText = ''
+          for (let i = 0; i < event.results.length; ++i) {
+            const piece = event.results[i][0]?.transcript?.trim() || ''
+            if (!piece) continue
+            if (!fullText) {
+              fullText = piece
+            } else if (piece.toLowerCase().startsWith(fullText.toLowerCase())) {
+              fullText = piece
+            } else if (fullText.toLowerCase().endsWith(piece.toLowerCase())) {
+              // duplicate suffix - ignore
+            } else {
+              fullText = `${fullText} ${piece}`
+            }
+          }
 
-        micStreamRef.current = stream
-        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
-        const ctx = new AudioCtx()
-        audioCtxRef.current = ctx
+          if (!fullText) return
+          const lower = fullText.toLowerCase()
 
-        const source = ctx.createMediaStreamSource(stream)
-        const analyser = ctx.createAnalyser()
-        analyser.fftSize = 512
-        source.connect(analyser)
+          // Check for Wake Phrases: "hey sara", "okay sara", "ok sara", "sara", "hey sarah", "hi sara"
+          const wakeMatch = lower.match(/\b(?:hey|okay|ok|hi|hello)?\s*sara(?:h)?\b/i)
 
-        const dataArray = new Uint8Array(analyser.frequencyBinCount)
+          if (wakeMatch) {
+            if (!isWokenRef.current) {
+              isWokenRef.current = true
+              setIsWoken(true)
+              onVoiceStateChange?.(true)
+              soundFx.wakeDetected()
+              try {
+                navigator.vibrate?.([40, 30, 40])
+              } catch {}
+            }
 
-        const SpeechRec =
-          (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+            const cleanQuery = fullText
+              .replace(/.*?\b(?:hey\s+|okay\s+|ok\s+|hi\s+|hello\s+)?sara(?:h)?\b[\s,:]*/i, '')
+              .trim()
 
-        const triggerSpeechRecognition = () => {
-          if (isListeningSpeechRef.current || !SpeechRec || isHoldingRef.current || phase !== 'standby') return
-          isListeningSpeechRef.current = true
+            if (cleanQuery) {
+              setText(cleanQuery)
+              speechTextRef.current = cleanQuery
 
-          try {
-            const rec = new SpeechRec()
-            rec.continuous = false
-            rec.interimResults = true
-            rec.lang = 'en-US'
-            rec.maxAlternatives = 1
-
-            rec.onresult = (event: any) => {
-              let latest = ''
-              for (let i = 0; i < event.results.length; ++i) {
-                const piece = event.results[i][0]?.transcript?.trim() || ''
-                if (piece) latest = piece
-              }
-
-              if (!latest) return
-              const lower = latest.toLowerCase()
-
-              // Check for Wake Phrases: "hey sara", "okay sara", "ok sara", "sara", "hey sarah", "hi sara"
-              const wakeMatch = lower.match(/\b(?:hey|okay|ok|hi|hello)?\s*sara(?:h)?\b/i)
-
-              if (wakeMatch) {
-                if (!isWokenRef.current) {
-                  isWokenRef.current = true
-                  setIsWoken(true)
-                  onVoiceStateChange?.(true)
-                  soundFx.wakeDetected()
+              if (wakeDebounceRef.current) clearTimeout(wakeDebounceRef.current)
+              wakeDebounceRef.current = setTimeout(async () => {
+                if (speechTextRef.current.trim() && !transmitting) {
+                  const queryToSend = speechTextRef.current.trim()
+                  setTransmitting(true)
+                  setIsWoken(false)
+                  isWokenRef.current = false
+                  onVoiceStateChange?.(false)
+                  setText('')
+                  speechTextRef.current = ''
                   try {
-                    navigator.vibrate?.([40, 30, 40])
+                    rec.abort()
                   } catch {}
+                  await onSend(queryToSend)
+                  setTransmitting(false)
                 }
+              }, 1100)
+            }
+          }
+        }
 
-                const cleanQuery = latest
-                  .replace(/.*?\b(?:hey\s+|okay\s+|ok\s+|hi\s+|hello\s+)?sara(?:h)?\b[\s,:]*/i, '')
-                  .trim()
+        rec.onerror = (event: any) => {
+          if (event.error === 'not-allowed') {
+            setHandsFree(false)
+            localStorage.setItem('sara_handsfree_wake', 'false')
+          }
+        }
 
-                if (cleanQuery) {
-                  setText(cleanQuery)
-                  speechTextRef.current = cleanQuery
+        rec.onend = () => {
+          wakeRecRef.current = null
 
-                  if (wakeDebounceRef.current) clearTimeout(wakeDebounceRef.current)
-                  wakeDebounceRef.current = setTimeout(async () => {
-                    if (speechTextRef.current.trim() && !transmitting) {
-                      const queryToSend = speechTextRef.current.trim()
-                      setTransmitting(true)
-                      setIsWoken(false)
-                      isWokenRef.current = false
-                      onVoiceStateChange?.(false)
-                      setText('')
-                      speechTextRef.current = ''
-                      await onSend(queryToSend)
-                      setTransmitting(false)
-                    }
-                  }, 1200)
-                }
+          // If there is pending query when onend fires -> send it immediately
+          if (isWokenRef.current && speechTextRef.current.trim() && !transmitting) {
+            const queryToSend = speechTextRef.current.trim()
+            setTransmitting(true)
+            setIsWoken(false)
+            isWokenRef.current = false
+            onVoiceStateChange?.(false)
+            setText('')
+            speechTextRef.current = ''
+            onSend(queryToSend).finally(() => setTransmitting(false))
+            return
+          }
+
+          // Smooth 700ms cooldown before restarting to eliminate Android beep storm
+          if (active && handsFree && phase === 'standby' && !isHoldingRef.current) {
+            if (restartTimer) clearTimeout(restartTimer)
+            restartTimer = setTimeout(() => {
+              if (active && handsFree && phase === 'standby' && !isHoldingRef.current) {
+                startRecognitionSession()
               }
-            }
-
-            rec.onerror = () => {
-              isListeningSpeechRef.current = false
-            }
-
-            rec.onend = () => {
-              isListeningSpeechRef.current = false
-              wakeRecRef.current = null
-            }
-
-            wakeRecRef.current = rec
-            rec.start()
-          } catch {
-            isListeningSpeechRef.current = false
+            }, 700)
           }
         }
 
-        // Silent RMS Voice Activity Monitor
-        const checkVolume = () => {
-          if (isCancelled) return
-          analyser.getByteTimeDomainData(dataArray)
-          let sum = 0
-          for (let i = 0; i < dataArray.length; i++) {
-            const val = (dataArray[i] - 128) / 128
-            sum += val * val
-          }
-          const rms = Math.sqrt(sum / dataArray.length)
-
-          // If voice energy detected (speaking above ambient floor) -> launch single recognition turn
-          if (rms > 0.045 && !isListeningSpeechRef.current && phase === 'standby' && !isHoldingRef.current) {
-            triggerSpeechRecognition()
-          }
-
-          animFrame = requestAnimationFrame(checkVolume)
+        wakeRecRef.current = rec
+        rec.start()
+      } catch {
+        if (active && handsFree && phase === 'standby') {
+          restartTimer = setTimeout(startRecognitionSession, 1000)
         }
-
-        checkVolume()
-      } catch (err) {
-        console.warn('Silent VAD microphone access denied:', err)
-        setHandsFree(false)
-        localStorage.setItem('sara_handsfree_wake', 'false')
       }
     }
 
-    startSilentVoicePipeline()
+    startRecognitionSession()
 
     return () => {
-      isCancelled = true
-      if (animFrame) cancelAnimationFrame(animFrame)
-      cleanupSilentVad()
+      active = false
+      if (restartTimer) clearTimeout(restartTimer)
+      if (wakeDebounceRef.current) clearTimeout(wakeDebounceRef.current)
+      if (wakeRecRef.current) {
+        try {
+          wakeRecRef.current.abort()
+        } catch {}
+        wakeRecRef.current = null
+      }
+      setIsWoken(false)
+      isWokenRef.current = false
     }
   }, [handsFree, connected, disabled, isHolding, phase, transmitting, onSend, onVoiceStateChange])
 
