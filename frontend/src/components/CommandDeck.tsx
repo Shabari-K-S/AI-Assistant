@@ -223,9 +223,14 @@ export const CommandDeck = memo(function CommandDeck({
 
         const dataArray = new Uint8Array(analyser.frequencyBinCount)
 
+        let baselineNoise = 0.02
+        let recordStartTime = 0
+        let maxUtteranceTimer: any = null
+
         const startSpeechChunk = () => {
           if (isHandsFreeRecordingRef.current || phase !== 'standby' || isHoldingRef.current) return
           isHandsFreeRecordingRef.current = true
+          recordStartTime = Date.now()
           setIsWoken(true)
           isWokenRef.current = true
           onVoiceStateChange?.(true)
@@ -247,11 +252,20 @@ export const CommandDeck = memo(function CommandDeck({
           }
           recorder.start(100)
           mediaRecorderRef.current = recorder
+
+          // Hard cap: max 4.5 seconds utterance so it NEVER gets stuck
+          if (maxUtteranceTimer) clearTimeout(maxUtteranceTimer)
+          maxUtteranceTimer = setTimeout(() => {
+            finishSpeechChunk()
+          }, 4500)
         }
 
         const finishSpeechChunk = async () => {
           if (!isHandsFreeRecordingRef.current) return
           isHandsFreeRecordingRef.current = false
+          if (maxUtteranceTimer) clearTimeout(maxUtteranceTimer)
+          if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
+          silenceTimerRef.current = null
 
           const recorder = mediaRecorderRef.current
           if (recorder && recorder.state === 'recording') {
@@ -265,7 +279,7 @@ export const CommandDeck = memo(function CommandDeck({
           }
         }
 
-        // Silent RMS Monitor
+        // Silent RMS Monitor with dynamic baseline tracking
         const checkRMS = () => {
           if (isCancelled) return
           analyser.getByteTimeDomainData(dataArray)
@@ -276,14 +290,26 @@ export const CommandDeck = memo(function CommandDeck({
           }
           const rms = Math.sqrt(sum / dataArray.length)
 
-          if (rms > 0.045 && phase === 'standby' && !isHoldingRef.current) {
-            if (!isHandsFreeRecordingRef.current) {
+          if (!isHandsFreeRecordingRef.current) {
+            baselineNoise = baselineNoise * 0.95 + rms * 0.05
+            const triggerThreshold = Math.max(0.045, baselineNoise * 1.5 + 0.02)
+            if (rms > triggerThreshold && phase === 'standby' && !isHoldingRef.current) {
               startSpeechChunk()
             }
-            if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
-            silenceTimerRef.current = setTimeout(() => {
-              finishSpeechChunk()
-            }, 1400)
+          } else {
+            const silenceThreshold = Math.max(0.035, baselineNoise * 1.25 + 0.01)
+            if (rms < silenceThreshold) {
+              if (!silenceTimerRef.current && Date.now() - recordStartTime > 800) {
+                silenceTimerRef.current = setTimeout(() => {
+                  finishSpeechChunk()
+                }, 1000)
+              }
+            } else {
+              if (silenceTimerRef.current) {
+                clearTimeout(silenceTimerRef.current)
+                silenceTimerRef.current = null
+              }
+            }
           }
 
           animFrame = requestAnimationFrame(checkRMS)

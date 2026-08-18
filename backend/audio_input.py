@@ -345,7 +345,7 @@ class WakeWordTrigger(Trigger):
         )
         self._end_silence_frames = max(1, frames)
         self._grace_seconds = config.wake_grace_seconds
-        self._max_seconds = config.max_utterance_seconds
+        self._max_seconds = min(8.0, config.max_utterance_seconds)
 
         self._activated = threading.Event()
         self._deactivated = threading.Event()
@@ -442,7 +442,7 @@ class WakeWordTrigger(Trigger):
             return  # grace period: give the user time to start the request
         rms = float(np.sqrt(np.mean(audio.astype(np.float64) ** 2)))
         # Robust adaptive silence detection: triggers cleanly even with ambient mic hum
-        threshold = max(self._silence_rms, self._noise_floor * 1.25 + 0.012, 0.03)
+        threshold = max(self._silence_rms, self._noise_floor * 1.35 + 0.015, 0.04)
         if rms < threshold:
             self._quiet_frames += 1
             if self._quiet_frames >= self._end_silence_frames:
