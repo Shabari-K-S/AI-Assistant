@@ -243,14 +243,10 @@ class _Handler(BaseHTTPRequestHandler):
 
     # -- CORS -------------------------------------------------------------- #
     def _cors(self) -> None:
-        origin = self.headers.get("Origin")
-        if origin and origin in self.ALLOWED_ORIGINS:
-            self.send_header("Access-Control-Allow-Origin", origin)
-        elif not origin:
-            # Same-origin or non-browser local requests
-            self.send_header("Access-Control-Allow-Origin", "http://localhost:2026")
+        origin = self.headers.get("Origin") or "*"
+        self.send_header("Access-Control-Allow-Origin", origin)
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, x-goog-api-key")
         self.send_header("Cache-Control", "no-store")
 
     def do_OPTIONS(self) -> None:  # noqa: N802 - http.server API
@@ -336,6 +332,42 @@ class _Handler(BaseHTTPRequestHandler):
             res = b_engine.generate_briefing(briefing_type=b_type)
             self._json(res, 200)
             return
+
+        # Static Web App serving from frontend/dist (Zero npm run dev required)
+        from pathlib import Path
+        import mimetypes
+        dist_dir = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+        if dist_dir.exists():
+            rel_path = path.lstrip("/")
+            file_path = dist_dir / rel_path if rel_path else dist_dir / "index.html"
+            if not file_path.exists() or file_path.is_dir():
+                file_path = dist_dir / "index.html"
+
+            if file_path.exists() and file_path.is_file():
+                mime_type, _ = mimetypes.guess_type(str(file_path))
+                if file_path.suffix == ".woff2":
+                    mime_type = "font/woff2"
+                elif file_path.suffix == ".woff":
+                    mime_type = "font/woff"
+                elif file_path.suffix == ".js":
+                    mime_type = "application/javascript"
+                elif file_path.suffix == ".css":
+                    mime_type = "text/css"
+                elif file_path.suffix == ".html":
+                    mime_type = "text/html"
+
+                try:
+                    content = file_path.read_bytes()
+                    self.send_response(200)
+                    self.send_header("Content-Type", mime_type or "application/octet-stream")
+                    self.send_header("Content-Length", str(len(content)))
+                    self._cors()
+                    self.end_headers()
+                    self.wfile.write(content)
+                    return
+                except Exception:
+                    pass
+
         self.send_response(404)
         self._cors()
         self.end_headers()
@@ -625,7 +657,8 @@ class BridgeServer:
         if self._server is not None:
             return True
         try:
-            server = ThreadingHTTPServer(("127.0.0.1", self.port), _Handler)
+            ThreadingHTTPServer.allow_reuse_address = True
+            server = ThreadingHTTPServer(("0.0.0.0", self.port), _Handler)
         except OSError as exc:
             log.warning("web bridge unavailable on :%d — %s", self.port, exc)
             return False
@@ -635,7 +668,7 @@ class BridgeServer:
             target=server.serve_forever, daemon=True, name="ev-bridge"
         )
         self._thread.start()
-        log.info("web bridge on http://localhost:%d", self.port)
+        log.info("web bridge on http://0.0.0.0:%d (local: http://localhost:%d)", self.port, self.port)
         return True
 
     def stop(self) -> None:
