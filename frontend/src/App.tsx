@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { AmbientCanvas } from './components/AmbientCanvas'
 import { StatusBar } from './components/StatusBar'
 import { SensorPanel } from './components/SensorPanel'
@@ -52,7 +52,23 @@ export default function App() {
   const [showLeftSidebar, setShowLeftSidebar] = useState(true)
   const [showRightSidebar, setShowRightSidebar] = useState(true)
   const [scanlinesActive, setScanlinesActive] = useState(true)
-  const [webListening, setWebListening] = useState(false)
+  const [webListening, setWebListeningState] = useState(false)
+  const webListeningTimerRef = useRef<any>(null)
+
+  const setWebListening = useCallback((active: boolean) => {
+    if (webListeningTimerRef.current) {
+      clearTimeout(webListeningTimerRef.current)
+      webListeningTimerRef.current = null
+    }
+    setWebListeningState(active)
+    if (active) {
+      // Hard fallback: never let UI stay stuck in listening for more than 4.0 seconds
+      webListeningTimerRef.current = setTimeout(() => {
+        setWebListeningState(false)
+      }, 4000)
+    }
+  }, [])
+
   const [centerView, setCenterView] = useState<CenterView>('core')
   const [mobileTab, setMobileTab] = useState<MobileTab>('core')
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768)

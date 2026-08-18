@@ -283,8 +283,13 @@ class PushToTalk(Trigger):
             self._activated.clear()
         return res
 
-    def wait_for_deactivation(self) -> None:
-        self._deactivated.wait()
+    def wait_for_deactivation(self, timeout: float | None = 6.0) -> bool:
+        res = self._deactivated.wait(timeout=timeout)
+        if not res:
+            self._active = False
+            self._activated.clear()
+            self._deactivated.set()
+        return res
 
     def close(self) -> None:
         self._hook.stop()
@@ -463,8 +468,11 @@ class WakeWordTrigger(Trigger):
             self._activated.clear()
         return res
 
-    def wait_for_deactivation(self) -> None:
-        self._deactivated.wait()
+    def wait_for_deactivation(self, timeout: float | None = 6.0) -> bool:
+        res = self._deactivated.wait(timeout=timeout)
+        if not res:
+            self._stop_listening()
+        return res
 
     def set_enabled(self, enabled: bool) -> None:
         """Ignore wake words while disabled (EV is processing a turn)."""

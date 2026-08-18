@@ -55,9 +55,7 @@ export function useAssistant() {
 
         // Trigger sound cues on phase changes
         if (prevPhaseRef.current !== newSnap.phase) {
-          if (newSnap.phase === 'listening') {
-            soundFx.wakeDetected()
-          } else if (newSnap.phase === 'speaking') {
+          if (newSnap.phase === 'speaking') {
             soundFx.responseReady()
           }
           prevPhaseRef.current = newSnap.phase

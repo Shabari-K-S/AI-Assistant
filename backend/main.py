@@ -103,7 +103,13 @@ def _capture_utterance(mic, trigger, cfg, bus=None, timeout: float | None = None
     start_monotonic = act_ts - cfg.audio.pre_roll_seconds
     print(">>> listening...", flush=True)
 
-    trigger.wait_for_deactivation()
+    deactivated = trigger.wait_for_deactivation(timeout=min(6.0, cfg.audio.max_utterance_seconds))
+    if not deactivated:
+        log.warning("Utterance capture timed out waiting for deactivation — resetting to standby")
+        if bus is not None:
+            bus.set(phase="standby")
+            bus.log("WARN", "Voice capture timed out")
+
     audio = mic.read_from(start_monotonic)
 
     if audio.size < cfg.audio.sample_rate * 0.2:
