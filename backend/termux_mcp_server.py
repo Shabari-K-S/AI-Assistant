@@ -455,7 +455,7 @@ def handle_camera_vision(args: dict[str, Any]) -> str:
         )
 
     cmd = ["termux-camera-photo", "-c", str(camera_id), str(photo_path)]
-    code, _stdout, stderr = _run_termux_cmd(cmd, timeout=15.0)
+    code, _stdout, stderr = _run_termux_cmd(cmd, timeout=25.0)
     if code != 0 or not photo_path.exists():
         return (
             f"Error capturing camera photo: {stderr or 'File not created'}\n"

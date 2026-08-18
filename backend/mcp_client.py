@@ -125,8 +125,12 @@ class MCPProcessClient:
             self.close()
             return False
 
-    def call_tool(self, tool_name: str, arguments: dict[str, Any], timeout: float = 15.0) -> str:
+    def call_tool(self, tool_name: str, arguments: dict[str, Any], timeout: float = 45.0) -> str:
         """Execute a tool on this MCP server and return text content."""
+        # Long-running tools (Camera + Vision, Port Scan, Web Scraping) get 60s
+        if any(w in tool_name.lower() for w in ("camera", "vision", "scan", "scrape", "search", "terminal")):
+            timeout = max(timeout, 60.0)
+
         res = self._send_request(
             "tools/call",
             {"name": tool_name, "arguments": arguments},
