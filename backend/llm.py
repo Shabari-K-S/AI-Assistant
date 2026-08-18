@@ -277,17 +277,30 @@ class GeminiGemmaLLM(LLMEngine):
         )
 
     def _stream(self, contents: list[dict], tools: list[dict], system_prompt: str):
-        """Lazy chunk iterator; retries on 429 rate limit and falls back if model is unavailable."""
+        """Lazy chunk iterator; retries on 429 rate limit and cascades across model tiers automatically."""
         from google.genai import errors
 
+        # Multi-tier fallback cascade priority queue
         models_to_try = [self._config.model]
-        for fallback in ("gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.5-pro", "gemini-1.5-pro"):
-            if fallback not in models_to_try:
-                models_to_try.append(fallback)
+        cascade_models = [
+            "gemma-4-31b-it",
+            "gemma-4-26b-it",
+            "gemma-3-27b-it",
+            "gemma-3-12b-it",
+            "gemma-3-4b-it",
+            "gemini-2.5-flash",
+            "gemini-1.5-flash",
+            "gemini-2.5-pro",
+            "gemini-1.5-pro",
+        ]
+        for m in cascade_models:
+            if m not in models_to_try:
+                models_to_try.append(m)
 
         last_exc = None
-        for i, model_name in enumerate(models_to_try):
-            for attempt in (1, 2):
+        # Attempt 2 full passes across the entire cascade (allows per-minute TPM buckets to reset)
+        for cycle in range(2):
+            for i, model_name in enumerate(models_to_try):
                 try:
                     stream = self._client.models.generate_content_stream(
                         model=model_name,
@@ -299,23 +312,31 @@ class GeminiGemmaLLM(LLMEngine):
                     return
                 except errors.ClientError as exc:
                     last_exc = exc
-                    if exc.code == 429 and attempt == 1:
-                        log.warning("llm: HTTP 429 (rate limit) on %s — retrying in 5s", model_name)
-                        time.sleep(5)
-                        continue
-                    if exc.code in (404, 400) and i < len(models_to_try) - 1:
+                    if exc.code == 429:
                         log.warning(
-                            "llm model %s not available (%s); switching to fallback %s",
-                            model_name, exc.message if hasattr(exc, "message") else exc, models_to_try[i + 1],
+                            "llm: HTTP 429 (rate limit / TPM quota) on model '%s' — cascading to next model in tier",
+                            model_name,
                         )
-                        break
-                    raise
+                        time.sleep(1.0)
+                        continue  # immediately cascade to next model!
+                    if exc.code in (404, 400):
+                        log.warning(
+                            "llm: model '%s' unavailable (HTTP %s) — cascading",
+                            model_name,
+                            exc.code,
+                        )
+                        continue
+                    log.warning("llm client error with '%s': %s — cascading", model_name, exc)
+                    continue
                 except Exception as exc:
                     last_exc = exc
-                    if i < len(models_to_try) - 1:
-                        log.warning("llm error with model %s (%s); trying fallback", model_name, exc)
-                        break
-                    raise
+                    log.warning("llm stream failed on model '%s' (%s) — cascading to fallback", model_name, exc)
+                    continue
+
+            # If all models exhausted in cycle 0, pause briefly before cycle 1
+            if cycle == 0:
+                log.warning("llm: All models in cascade rate-limited; pausing 4s before second pass...")
+                time.sleep(4.0)
 
         if last_exc:
             raise last_exc

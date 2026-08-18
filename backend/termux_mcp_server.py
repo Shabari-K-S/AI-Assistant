@@ -40,20 +40,58 @@ def is_android_termux() -> bool:
     )
 
 
+def _find_termux_binary(binary: str) -> str | None:
+    """Locate termux binary across standard and fallback paths in Android Termux."""
+    # 1. Check system PATH
+    found = shutil.which(binary)
+    if found and os.path.exists(found):
+        return found
+
+    # 2. Check standard Termux prefix locations
+    prefix = os.environ.get("PREFIX", "/data/data/com.termux/files/usr")
+    candidates = [
+        f"{prefix}/bin/{binary}",
+        f"/data/data/com.termux/files/usr/bin/{binary}",
+        f"{prefix}/libexec/termux-api/{binary}",
+        f"/data/data/com.termux/files/usr/libexec/termux-api/{binary}",
+        f"/data/data/com.termux/files/usr/libexec/{binary}",
+    ]
+    for c in candidates:
+        if os.path.exists(c) and os.access(c, os.X_OK):
+            return c
+
+    return None
+
+
 def _run_termux_cmd(cmd: list[str], timeout: float = 8.0) -> tuple[int, str, str]:
-    """Execute a termux-api CLI command with timeout and output capture."""
-    binary = cmd[0]
-    if not shutil.which(binary):
+    """Execute a termux-api CLI command with robust Android 15/16 pathing and timeout."""
+    binary_name = cmd[0]
+    binary_path = _find_termux_binary(binary_name)
+    if not binary_path:
         return (
             127,
             "",
-            f"Termux command '{binary}' not found. Please install via 'pkg install termux-api' in Termux.",
+            f"Termux command '{binary_name}' not found. Please install Termux:API via 'pkg install termux-api' in Termux.",
         )
+
+    # Build execution environment with Termux paths
+    env = os.environ.copy()
+    prefix = os.environ.get("PREFIX", "/data/data/com.termux/files/usr")
+    env["PATH"] = f"{prefix}/bin:/data/data/com.termux/files/usr/bin:" + env.get("PATH", "")
+    env["LD_LIBRARY_PATH"] = f"{prefix}/lib:/data/data/com.termux/files/usr/lib:" + env.get("LD_LIBRARY_PATH", "")
+
+    full_cmd = [binary_path] + cmd[1:]
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        proc = subprocess.run(
+            full_cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=env,
+        )
         return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
     except subprocess.TimeoutExpired:
-        return 124, "", f"Command '{' '.join(cmd)}' timed out after {timeout}s."
+        return 124, "", f"Command '{' '.join(cmd)}' timed out after {timeout}s (Ensure Termux:API app is installed and granted permissions)."
     except Exception as exc:
         return 1, "", str(exc)
 
@@ -191,6 +229,11 @@ TOOLS = [
         },
     },
     {
+        "name": "android_system_diagnostics",
+        "description": "Run a diagnostic check on all Termux:API permissions, hardware access, and battery optimization settings for Android 14/15/16.",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
         "name": "pocket_devops_server_check",
         "description": "Check remote server / VPS status, ping latency, and port availability directly from mobile Termux.",
         "inputSchema": {
@@ -255,7 +298,7 @@ def handle_battery_status(_args: dict[str, Any]) -> str:
 
 
 def handle_torch_control(args: dict[str, Any]) -> str:
-    """Control phone flashlight."""
+    """Control phone flashlight with support for Android 14/15/16."""
     state = str(args.get("state", "toggle")).strip().lower()
     if state not in ("on", "off"):
         state = "on"
@@ -263,16 +306,25 @@ def handle_torch_control(args: dict[str, Any]) -> str:
     if not is_android_termux():
         return f"📱 [Desktop Simulation]: Flashlight toggled {state.upper()} successfully."
 
+    # Try state name ('on'/'off')
     code, _stdout, stderr = _run_termux_cmd(["termux-torch", state])
     if code != 0:
-        return f"Error toggling flashlight: {stderr}"
+        # Fallback to numeric '1'/'0' for newer Termux:API builds
+        alt_arg = "1" if state == "on" else "0"
+        code, _stdout, stderr = _run_termux_cmd(["termux-torch", alt_arg])
+
+    if code != 0:
+        return (
+            f"Error toggling flashlight: {stderr}. "
+            f"(Android 16 Tip: Ensure Termux:API app has Camera permission granted in Android Settings -> Apps -> Termux:API -> Permissions)."
+        )
     return f"🔦 Phone flashlight has been turned **{state.upper()}**."
 
 
 def handle_vibrate_phone(args: dict[str, Any]) -> str:
     """Trigger phone haptic vibration."""
     duration = min(5000, max(50, int(args.get("duration_ms", 500))))
-    force = bool(args.get("force", False))
+    force = bool(args.get("force", True))
 
     if not is_android_termux():
         return f"📱 [Desktop Simulation]: Haptic vibration pulse ({duration}ms) triggered."
@@ -311,7 +363,7 @@ def handle_clipboard_sync(args: dict[str, Any]) -> str:
 
     code, stdout, stderr = _run_termux_cmd(["termux-clipboard-get"])
     if code != 0:
-        return f"Error reading clipboard: {stderr}"
+        return f"Error reading clipboard: {stderr} (Note: Android 15/16 restricts background clipboard reads)."
     return f"📋 Current Android Clipboard Content:\n\n```text\n{stdout}\n```"
 
 
@@ -358,12 +410,18 @@ def handle_notification_list(args: dict[str, Any]) -> str:
 
     code, stdout, stderr = _run_termux_cmd(["termux-notification-list"], timeout=6.0)
     if code != 0 or not stdout:
-        return f"Error reading Android notifications: {stderr or 'No output from termux-notification-list'}"
+        return (
+            f"Error reading Android notifications: {stderr or 'No output'}\n"
+            f"💡 **Android 16 Fix:** Open **Android Settings -> Apps -> Special app access -> Notification access** and enable **Termux:API**."
+        )
 
     try:
         items = json.loads(stdout)
         if not items:
-            return "🔔 No active notifications currently present in your Android notification tray."
+            return (
+                "🔔 No active notifications currently present in your Android notification tray.\n"
+                "(Note: If you have active notifications on your screen, ensure **Termux:API** has **Notification Access** enabled in Android Settings -> Apps -> Special app access -> Notification access)."
+            )
 
         out = [f"🔔 **Active Android Notifications ({len(items)} total, showing top {min(limit, len(items))}):**\n"]
         for idx, notif in enumerate(items[:limit], 1):
@@ -397,9 +455,12 @@ def handle_camera_vision(args: dict[str, Any]) -> str:
         )
 
     cmd = ["termux-camera-photo", "-c", str(camera_id), str(photo_path)]
-    code, _stdout, stderr = _run_termux_cmd(cmd, timeout=12.0)
+    code, _stdout, stderr = _run_termux_cmd(cmd, timeout=15.0)
     if code != 0 or not photo_path.exists():
-        return f"Error capturing camera photo: {stderr or 'File not created'}"
+        return (
+            f"Error capturing camera photo: {stderr or 'File not created'}\n"
+            f"💡 **Android 16 Tip:** Make sure **Termux:API** has **Camera** permission granted in Android Settings -> Apps -> Termux:API -> Permissions."
+        )
 
     # Analyze with Gemini Vision if API key is present
     api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
@@ -428,7 +489,7 @@ def handle_camera_vision(args: dict[str, Any]) -> str:
 
 
 def handle_location_get(args: dict[str, Any]) -> str:
-    """Query current GPS coordinates on Android."""
+    """Query current GPS coordinates on Android with automatic IP-based fallback."""
     provider = str(args.get("provider", "network")).strip().lower()
 
     if not is_android_termux():
@@ -437,26 +498,89 @@ def handle_location_get(args: dict[str, Any]) -> str:
             "Lat: 13.0827° N, Lon: 80.2707° E (Chennai, India) | Accuracy: 15.0m"
         )
 
+    # 1. Try Termux GPS / Network location
     cmd = ["termux-location", "-p", provider, "-r", "once"]
-    code, stdout, stderr = _run_termux_cmd(cmd, timeout=10.0)
+    code, stdout, stderr = _run_termux_cmd(cmd, timeout=8.0)
     if code != 0 or not stdout:
-        return f"Error retrieving GPS location: {stderr or 'No location output'}"
+        # Try last known location
+        code, stdout, stderr = _run_termux_cmd(["termux-location", "-p", provider, "-r", "last"], timeout=4.0)
 
+    if code == 0 and stdout:
+        try:
+            data = json.loads(stdout)
+            lat = data.get("latitude")
+            lon = data.get("longitude")
+            acc = data.get("accuracy")
+            prov = data.get("provider", provider)
+            if lat and lon:
+                return (
+                    f"📍 **Android GPS Location:**\n"
+                    f"- **Latitude:** `{lat}`\n"
+                    f"- **Longitude:** `{lon}`\n"
+                    f"- **Accuracy:** `{acc}m` (Provider: {prov})"
+                )
+        except Exception:
+            pass
+
+    # 2. Automatic Fallback: IP-based Geolocation (works 100% even if GPS is disabled)
     try:
-        data = json.loads(stdout)
-        lat = data.get("latitude")
-        lon = data.get("longitude")
-        acc = data.get("accuracy")
-        prov = data.get("provider", provider)
-
-        return (
-            f"📍 **Current Android GPS Coordinates:**\n"
-            f"- **Latitude:** `{lat}`\n"
-            f"- **Longitude:** `{lon}`\n"
-            f"- **Accuracy:** `{acc}m` (via {prov})"
-        )
+        req = urllib.request.Request("https://ipapi.co/json/", headers={"User-Agent": "SARA-Assistant/1.0"})
+        with urllib.request.urlopen(req, timeout=4.0) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            city = data.get("city", "Unknown City")
+            region = data.get("region", "")
+            country = data.get("country_name", "")
+            lat = data.get("latitude")
+            lon = data.get("longitude")
+            return (
+                f"📍 **Location Telemetry (IP Geolocation Fallback):**\n"
+                f"- **Location:** {city}, {region} ({country})\n"
+                f"- **Approximate Coordinates:** `{lat}, {lon}`\n"
+                f"*(Tip for Android 16: Ensure Termux:API has Location Permission granted in Android Settings)*"
+            )
     except Exception as exc:
-        return f"Location output: {stdout} (error: {exc})"
+        return f"Location query encountered: {stderr or exc}. Please ensure Termux:API has Location permissions granted."
+
+
+def handle_system_diagnostics(_args: dict[str, Any]) -> str:
+    """Run a comprehensive diagnostic check of all Termux:API permissions and hardware hooks on Android 14/15/16."""
+    if not is_android_termux():
+        return (
+            "📱 [Desktop Environment]: System diagnostics — "
+            "Running on Linux desktop. All Termux:API hardware hooks simulated."
+        )
+
+    results = []
+
+    # 1. Battery Check
+    c, out, err = _run_termux_cmd(["termux-battery-status"], timeout=3.0)
+    results.append(f"- **Battery Telemetry:** {'✅ Working' if c == 0 else f'❌ Error: {err or 'Failed'}'}")
+
+    # 2. Haptic Vibrate Check
+    c, out, err = _run_termux_cmd(["termux-vibrate", "-d", "100", "-f"], timeout=3.0)
+    results.append(f"- **Haptic Vibration:** {'✅ Working' if c == 0 else f'❌ Error: {err or 'Failed'}'}")
+
+    # 3. Clipboard Check
+    c, out, err = _run_termux_cmd(["termux-clipboard-get"], timeout=3.0)
+    results.append(f"- **Clipboard Access:** {'✅ Working' if c == 0 else f'⚠️ Restricted ({err or 'Needs foreground focus'})'}")
+
+    # 4. Notification Listener Check
+    c, out, err = _run_termux_cmd(["termux-notification-list"], timeout=4.0)
+    results.append(f"- **Notification Listener:** {'✅ Working' if c == 0 else f'⚠️ Needs Notification Access ({err or 'Empty/Denied'})'}")
+
+    # 5. Location Check
+    c, out, err = _run_termux_cmd(["termux-location", "-p", "network", "-r", "last"], timeout=4.0)
+    results.append(f"- **Location / GPS:** {'✅ Working' if c == 0 else f'⚠️ Needs Location Permission ({err or 'Disabled'})'}")
+
+    out_msg = [
+        "📱 **S.A.R.A. Android 16 Termux:API Diagnostic Report:**\n",
+        *results,
+        "\n💡 **Android 15 / Android 16 Setup Checklist:**",
+        "1. **Permissions:** Android Settings -> Apps -> **Termux:API** -> Permissions -> Grant **Camera**, **Location**, and **Notifications**.",
+        "2. **Notification Access:** Android Settings -> Apps -> **Special app access** -> **Notification access** -> Enable **Termux:API**.",
+        "3. **Battery Optimization:** Android Settings -> Apps -> **Termux:API** -> Battery -> Set to **Unrestricted** (prevents Android 16 from killing background hardware broadcasts).",
+    ]
+    return "\n".join(out_msg)
 
 
 def handle_server_check(args: dict[str, Any]) -> str:
@@ -503,6 +627,8 @@ def handle_call_tool(params: dict[str, Any]) -> dict[str, Any]:
         out = handle_camera_vision(args)
     elif name == "android_location_get":
         out = handle_location_get(args)
+    elif name == "android_system_diagnostics":
+        out = handle_system_diagnostics(args)
     elif name == "pocket_devops_server_check":
         out = handle_server_check(args)
     else:

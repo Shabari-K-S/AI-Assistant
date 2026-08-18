@@ -19,6 +19,7 @@ from termux_mcp_server import (
     handle_notification_list,
     handle_camera_vision,
     handle_location_get,
+    handle_system_diagnostics,
     handle_server_check,
     TOOLS,
 )
@@ -104,12 +105,19 @@ def test_termux_mcp():
     assert "Pocket DevOps" in devops_res
     print("   ✅ Pocket DevOps server check passed.")
 
-    print(f"\n11. Total Registered Android Tools in MCP Schema: {len(TOOLS)}")
-    assert len(TOOLS) == 9
-    print("   ✅ All 9 tools defined in JSON Schema.")
+    # 11. Test System Diagnostics Check
+    print("\n11. Testing Android 16 System Diagnostics Handler...")
+    diag_res = handle_system_diagnostics({})
+    print(f"   Diagnostics output:\n{diag_res}")
+    assert "diagnostics" in diag_res.lower() or "android" in diag_res.lower()
+    print("   ✅ System diagnostics handler passed.")
 
-    # 12. Test Gemini Pydantic Schema Validation
-    print("\n12. Validating Tool Schemas against Gemini types.Tool...")
+    print(f"\n12. Total Registered Android Tools in MCP Schema: {len(TOOLS)}")
+    assert len(TOOLS) == 10
+    print("   ✅ All 10 tools defined in JSON Schema.")
+
+    # 13. Test Gemini Pydantic Schema Validation
+    print("\n13. Validating Tool Schemas against Gemini types.Tool...")
     try:
         from google.genai import types
         gemini_tools = [
@@ -117,7 +125,7 @@ def test_termux_mcp():
             for t in TOOLS
         ]
         tool_obj = types.Tool(function_declarations=gemini_tools)
-        print("   ✅ Gemini types.Tool successfully validated all 9 tool declarations with ZERO schema errors!")
+        print("   ✅ Gemini types.Tool successfully validated all 10 tool declarations with ZERO schema errors!")
     except Exception as exc:
         print(f"   ❌ Schema validation error: {exc}")
         raise
