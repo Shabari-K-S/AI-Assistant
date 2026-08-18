@@ -685,8 +685,8 @@ def _run_assistant(cfg, once: bool, text: str | None) -> int:
                     bus.set(transcript=user_text)
                     bus.event("transcript", text=user_text, confidence=1.0)
                 elif mic is None:
-                    # In web mode without local microphone binding, wait for web prompts
-                    time.sleep(0.05)
+                    # In web mode without local microphone binding, wait for web prompts (low-power sleep)
+                    time.sleep(0.2)
                     continue
                 else:
                     activated, audio = _capture_utterance(mic, trigger, cfg, bus=bus, timeout=0.2)

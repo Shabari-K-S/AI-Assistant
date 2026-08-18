@@ -15,7 +15,7 @@ const PHASE_COLORS: Record<Phase, { primary: string; secondary: string; speed: n
   speaking: { primary: 'rgba(255, 194, 75, 0.95)', secondary: 'rgba(255, 194, 75, 0.35)', speed: 0.09, amplitude: 26 },
 }
 
-/** Animated holographic audio wave oscilloscope + spectral bars */
+/** Animated holographic audio wave oscilloscope + spectral bars (Mobile CPU & Battery Optimized) */
 export const AudioWaveform = memo(function AudioWaveform({
   phase,
   online,
@@ -27,23 +27,38 @@ export const AudioWaveform = memo(function AudioWaveform({
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
-    const ctx = canvas.getContext('2d')
+    const ctx = canvas.getContext('2d', { alpha: true })
     if (!ctx) return
 
-    let animId: number
+    const isMobile = window.innerWidth < 768 || (navigator.maxTouchPoints && navigator.maxTouchPoints > 0)
+    const targetFps = isMobile ? (phase === 'standby' ? 18 : 30) : (phase === 'standby' ? 30 : 60)
+    const frameInterval = 1000 / targetFps
+
+    let animId = 0
     let offset = 0
+    let lastDraw = 0
+    let running = !document.hidden
 
     const resize = () => {
       const rect = canvas.getBoundingClientRect()
-      const dpr = window.devicePixelRatio || 1
-      canvas.width = rect.width * dpr
-      canvas.height = rect.height * dpr
+      const dpr = Math.min(window.devicePixelRatio || 1, isMobile ? 1.0 : 1.5)
+      canvas.width = Math.floor(rect.width * dpr)
+      canvas.height = Math.floor(rect.height * dpr)
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     }
     resize()
-    window.addEventListener('resize', resize)
+    window.addEventListener('resize', resize, { passive: true })
 
-    const render = () => {
+    const render = (t: number) => {
+      if (!running) return
+
+      const elapsed = t - lastDraw
+      if (elapsed < frameInterval) {
+        animId = requestAnimationFrame(render)
+        return
+      }
+      lastDraw = t - (elapsed % frameInterval)
+
       const rect = canvas.getBoundingClientRect()
       const w = rect.width
       const h = rect.height
@@ -57,8 +72,8 @@ export const AudioWaveform = memo(function AudioWaveform({
 
       offset += cfg.speed
 
-      // 1. Draw background spectrum bars
-      const numBars = 32
+      // 1. Draw spectrum bars (reduced count on mobile for efficiency)
+      const numBars = isMobile ? 16 : 28
       const barWidth = w / numBars - 2
       for (let i = 0; i < numBars; i++) {
         const x = i * (barWidth + 2) + 1
@@ -71,14 +86,15 @@ export const AudioWaveform = memo(function AudioWaveform({
         ctx.fillRect(x, midY - barHeight / 2, barWidth, barHeight)
       }
 
-      // 2. Draw dual flowing holographic sine waves
+      // 2. Draw dual flowing holographic sine waves (step by 4px on mobile)
+      const stepPx = isMobile ? 5 : 3
       ctx.lineWidth = 1.5
       ctx.strokeStyle = cfg.primary
       ctx.beginPath()
 
-      for (let x = 0; x <= w; x += 3) {
+      for (let x = 0; x <= w; x += stepPx) {
         const norm = (x / w) * Math.PI * 4
-        const env = Math.sin((x / w) * Math.PI) // smooth fade at edges
+        const env = Math.sin((x / w) * Math.PI)
         const wave1 = Math.sin(norm + offset * 3) * (cfg.amplitude * 0.8)
         const wave2 = Math.sin(norm * 1.8 - offset * 2) * (cfg.amplitude * 0.4)
         const y = midY + (wave1 + wave2 + noiseFloor * 100) * env
@@ -89,33 +105,49 @@ export const AudioWaveform = memo(function AudioWaveform({
       ctx.stroke()
 
       // 3. Secondary wave with phase inversion
-      ctx.strokeStyle = cfg.secondary
-      ctx.lineWidth = 1
-      ctx.beginPath()
-      for (let x = 0; x <= w; x += 4) {
-        const norm = (x / w) * Math.PI * 3
-        const env = Math.sin((x / w) * Math.PI)
-        const wave = Math.cos(norm - offset * 2.5) * (cfg.amplitude * 0.6)
-        const y = midY + wave * env
-        if (x === 0) ctx.moveTo(x, y)
-        else ctx.lineTo(x, y)
+      if (!isMobile) {
+        ctx.strokeStyle = cfg.secondary
+        ctx.lineWidth = 1
+        ctx.beginPath()
+        for (let x = 0; x <= w; x += 4) {
+          const norm = (x / w) * Math.PI * 3
+          const env = Math.sin((x / w) * Math.PI)
+          const wave = Math.cos(norm - offset * 2.5) * (cfg.amplitude * 0.6)
+          const y = midY + wave * env
+          if (x === 0) ctx.moveTo(x, y)
+          else ctx.lineTo(x, y)
+        }
+        ctx.stroke()
       }
-      ctx.stroke()
 
-      animId = requestAnimationFrame(render)
+      // Zero-Heat Optimization: If idle in standby, do NOT loop RAF (0 FPS = 0 CPU load!)
+      if (phase !== 'standby') {
+        animId = requestAnimationFrame(render)
+      }
     }
 
-    render()
+    const onVisibility = () => {
+      running = !document.hidden
+      cancelAnimationFrame(animId)
+      if (running) {
+        lastDraw = performance.now()
+        render(performance.now())
+      }
+    }
+
+    document.addEventListener('visibilitychange', onVisibility)
+    render(performance.now())
 
     return () => {
       cancelAnimationFrame(animId)
       window.removeEventListener('resize', resize)
+      document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [phase, online, wakeScore, noiseFloor])
 
   return (
     <div className="relative w-full h-12 overflow-hidden rounded border border-[rgba(65,230,255,0.15)] bg-[rgba(6,14,21,0.6)]">
-      <canvas ref={canvasRef} className="size-full" />
+      <canvas ref={canvasRef} className="size-full" style={{ willChange: 'transform' }} />
       <div className="absolute top-1 left-2 font-mono text-[9px] tracking-widest text-[#7da4b8] flex items-center gap-2 pointer-events-none">
         <span className="inline-block size-1 rounded-full bg-[#41e6ff] animate-pulse" />
         OSCILLOSCOPE // {phase.toUpperCase()}
@@ -123,3 +155,4 @@ export const AudioWaveform = memo(function AudioWaveform({
     </div>
   )
 })
+

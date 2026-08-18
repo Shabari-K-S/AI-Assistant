@@ -206,6 +206,7 @@ body {
   box-shadow:
     0 0 30px rgba(var(--orb-rgba), 0.55),
     inset 0 0 22px rgba(255, 255, 255, 0.35);
+  will-change: transform;
 }
 .orb-halo {
   position: absolute;
@@ -213,10 +214,19 @@ body {
   border-radius: 50%;
   background: radial-gradient(circle, rgba(var(--orb-rgba), 0.14) 0%, transparent 68%);
   animation: orb-breathe 4.5s ease-in-out infinite;
+  will-change: transform, opacity;
 }
 @keyframes orb-breathe {
   0%, 100% { transform: scale(1); opacity: 0.8; }
   50% { transform: scale(1.12); opacity: 1; }
+}
+@keyframes spin-reverse {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(-360deg); }
+}
+@keyframes core-pulse {
+  0% { transform: scale(var(--pulse-min, 0.92)); }
+  100% { transform: scale(var(--pulse-max, 1.15)); }
 }
 
 /* ----- blinking stream cursor ----- */
@@ -244,10 +254,31 @@ textarea { caret-color: var(--color-cy); }
 input[type="range"] { accent-color: #41e6ff; }
 select option { background: #0a151e; color: #e8fbff; }
 
-/* ----- mobile utilities ----- */
+/* ----- mobile utilities & GPU optimizations ----- */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 .touch-scroll { -webkit-overflow-scrolling: touch; }
+
+/* Mobile performance profile: disables expensive backdrop filters & overdraw */
+@media (max-width: 768px) {
+  .hud-panel {
+    backdrop-filter: none;
+    background: rgba(9, 20, 29, 0.96);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+    contain: content;
+  }
+  .hud-panel-glow {
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4), 0 0 8px rgba(65, 230, 255, 0.08);
+  }
+  .scanlines {
+    display: none; /* Disable repeating background calculations on mobile */
+  }
+}
+
+.contain-paint {
+  contain: paint layout;
+  content-visibility: auto;
+}
 
 @supports (padding: max(0px)) {
   .pb-safe { padding-bottom: max(0.75rem, env(safe-area-inset-bottom)); }
