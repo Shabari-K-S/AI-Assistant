@@ -124,8 +124,11 @@ def _load_index() -> dict[str, Any]:
 
 
 def _rebuild_index() -> dict[str, Any]:
-    """Scan all .md files in the vault and generate notes_index.json."""
+    """Scan all .md files in the vault, generate notes_index.json, and sync vector RAG index."""
     _init_vault()
+    from memory_engine import get_memory_engine
+    mem_engine = get_memory_engine()
+
     notes: list[dict[str, Any]] = []
     for md_file in VAULT_DIR.glob("**/*.md"):
         if md_file.name == "active_todos.md":
@@ -137,6 +140,12 @@ def _rebuild_index() -> dict[str, Any]:
         note_id = meta.get("id") or f"note-{int(md_file.stat().st_mtime * 1000) % 1000000}"
         created_at = meta.get("created_at") or time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(md_file.stat().st_ctime))
         preview = (body[:160] + "...") if len(body) > 160 else body
+
+        # Sync into vector search engine
+        try:
+            mem_engine.index_vault_file(rel_path, meta, body)
+        except Exception as exc:
+            pass
 
         notes.append({
             "id": note_id,
@@ -447,6 +456,133 @@ def handle_notes_summary(args: dict[str, Any]) -> str:
     )
 
 
+def handle_semantic_rag_search(args: dict[str, Any]) -> str:
+    """Perform neural semantic vector RAG search across all Markdown notes and deep research documents."""
+    query = str(args.get("query", "")).strip()
+    if not query:
+        return "Error: query parameter is required."
+    category = args.get("category")
+    top_k = min(10, max(1, int(args.get("top_k", 4))))
+
+    from memory_engine import get_memory_engine
+    engine = get_memory_engine()
+    results = engine.search_vault(query, top_k=top_k, category=category)
+    if not results:
+        return f"No relevant note sections found in the vault matching '{query}'."
+
+    out = [f"🧠 **Vault Semantic RAG Results for:** *'{query}'* ({len(results)} matches)\n"]
+    for i, r in enumerate(results, 1):
+        rel_percent = int(r["score"] * 100)
+        out.append(f"### {i}. [{r['title']}]({r['file_path']}) — *{r['heading']}* (Relevance: {rel_percent}%)")
+        out.append(f"**Category:** `{r['category']}` | **Path:** `{r['file_path']}`")
+        out.append(f"```markdown\n{r['content']}\n```\n")
+
+    return "\n".join(out)
+
+
+def handle_voice_brain_dump(args: dict[str, Any]) -> str:
+    """Process an unstructured, stream-of-consciousness raw voice transcript, extracting tasks, notes, and memory facts in one step."""
+    raw_speech = str(args.get("raw_speech_stream", "")).strip()
+    if not raw_speech:
+        return "Error: raw_speech_stream is required."
+    default_cat = str(args.get("default_category", "ideas")).strip() or "ideas"
+
+    extracted_tasks: list[dict[str, str]] = []
+    extracted_facts: list[str] = []
+    extracted_notes: list[dict[str, str]] = []
+
+    # Clean introductory conversational starters
+    cleaned_speech = re.sub(
+        r"(?i)^(?:hey\s+sara|sara|hi\s+sara|ok\s+sara|assistant)?[\s,:-]*(?:take\s+a\s+brain\s+dump|brain\s+dump(?:\s+mode)?|quick\s+note)?[\s,:-]*",
+        "",
+        raw_speech,
+    ).strip()
+
+    # Segment stream by periods, semicolons, or conjunction transitions
+    raw_segments = re.split(
+        r"(?<=[.!?])\s+|[;]+|(?:\s*,\s*(?=(?:and\s+also|also|furthermore|additionally|plus|and\s+remember|and\s+need|and\s+our|and\s+i|and\s+we)\b))|(?:\b(?:and\s+also|furthermore|additionally|plus)\b)",
+        cleaned_speech,
+        flags=re.IGNORECASE,
+    )
+    unassigned_thoughts: list[str] = []
+
+    for s in raw_segments:
+        s_clean = s.strip(" ,.-")
+        if not s_clean:
+            continue
+
+        # 1. Check for Fact/Preference/Memory pattern first
+        fact_match = re.search(r"(?i)\b(?:i\s+prefer|i\s+like|my\s+favorite|his\s+all\s+time\s+favorite|favorite|recommended|recommendation|told\s+me\s+that|configured\s+with|runs\s+on)\b", s_clean)
+        if fact_match and len(s_clean.split()) <= 30:
+            fact_text = re.sub(r"(?i)^(?:and\s+)?(?:also\s+)?", "", s_clean).strip(" ,.-")
+            extracted_facts.append(fact_text)
+            continue
+
+        # 2. Check for Task/Todo pattern
+        task_match = re.search(r"(?i)\b(?:need\s+to|remember\s+to|todo:?|have\s+to|must|buy|purchase|email|call|fix|schedule|update)\s+(.+)", s_clean)
+        if task_match and len(s_clean.split()) <= 25:
+            task_text = s_clean
+            task_text = re.sub(r"(?i)^(?:and\s+)?(?:i\s+|we\s+)?(?:need\s+to|remember\s+to|todo:?|have\s+to|must)\s+", "", task_text).strip()
+            task_text = re.sub(r"(?i)^(?:and\s+)?", "", task_text).strip(" ,.-")
+            prio = "high" if any(w in s_clean.lower() for w in ("urgent", "asap", "important", "immediately")) else "normal"
+            extracted_tasks.append({"task": task_text.capitalize(), "priority": prio})
+            continue
+
+        # 3. Residual technical or conceptual thoughts
+        residual_text = re.sub(r"(?i)^(?:and\s+)?(?:also\s+)?", "", s_clean).strip(" ,.-")
+        if residual_text:
+            unassigned_thoughts.append(residual_text)
+
+    # Group residual ideas into a structured note
+    if unassigned_thoughts:
+        note_body = "\n\n".join(f"- {t}" for t in unassigned_thoughts)
+        first_words = unassigned_thoughts[0].split()[:5]
+        note_title = " ".join(first_words).capitalize()
+        if not note_title:
+            note_title = f"Brain Dump {time.strftime('%b %d %H:%M')}"
+        extracted_notes.append({
+            "title": note_title,
+            "category": default_cat,
+            "content": f"# {note_title}\n\n*Captured via S.A.R.A. Voice Brain Dump on {time.strftime('%Y-%m-%d %H:%M')}*\n\n## Key Thoughts & Insights\n{note_body}",
+        })
+
+    results_log = ["🧠 **S.A.R.A. Second Brain Dump Processed Successfully:**\n"]
+
+    # 1. Store extracted tasks into active_todos.md
+    if extracted_tasks:
+        results_log.append("### 📋 Extracted Tasks (Added to Checklist):")
+        for t in extracted_tasks:
+            handle_add_todo({"task": t["task"], "priority": t["priority"]})
+            results_log.append(f"- [ ] **{t['task']}** *(Priority: {t['priority']})*")
+        results_log.append("")
+
+    # 2. Store structured markdown notes
+    if extracted_notes:
+        results_log.append("### 📝 Structured Notes (Saved to Vault):")
+        for n in extracted_notes:
+            handle_add_note({"title": n["title"], "content": n["content"], "category": n["category"], "tags": ["brain-dump", "voice-note"]})
+            slug = _slugify(n["title"])
+            results_log.append(f"- 📄 `{n['category']}/{slug}.md` — *{n['title']}*")
+        results_log.append("")
+
+    # 3. Ingest personal facts into long-term episodic memory
+    if extracted_facts:
+        from memory_engine import get_memory_engine
+        mem_engine = get_memory_engine()
+        results_log.append("### 🧠 Episodic Facts (Ingested into Long-Term Memory):")
+        for f in extracted_facts:
+            mem_engine.store_fact(f, category="personal", tags=["brain-dump", "fact"])
+            results_log.append(f"- 💡 {f}")
+        results_log.append("")
+
+    if not extracted_tasks and not extracted_notes and not extracted_facts:
+        handle_add_note({"title": f"Voice Thought {time.strftime('%b %d')}", "content": raw_speech, "category": default_cat, "tags": ["brain-dump"]})
+        results_log.append(f"Saved raw voice thought as `{default_cat}/voice_thought.md`")
+
+    _rebuild_index()
+    return "\n".join(results_log)
+
+
 TOOLS = [
     {
         "name": "notes_add_note",
@@ -475,7 +611,7 @@ TOOLS = [
     },
     {
         "name": "notes_edit_note",
-        "description": "Edit or append markdown text to an existing note in the vault.",
+        "description": "Update or append markdown content to an existing note file in the vault.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -505,6 +641,31 @@ TOOLS = [
                 "query": {"type": "string", "description": "Search keyword, topic, or phrase"},
             },
             "required": ["query"],
+        },
+    },
+    {
+        "name": "notes_semantic_rag_search",
+        "description": "Perform deep neural and semantic vector search across all notes, research briefs, and ideas in your Markdown Vault to find relevant answers without needing exact keywords.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Natural language question or search topic (e.g. 'What was the movie recommendation?' or 'database scaling strategy')."},
+                "category": {"type": "string", "description": "Optional category filter ('general', 'ideas', 'work', 'deep-research', 'todos')."},
+                "top_k": {"type": "integer", "description": "Max number of relevant note sections to return (default: 4).", "default": 4},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "voice_brain_dump_processor",
+        "description": "Process an unstructured, stream-of-consciousness raw voice transcript, automatically extracting action items into to-dos, structured thoughts into markdown notes, and personal facts into long-term memory in one step.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "raw_speech_stream": {"type": "string", "description": "The raw, stream-of-consciousness spoken thought stream from the user."},
+                "default_category": {"type": "string", "description": "Category for generated notes (default: 'ideas').", "default": 'ideas'},
+            },
+            "required": ["raw_speech_stream"],
         },
     },
     {
@@ -568,6 +729,8 @@ TOOL_HANDLERS = {
     "notes_edit_note": handle_edit_note,
     "notes_list_notes": handle_list_notes,
     "notes_search_notes": handle_search_notes,
+    "notes_semantic_rag_search": handle_semantic_rag_search,
+    "voice_brain_dump_processor": handle_voice_brain_dump,
     "notes_delete_note": handle_delete_note,
     "notes_add_todo": handle_add_todo,
     "notes_list_todos": handle_list_todos,

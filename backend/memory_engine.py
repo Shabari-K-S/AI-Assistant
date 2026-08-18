@@ -150,12 +150,36 @@ class MemoryEngine:
             )
             conn.execute(
                 """
+                CREATE TABLE IF NOT EXISTS vault_chunks (
+                    id TEXT PRIMARY KEY,
+                    file_path TEXT NOT NULL,
+                    note_title TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    heading TEXT,
+                    content TEXT NOT NULL,
+                    tags TEXT,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
                 CREATE INDEX IF NOT EXISTS idx_memories_category ON episodic_memories(category)
                 """
             )
             conn.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_triples_sub_pred ON knowledge_triples(subject, predicate)
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_chunks_file ON vault_chunks(file_path)
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_chunks_cat ON vault_chunks(category)
                 """
             )
             conn.commit()
@@ -374,15 +398,172 @@ class MemoryEngine:
                     sub, port = groups[0].strip(), groups[1].strip()
                     self.store_triple(sub, "runs_on_port", port, confidence=0.95, context=text[:100])
 
+    def _chunk_markdown(self, body: str, title: str = "") -> list[tuple[str, str]]:
+        """Split a markdown document into semantic sections based on headings and paragraph boundaries."""
+        if not body.strip():
+            return []
+
+        lines = body.splitlines()
+        chunks: list[tuple[str, str]] = []
+        current_heading = title or "Overview"
+        current_lines: list[str] = []
+
+        for line in lines:
+            header_match = re.match(r"^(#{1,6})\s+(.*)$", line.strip())
+            if header_match:
+                if current_lines:
+                    text_block = "\n".join(current_lines).strip()
+                    if text_block:
+                        chunks.append((current_heading, text_block))
+                    current_lines = []
+                current_heading = header_match.group(2).strip()
+            else:
+                current_lines.append(line)
+                if len("\n".join(current_lines)) > 800 and not line.strip():
+                    text_block = "\n".join(current_lines).strip()
+                    if text_block:
+                        chunks.append((current_heading, text_block))
+                    current_lines = []
+
+        if current_lines:
+            text_block = "\n".join(current_lines).strip()
+            if text_block:
+                chunks.append((current_heading, text_block))
+
+        return chunks
+
+    def index_vault_file(self, rel_path: str, frontmatter: dict[str, Any], body: str) -> int:
+        """Chunk and index a markdown vault file into the vector search database."""
+        title = str(frontmatter.get("title") or Path(rel_path).stem.replace("_", " ").title())
+        category = str(frontmatter.get("category") or Path(rel_path).parent.name or "general")
+        tags = frontmatter.get("tags", [])
+        tags_str = ",".join(tags) if isinstance(tags, list) else str(tags)
+        now = time.strftime("%Y-%m-%d %H:%M:%S")
+
+        chunks = self._chunk_markdown(body, title=title)
+        if not chunks:
+            chunks = [(title, body.strip() or title)]
+
+        with self._get_conn() as conn:
+            # Delete old chunks for this file
+            conn.execute("DELETE FROM vault_chunks WHERE file_path = ?", (rel_path,))
+
+            for idx, (heading, content) in enumerate(chunks):
+                chunk_id = f"vchunk-{abs(hash(rel_path)) % 1000000}-{idx}"
+                conn.execute(
+                    """
+                    INSERT INTO vault_chunks (id, file_path, note_title, category, heading, content, tags, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (chunk_id, rel_path, title, category, heading, content, tags_str, now),
+                )
+            conn.commit()
+
+        log.debug("Indexed %d vector chunks for vault file '%s'", len(chunks), rel_path)
+        return len(chunks)
+
+    def remove_vault_file(self, rel_path: str) -> None:
+        """Remove a deleted vault file from the vector search index."""
+        with self._get_conn() as conn:
+            conn.execute("DELETE FROM vault_chunks WHERE file_path = ?", (rel_path,))
+            conn.commit()
+
+    def search_vault(
+        self,
+        query: str,
+        top_k: int = 5,
+        category: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Perform semantic hybrid vector search across all notes in the Markdown vault."""
+        query = query.strip()
+        if not query:
+            return []
+
+        query_tokens = set(_tokenize(query, expand=True))
+        if not query_tokens:
+            return []
+
+        with self._get_conn() as conn:
+            if category:
+                cur = conn.execute(
+                    "SELECT id, file_path, note_title, category, heading, content, tags FROM vault_chunks WHERE category = ?",
+                    (category,),
+                )
+            else:
+                cur = conn.execute(
+                    "SELECT id, file_path, note_title, category, heading, content, tags FROM vault_chunks"
+                )
+            rows = cur.fetchall()
+
+        if not rows:
+            return []
+
+        # Build dynamic vocabulary and document frequency
+        all_docs = [_tokenize(r["note_title"] + " " + (r["heading"] or "") + " " + r["content"] + " " + (r["tags"] or ""), expand=True) for r in rows]
+        vocab: dict[str, int] = {}
+        df: dict[str, int] = {}
+        num_docs = len(all_docs)
+
+        for doc_tokens in all_docs + [_tokenize(query, expand=True)]:
+            unique_tokens = set(doc_tokens)
+            for tok in doc_tokens:
+                if tok not in vocab:
+                    vocab[tok] = len(vocab)
+            for tok in unique_tokens:
+                df[tok] = df.get(tok, 0) + 1
+
+        idf: dict[str, float] = {}
+        for word, count in df.items():
+            idf[word] = math.log((num_docs + 1) / (count + 0.5)) + 1.0
+
+        query_vec = _compute_tf_idf_vector(query, vocab, idf)
+
+        scored: list[tuple[float, dict[str, Any]]] = []
+        for row, doc_tokens in zip(rows, all_docs):
+            doc_text = row["note_title"] + " " + (row["heading"] or "") + " " + row["content"] + " " + (row["tags"] or "")
+            doc_vec = _compute_tf_idf_vector(doc_text, vocab, idf)
+            cos_sim = _cosine_similarity(query_vec, doc_vec)
+
+            # Keyword overlap boost
+            overlap = len(query_tokens.intersection(doc_tokens))
+            keyword_score = float(overlap) / max(1, len(query_tokens))
+
+            # Exact title or heading matching boost
+            title_boost = 0.25 if any(q in row["note_title"].lower() for q in query_tokens) else 0.0
+            heading_boost = 0.15 if row["heading"] and any(q in row["heading"].lower() for q in query_tokens) else 0.0
+
+            final_score = (0.55 * cos_sim) + (0.30 * keyword_score) + title_boost + heading_boost
+            if final_score > 0.08:
+                scored.append((
+                    final_score,
+                    {
+                        "id": row["id"],
+                        "file_path": row["file_path"],
+                        "title": row["note_title"],
+                        "category": row["category"],
+                        "heading": row["heading"],
+                        "content": row["content"],
+                        "tags": [t.strip() for t in (row["tags"] or "").split(",") if t.strip()],
+                        "score": round(final_score, 4),
+                    },
+                ))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [item[1] for item in scored[:top_k]]
+
     def get_relevant_context_prompt(self, user_prompt: str, limit: int = 4) -> str:
         """Search memory and return formatted context block for LLM prompt injection."""
         memories = self.recall(user_prompt, limit=limit)
-        if not memories:
+        vault_hits = self.search_vault(user_prompt, top_k=2)
+
+        if not memories and not vault_hits:
             return ""
 
         lines = ["\n[🧠 Long-Term Memory Recall]:"]
         for m in memories:
             lines.append(f"- ({m['category'].upper()}) {m['text']}")
+        for v in vault_hits:
+            lines.append(f"- (NOTE: {v['title']} > {v['heading']}) {v['content'][:200]}...")
         lines.append("")
         return "\n".join(lines)
 
@@ -396,3 +577,4 @@ def get_memory_engine() -> MemoryEngine:
     if _memory_engine_instance is None:
         _memory_engine_instance = MemoryEngine()
     return _memory_engine_instance
+
