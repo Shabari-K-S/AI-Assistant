@@ -33,9 +33,152 @@ export const CommandDeck = memo(function CommandDeck({
   const [text, setText] = useState('')
   const [transmitting, setTransmitting] = useState(false)
   const [isHolding, setIsHolding] = useState(false)
+  const [handsFree, setHandsFree] = useState<boolean>(() => {
+    return localStorage.getItem('sara_handsfree_wake') === 'true'
+  })
+  const [isWoken, setIsWoken] = useState(false)
+
   const recognitionRef = useRef<any>(null)
+  const wakeRecRef = useRef<any>(null)
   const speechTextRef = useRef<string>('')
   const isHoldingRef = useRef<boolean>(false)
+  const isWokenRef = useRef<boolean>(false)
+  const wakeDebounceRef = useRef<any>(null)
+
+  // Save handsfree preference
+  const toggleHandsFree = () => {
+    soundFx.click()
+    const next = !handsFree
+    setHandsFree(next)
+    localStorage.setItem('sara_handsfree_wake', String(next))
+    if (!next && wakeRecRef.current) {
+      try {
+        wakeRecRef.current.abort()
+      } catch {}
+      wakeRecRef.current = null
+      setIsWoken(false)
+      isWokenRef.current = false
+    }
+  }
+
+  // Continuous Hands-Free "Hey S.A.R.A." Background Listener
+  useEffect(() => {
+    if (!handsFree || !connected || disabled || isHolding) {
+      if (wakeRecRef.current) {
+        try {
+          wakeRecRef.current.abort()
+        } catch {}
+        wakeRecRef.current = null
+      }
+      return
+    }
+
+    // Do not listen for wake word if assistant is already processing or speaking
+    if (phase === 'processing' || phase === 'speaking') {
+      if (wakeRecRef.current) {
+        try {
+          wakeRecRef.current.abort()
+        } catch {}
+        wakeRecRef.current = null
+      }
+      return
+    }
+
+    const SpeechRec =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+
+    if (!SpeechRec) return
+
+    let active = true
+    const rec = new SpeechRec()
+    rec.continuous = true
+    rec.interimResults = true
+    rec.lang = 'en-US'
+    rec.maxAlternatives = 1
+
+    const handleWakeResult = (event: any) => {
+      let latest = ''
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        const piece = event.results[i][0]?.transcript?.trim() || ''
+        if (piece) latest = piece
+      }
+
+      if (!latest) return
+      const lower = latest.toLowerCase()
+
+      // Check for Wake Phrases: "hey sara", "okay sara", "ok sara", "sara", "hey sarah", "hi sara"
+      const wakeMatch = lower.match(/\b(?:hey|okay|ok|hi|hello)?\s*sara(?:h)?\b/i)
+
+      if (wakeMatch) {
+        if (!isWokenRef.current) {
+          isWokenRef.current = true
+          setIsWoken(true)
+          onVoiceStateChange?.(true)
+          soundFx.wakeDetected()
+          try {
+            navigator.vibrate?.([40, 30, 40])
+          } catch {}
+        }
+
+        // Extract command following the wake phrase
+        const cleanQuery = latest
+          .replace(/.*?\b(?:hey\s+|okay\s+|ok\s+|hi\s+|hello\s+)?sara(?:h)?\b[\s,:]*/i, '')
+          .trim()
+
+        if (cleanQuery) {
+          setText(cleanQuery)
+          speechTextRef.current = cleanQuery
+
+          if (wakeDebounceRef.current) clearTimeout(wakeDebounceRef.current)
+          wakeDebounceRef.current = setTimeout(async () => {
+            if (speechTextRef.current.trim() && !transmitting) {
+              const queryToSend = speechTextRef.current.trim()
+              setTransmitting(true)
+              setIsWoken(false)
+              isWokenRef.current = false
+              onVoiceStateChange?.(false)
+              setText('')
+              speechTextRef.current = ''
+              await onSend(queryToSend)
+              setTransmitting(false)
+            }
+          }, 1400)
+        }
+      }
+    }
+
+    rec.onresult = handleWakeResult
+
+    rec.onerror = (event: any) => {
+      if (event.error === 'not-allowed') {
+        setHandsFree(false)
+        localStorage.setItem('sara_handsfree_wake', 'false')
+      }
+    }
+
+    rec.onend = () => {
+      // Auto-restart continuous loop if still active and on standby
+      if (active && handsFree && phase === 'standby' && !isHoldingRef.current) {
+        try {
+          rec.start()
+        } catch {}
+      }
+    }
+
+    try {
+      rec.start()
+      wakeRecRef.current = rec
+    } catch {}
+
+    return () => {
+      active = false
+      if (wakeDebounceRef.current) clearTimeout(wakeDebounceRef.current)
+      try {
+        rec.abort()
+      } catch {}
+      wakeRecRef.current = null
+    }
+  }, [handsFree, connected, disabled, isHolding, phase, transmitting, onSend, onVoiceStateChange])
 
   // Clean up recognition instance on unmount
   useEffect(() => {
@@ -45,11 +188,23 @@ export const CommandDeck = memo(function CommandDeck({
           recognitionRef.current.abort()
         } catch {}
       }
+      if (wakeRecRef.current) {
+        try {
+          wakeRecRef.current.abort()
+        } catch {}
+      }
     }
   }, [])
 
   const startHoldVoice = useCallback(() => {
     if (!connected || disabled || transmitting || isHoldingRef.current) return
+
+    // Temporarily pause hands-free wake if active
+    if (wakeRecRef.current) {
+      try {
+        wakeRecRef.current.abort()
+      } catch {}
+    }
 
     const SpeechRec =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
@@ -90,10 +245,9 @@ export const CommandDeck = memo(function CommandDeck({
           if (!full) {
             full = piece
           } else if (piece.toLowerCase().startsWith(full.toLowerCase())) {
-            // Cumulative update (Android Chrome): replace with the full string
             full = piece
           } else if (full.toLowerCase().endsWith(piece.toLowerCase())) {
-            // Duplicate suffix: ignore
+            // ignore
           } else {
             full = `${full} ${piece}`
           }
@@ -217,7 +371,7 @@ export const CommandDeck = memo(function CommandDeck({
 
   return (
     <div className="w-full space-y-2.5">
-      {/* 1. Hold-To-Talk Voice Button (Unified Pointer Events) */}
+      {/* 1. Hold-To-Talk Voice Button + Hands-Free "Hey S.A.R.A." Toggle */}
       <div className="flex items-center gap-2">
         <button
           type="button"
@@ -226,7 +380,7 @@ export const CommandDeck = memo(function CommandDeck({
           onPointerCancel={handlePointerUp}
           onPointerLeave={isHolding ? handlePointerUp : undefined}
           disabled={!connected || disabled}
-          className={`flex-1 py-2.5 sm:py-3 px-4 rounded font-display text-[11px] sm:text-xs tracking-[0.2em] sm:tracking-[0.25em] font-bold flex items-center justify-center gap-2 transition-all select-none touch-none active:scale-[0.98] ${
+          className={`flex-1 py-2.5 sm:py-3 px-3 sm:px-4 rounded font-display text-[11px] sm:text-xs tracking-[0.2em] sm:tracking-[0.25em] font-bold flex items-center justify-center gap-2 transition-all select-none touch-none active:scale-[0.98] ${
             isHolding
               ? 'bg-[#41e6ff] text-[#03070b] shadow-[0_0_25px_#41e6ff] animate-pulse border border-[#7ef3ff]'
               : isListening
@@ -242,9 +396,31 @@ export const CommandDeck = memo(function CommandDeck({
           ) : (
             <>
               <Mic size={15} className="text-[#41e6ff]" />
-              <span>HOLD TO TALK // PUSH-TO-TALK</span>
+              <span>HOLD TO TALK</span>
             </>
           )}
+        </button>
+
+        <button
+          type="button"
+          onClick={toggleHandsFree}
+          disabled={!connected || disabled}
+          title={handsFree ? 'Hands-Free Wake Word is Active (Say "Hey Sara")' : 'Click to enable Hands-Free "Hey Sara" Wake Word'}
+          className={`py-2.5 sm:py-3 px-3 rounded font-display text-[10px] sm:text-[11px] tracking-wider font-semibold flex items-center gap-1.5 transition-all select-none shrink-0 border ${
+            handsFree
+              ? isWoken
+                ? 'bg-[#34d399] text-[#03070b] border-[#34d399] shadow-[0_0_20px_#34d399] animate-bounce'
+                : 'bg-[rgba(16,185,129,0.15)] text-[#34d399] border-[#34d399] shadow-[0_0_12px_rgba(16,185,129,0.3)]'
+              : 'bg-[rgba(6,14,21,0.85)] text-[#7da4b8] border-[rgba(65,230,255,0.2)] hover:border-[#41e6ff] hover:text-[#41e6ff]'
+          } disabled:opacity-40 disabled:pointer-events-none`}
+        >
+          <Radio size={14} className={handsFree ? 'animate-pulse text-[#34d399]' : 'text-[#7da4b8]'} />
+          <span className="hidden sm:inline">
+            {handsFree ? (isWoken ? 'HEY SARA: ACTIVE' : 'WAKE WORD ON') : 'HEY SARA: OFF'}
+          </span>
+          <span className="sm:hidden">
+            {handsFree ? (isWoken ? 'SARA WOKE' : 'WAKE ON') : 'WAKE OFF'}
+          </span>
         </button>
       </div>
 
