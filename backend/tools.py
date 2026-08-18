@@ -952,6 +952,10 @@ class ToolRegistry:
         "timer_list": "Checking active timers.",
     }
 
+    def set_bus(self, bus: object) -> None:
+        """Attach the EV web bridge event bus for live telemetry streaming."""
+        self._bus = bus
+
     def set_cue_callback(self, callback: Callable[[str], None] | None) -> None:
         """Set a vocal/HUD cue callback invoked right before long-running tools execute."""
         self._cue_callback = callback
@@ -962,6 +966,11 @@ class ToolRegistry:
         if tool is None:
             return f"error: unknown tool {name!r}"
 
+        t0 = time.perf_counter()
+        bus = getattr(self, "_bus", None)
+        if bus is not None and hasattr(bus, "emit_tool_start"):
+            bus.emit_tool_start(name, args)
+
         # Emit conversational progress cue if registered
         cue_cb = getattr(self, "_cue_callback", None)
         if cue_cb and name in self.TOOL_VOCAL_CUES:
@@ -971,9 +980,19 @@ class ToolRegistry:
                 pass
 
         try:
-            return tool.handler(args or {})
+            res = tool.handler(args or {})
+            dur_ms = (time.perf_counter() - t0) * 1000.0
+            if bus is not None and hasattr(bus, "emit_tool_end"):
+                bus.emit_tool_end(name, dur_ms, status="ok", preview=str(res))
+            return res
         except PermissionError as exc:
+            dur_ms = (time.perf_counter() - t0) * 1000.0
+            if bus is not None and hasattr(bus, "emit_tool_end"):
+                bus.emit_tool_end(name, dur_ms, status="permission_denied", preview=str(exc))
             return f"error: {exc}"
         except Exception as exc:
+            dur_ms = (time.perf_counter() - t0) * 1000.0
             log.exception("tool %s failed", name)
+            if bus is not None and hasattr(bus, "emit_tool_end"):
+                bus.emit_tool_end(name, dur_ms, status="error", preview=str(exc))
             return f"error: tool {name!r} raised {type(exc).__name__}: {exc}"

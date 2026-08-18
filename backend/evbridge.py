@@ -48,6 +48,10 @@ class Bus:
             "tts": "-",
             "transcript": "",
             "reply": "",
+            "active_tool": None,
+            "last_tool_result": None,
+            "last_inference": None,
+            "memory_stats": None,
             "since": 0.0,
         }
         self._rev = 0  # increments on every snapshot change
@@ -137,6 +141,68 @@ class Bus:
 
     def event(self, type_: str, **data: object) -> None:
         self.publish({"type": type_, "t": time.time(), **data})
+
+    def emit_tool_start(self, name: str, args: dict) -> None:
+        """Notify HUD that a tool has started execution."""
+        clean_args = {k: (str(v)[:120] if len(str(v)) > 120 else v) for k, v in (args or {}).items()}
+        self.set(active_tool={"name": name, "args": clean_args, "started_at": time.time()})
+        self.publish({
+            "type": "tool_start",
+            "name": name,
+            "args": clean_args,
+            "t": time.time(),
+        })
+
+    def emit_tool_end(self, name: str, duration_ms: float, status: str = "ok", preview: str = "") -> None:
+        """Notify HUD that a tool execution has finished."""
+        res_summary = {"name": name, "duration_ms": round(duration_ms, 1), "status": status, "preview": preview[:160]}
+        self.set(active_tool=None, last_tool_result=res_summary)
+        self.publish({
+            "type": "tool_end",
+            "name": name,
+            "duration_ms": round(duration_ms, 1),
+            "status": status,
+            "preview": preview[:160],
+            "t": time.time(),
+        })
+
+    def emit_memory_recall(self, query: str, facts: list, notes: list) -> None:
+        """Notify HUD of long-term memory facts and Markdown RAG note retrieval."""
+        stats = {
+            "query": query,
+            "facts_count": len(facts),
+            "notes_count": len(notes),
+            "recalled_items": [
+                *(f"Fact: {f.get('text', '')[:60]}" for f in facts if isinstance(f, dict)),
+                *(f"Note: {n.get('title', '')} ({int(n.get('score', 0) * 100)}%)" for n in notes if isinstance(n, dict)),
+            ],
+        }
+        self.set(memory_stats=stats)
+        self.publish({
+            "type": "memory_recall",
+            "query": query,
+            "facts": facts,
+            "notes": notes,
+            "t": time.time(),
+        })
+
+    def emit_llm_metrics(self, model: str, ttft_ms: float, total_ms: float, char_count: int) -> None:
+        """Notify HUD of LLM streaming latency and character count metrics."""
+        metrics = {
+            "model": model,
+            "ttft_ms": round(ttft_ms, 1),
+            "total_ms": round(total_ms, 1),
+            "chars": char_count,
+        }
+        self.set(last_inference=metrics)
+        self.publish({
+            "type": "llm_metrics",
+            "model": model,
+            "ttft_ms": round(ttft_ms, 1),
+            "total_ms": round(total_ms, 1),
+            "chars": char_count,
+            "t": time.time(),
+        })
 
     # -- controls ---------------------------------------------------------- #
     def on_control(self, key: str, handler: object) -> None:

@@ -525,6 +525,8 @@ def _run_assistant(cfg, once: bool, text: str | None) -> int:
     if engine is None:
         return 2
 
+    registry.set_bus(bus)
+
     if mcp_manager:
         bus.set_mcp_manager(mcp_manager)
 
@@ -795,12 +797,15 @@ def _run_assistant(cfg, once: bool, text: str | None) -> int:
                 bus.log("INFO", "processing…")
 
             # Retrieve relevant long-term memory context for this turn
+            memories = memory_engine.recall(user_text, limit=3)
+            vault_hits = memory_engine.search_vault(user_text, top_k=2)
+            if bus is not None and (memories or vault_hits):
+                bus.emit_memory_recall(user_text, memories, vault_hits)
+
             mem_context = memory_engine.get_relevant_context_prompt(user_text)
             active_system_prompt = (cfg.llm.system_prompt + "\n" + mem_context).strip() if mem_context else cfg.llm.system_prompt
             if mem_context:
                 log.info("Injected long-term memory:\n%s", mem_context.strip())
-                if bus is not None:
-                    bus.log("INFO", "🧠 Recalled relevant long-term memory facts")
 
             reply_parts: list[str] = []
             try:

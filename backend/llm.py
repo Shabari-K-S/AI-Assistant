@@ -399,6 +399,18 @@ class GeminiGemmaLLM(LLMEngine):
                 "llm: ttft=%.3fs total=%.3fs chars=%d model=%s stop=%s",
                 ttft or total, total, len(text), self._config.model, finish_reason,
             )
+            try:
+                import evbridge
+                bus = evbridge.get_bus()
+                if bus is not None:
+                    bus.emit_llm_metrics(
+                        model=self._config.model,
+                        ttft_ms=(ttft or total) * 1000.0,
+                        total_ms=total * 1000.0,
+                        char_count=len(text),
+                    )
+            except Exception:
+                pass
             return
 
         log.warning(
@@ -739,7 +751,20 @@ class GeminiRestLLM(LLMEngine):
             if text.strip():
                 conversation.add_assistant(text)
             total = time.perf_counter() - t0
-            log.info("REST llm: ttft=%.3fs total=%.3fs chars=%d model=%s", ttft or total, total, len(text), self._config.model)
+            active_model = model_name if 'model_name' in locals() else self._config.model
+            log.info("REST llm: ttft=%.3fs total=%.3fs chars=%d model=%s", ttft or total, total, len(text), active_model)
+            try:
+                import evbridge
+                bus = evbridge.get_bus()
+                if bus is not None:
+                    bus.emit_llm_metrics(
+                        model=active_model,
+                        ttft_ms=(ttft or total) * 1000.0,
+                        total_ms=total * 1000.0,
+                        char_count=len(text),
+                    )
+            except Exception:
+                pass
             return
 
         log.warning("llm: tool loop exceeded %d iterations; stopping", self._max_tool_iterations)

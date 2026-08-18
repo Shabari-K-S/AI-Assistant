@@ -103,6 +103,92 @@ export function useAssistant() {
       }
     })
 
+    es.addEventListener('tool_start', (e) => {
+      try {
+        const data = JSON.parse((e as MessageEvent).data)
+        setLogs((prev) => [
+          ...prev.slice(-300),
+          {
+            id: `L${(logSeq += 1)}`,
+            kind: 'tool',
+            level: 'INFO',
+            msg: `Invoking ${data.name}`,
+            toolData: {
+              name: data.name,
+              args: data.args,
+              status: 'running',
+            },
+            t: Date.now(),
+          },
+        ])
+      } catch {}
+    })
+
+    es.addEventListener('tool_end', (e) => {
+      try {
+        const data = JSON.parse((e as MessageEvent).data)
+        setLogs((prev) => [
+          ...prev.slice(-300),
+          {
+            id: `L${(logSeq += 1)}`,
+            kind: 'tool',
+            level: data.status === 'ok' ? 'INFO' : 'WARN',
+            msg: `${data.name} completed (${data.duration_ms}ms)`,
+            toolData: {
+              name: data.name,
+              duration_ms: data.duration_ms,
+              status: data.status,
+              preview: data.preview,
+            },
+            t: Date.now(),
+          },
+        ])
+      } catch {}
+    })
+
+    es.addEventListener('memory_recall', (e) => {
+      try {
+        const data = JSON.parse((e as MessageEvent).data)
+        setLogs((prev) => [
+          ...prev.slice(-300),
+          {
+            id: `L${(logSeq += 1)}`,
+            kind: 'memory',
+            level: 'INFO',
+            msg: `Memory Recalled: ${(data.facts?.length || 0) + (data.notes?.length || 0)} items`,
+            memoryData: {
+              query: data.query,
+              facts: data.facts,
+              notes: data.notes,
+            },
+            t: Date.now(),
+          },
+        ])
+      } catch {}
+    })
+
+    es.addEventListener('llm_metrics', (e) => {
+      try {
+        const data = JSON.parse((e as MessageEvent).data)
+        setLogs((prev) => [
+          ...prev.slice(-300),
+          {
+            id: `L${(logSeq += 1)}`,
+            kind: 'llm',
+            level: 'INFO',
+            msg: `LLM (${data.model}): ttft=${data.ttft_ms}ms, total=${data.total_ms}ms`,
+            llmData: {
+              model: data.model,
+              ttft_ms: data.ttft_ms,
+              total_ms: data.total_ms,
+              chars: data.chars,
+            },
+            t: Date.now(),
+          },
+        ])
+      } catch {}
+    })
+
     es.addEventListener('deep_research_started', (e) => {
       try {
         const data = JSON.parse((e as MessageEvent).data)

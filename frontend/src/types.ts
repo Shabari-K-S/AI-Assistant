@@ -13,16 +13,38 @@ export interface Snapshot {
   tts: string
   transcript: string
   reply: string
+  active_tool?: { name: string; args?: Record<string, unknown>; started_at?: number } | null
+  last_tool_result?: { name: string; duration_ms: number; status: string; preview: string } | null
+  last_inference?: { model: string; ttft_ms: number; total_ms: number; chars: number } | null
+  memory_stats?: { query: string; facts_count: number; notes_count: number; recalled_items: string[] } | null
   since: number
 }
 
 export interface LogLine {
   id: string
-  kind: 'log' | 'transcript' | 'reply' | 'error' | 'command'
+  kind: 'log' | 'transcript' | 'reply' | 'error' | 'command' | 'tool' | 'memory' | 'llm'
   level?: string
   msg?: string
   text?: string
   confidence?: number
+  toolData?: {
+    name: string
+    args?: Record<string, unknown>
+    duration_ms?: number
+    status?: string
+    preview?: string
+  }
+  memoryData?: {
+    query?: string
+    facts?: Array<{ id?: string; text?: string; category?: string; score?: number }>
+    notes?: Array<{ title?: string; heading?: string; category?: string; score?: number; file_path?: string }>
+  }
+  llmData?: {
+    model?: string
+    ttft_ms?: number
+    total_ms?: number
+    chars?: number
+  }
   t: number
 }
 
