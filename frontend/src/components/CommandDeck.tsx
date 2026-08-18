@@ -1,6 +1,5 @@
 import { memo, useState, useEffect, useCallback, useRef } from 'react'
 import { soundFx } from '../lib/soundFx'
-import { BRIDGE_URL } from '../types'
 import { Send, Terminal, Activity, CloudSun, GitBranch, ExternalLink, Mic, Radio, BookOpen, Sparkles } from 'lucide-react'
 
 interface Props {
@@ -34,137 +33,97 @@ export const CommandDeck = memo(function CommandDeck({
   const [text, setText] = useState('')
   const [transmitting, setTransmitting] = useState(false)
   const [isHolding, setIsHolding] = useState(false)
-  const [handsFree, setHandsFree] = useState<boolean>(() => {
-    return localStorage.getItem('sara_handsfree_wake') === 'true'
-  })
-  const [isWoken, setIsWoken] = useState(false)
-
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  const audioChunksRef = useRef<Blob[]>([])
-  const micStreamRef = useRef<MediaStream | null>(null)
-  const audioCtxRef = useRef<AudioContext | null>(null)
+  const recognitionRef = useRef<any>(null)
+  const speechTextRef = useRef<string>('')
   const isHoldingRef = useRef<boolean>(false)
-  const isWokenRef = useRef<boolean>(false)
-  const isHandsFreeRecordingRef = useRef<boolean>(false)
-  const silenceTimerRef = useRef<any>(null)
 
-  // Toggle Hands-Free
-  const toggleHandsFree = () => {
-    soundFx.click()
-    const next = !handsFree
-    setHandsFree(next)
-    localStorage.setItem('sara_handsfree_wake', String(next))
-    if (!next) {
-      cleanupAudio()
-    }
-  }
-
-  const cleanupAudio = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      try {
-        mediaRecorderRef.current.stop()
-      } catch {}
-    }
-    if (micStreamRef.current) {
-      micStreamRef.current.getTracks().forEach((t) => t.stop())
-      micStreamRef.current = null
-    }
-    if (audioCtxRef.current) {
-      try {
-        audioCtxRef.current.close()
-      } catch {}
-      audioCtxRef.current = null
-    }
-    setIsWoken(false)
-    isWokenRef.current = false
-    isHandsFreeRecordingRef.current = false
-    setIsHolding(false)
-    isHoldingRef.current = false
-  }
-
-  // Get or initialize silent mic stream (Zero Android Beeps)
-  const getMicStream = async () => {
-    if (!micStreamRef.current || !micStreamRef.current.active) {
-      micStreamRef.current = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      })
-    }
-    return micStreamRef.current
-  }
-
-  // Transmit audio blob silently to /bridge/transcribe
-  const sendAudioForTranscription = async (blob: Blob) => {
-    if (blob.size < 1000) return
-    setTransmitting(true)
-    try {
-      const reader = new FileReader()
-      reader.onloadend = async () => {
-        const base64Data = (reader.result as string).split(',')[1]
-        if (!base64Data) {
-          setTransmitting(false)
-          return
-        }
-
+  // Clean up recognition instance on unmount
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
         try {
-          const res = await fetch(`${BRIDGE_URL}/transcribe`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              audio_b64: base64Data,
-              mime_type: blob.type || 'audio/webm',
-            }),
-          })
-          const data = await res.json()
-          if (data.ok && data.text) {
-            setText(data.text)
-            await onSend(data.text)
-          }
-        } catch (err) {
-          console.error('Transcription upload failed:', err)
-        } finally {
-          setTransmitting(false)
-          setIsWoken(false)
-          isWokenRef.current = false
-          onVoiceStateChange?.(false)
-        }
+          recognitionRef.current.abort()
+        } catch {}
       }
-      reader.readAsDataURL(blob)
-    } catch {
-      setTransmitting(false)
     }
-  }
+  }, [])
 
-  // 100% Silent Hold-to-Talk (Pure HTML5 MediaRecorder - Zero Android Beeps)
-  const startHoldVoice = useCallback(async () => {
+  const startHoldVoice = useCallback(() => {
     if (!connected || disabled || transmitting || isHoldingRef.current) return
 
+    const SpeechRec =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+
+    if (!SpeechRec) {
+      alert(
+        'Speech Recognition is not supported by this browser. Please use Google Chrome on Android or Safari on iOS.',
+      )
+      return
+    }
+
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort()
+      } catch {}
+      recognitionRef.current = null
+    }
+
     try {
+      soundFx.click()
       isHoldingRef.current = true
       setIsHolding(true)
       onVoiceStateChange?.(true)
-      audioChunksRef.current = []
+      speechTextRef.current = ''
+      setText('')
 
-      const stream = await getMicStream()
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : 'audio/webm'
+      const rec = new SpeechRec()
+      rec.continuous = false
+      rec.interimResults = true
+      rec.lang = 'en-US'
+      rec.maxAlternatives = 1
 
-      const recorder = new MediaRecorder(stream, { mimeType })
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          audioChunksRef.current.push(e.data)
+      rec.onresult = (event: any) => {
+        let full = ''
+        for (let i = 0; i < event.results.length; ++i) {
+          const piece = event.results[i][0]?.transcript?.trim() || ''
+          if (!piece) continue
+          if (!full) {
+            full = piece
+          } else if (piece.toLowerCase().startsWith(full.toLowerCase())) {
+            full = piece
+          } else if (full.toLowerCase().endsWith(piece.toLowerCase())) {
+            // Duplicate suffix: ignore
+          } else {
+            full = `${full} ${piece}`
+          }
+        }
+        if (full) {
+          speechTextRef.current = full
+          setText(full)
         }
       }
-      recorder.start(100)
-      mediaRecorderRef.current = recorder
+
+      rec.onerror = (event: any) => {
+        if (event.error === 'not-allowed') {
+          alert('Microphone access blocked. Please allow microphone permissions in your mobile browser.')
+        } else if (event.error !== 'no-speech') {
+          console.debug('Speech recognition event:', event.error)
+        }
+      }
+
+      rec.onend = () => {
+        if (!isHoldingRef.current) {
+          setIsHolding(false)
+          onVoiceStateChange?.(false)
+        }
+      }
+
+      recognitionRef.current = rec
+      rec.start()
     } catch (err) {
-      console.error('Failed to start silent mic recording:', err)
-      setIsHolding(false)
+      console.error('Failed to start speech recognition:', err)
       isHoldingRef.current = false
+      setIsHolding(false)
       onVoiceStateChange?.(false)
     }
   }, [connected, disabled, transmitting, onVoiceStateChange])
@@ -175,166 +134,24 @@ export const CommandDeck = memo(function CommandDeck({
     setIsHolding(false)
     onVoiceStateChange?.(false)
 
-    const recorder = mediaRecorderRef.current
-    if (!recorder || recorder.state === 'inactive') return
-
-    recorder.stop()
-    await new Promise((r) => setTimeout(r, 120))
-
-    if (audioChunksRef.current.length > 0) {
-      const audioBlob = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' })
-      audioChunksRef.current = []
-      await sendAudioForTranscription(audioBlob)
-    }
-  }, [sendAudioForTranscription, onVoiceStateChange])
-
-  // Silent Continuous Hands-Free VAD (Zero Android Beeps)
-  useEffect(() => {
-    if (!handsFree || !connected || disabled || isHolding) {
-      cleanupAudio()
-      return
-    }
-
-    if (phase === 'processing' || phase === 'speaking') {
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-        try {
-          mediaRecorderRef.current.stop()
-        } catch {}
-      }
-      isHandsFreeRecordingRef.current = false
-      return
-    }
-
-    let isCancelled = false
-    let animFrame: number | null = null
-
-    const startSilentHandsFreeVAD = async () => {
+    if (recognitionRef.current) {
       try {
-        const stream = await getMicStream()
-        if (isCancelled) return
-
-        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
-        const ctx = new AudioCtx()
-        audioCtxRef.current = ctx
-
-        const source = ctx.createMediaStreamSource(stream)
-        const analyser = ctx.createAnalyser()
-        analyser.fftSize = 512
-        source.connect(analyser)
-
-        const dataArray = new Uint8Array(analyser.frequencyBinCount)
-
-        let baselineNoise = 0.02
-        let recordStartTime = 0
-        let maxUtteranceTimer: any = null
-
-        const startSpeechChunk = () => {
-          if (isHandsFreeRecordingRef.current || phase !== 'standby' || isHoldingRef.current) return
-          isHandsFreeRecordingRef.current = true
-          recordStartTime = Date.now()
-          setIsWoken(true)
-          isWokenRef.current = true
-          onVoiceStateChange?.(true)
-          audioChunksRef.current = []
-
-          try {
-            navigator.vibrate?.([40, 30, 40])
-          } catch {}
-
-          const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-            ? 'audio/webm;codecs=opus'
-            : 'audio/webm'
-
-          const recorder = new MediaRecorder(stream, { mimeType })
-          recorder.ondataavailable = (e) => {
-            if (e.data.size > 0) {
-              audioChunksRef.current.push(e.data)
-            }
-          }
-          recorder.start(100)
-          mediaRecorderRef.current = recorder
-
-          // Hard cap: max 4.5 seconds utterance so it NEVER gets stuck
-          if (maxUtteranceTimer) clearTimeout(maxUtteranceTimer)
-          maxUtteranceTimer = setTimeout(() => {
-            finishSpeechChunk()
-          }, 4500)
-        }
-
-        const finishSpeechChunk = async () => {
-          if (!isHandsFreeRecordingRef.current) return
-          isHandsFreeRecordingRef.current = false
-          if (maxUtteranceTimer) clearTimeout(maxUtteranceTimer)
-          if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
-          silenceTimerRef.current = null
-
-          const recorder = mediaRecorderRef.current
-          if (recorder && recorder.state === 'recording') {
-            recorder.stop()
-            await new Promise((r) => setTimeout(r, 120))
-            if (audioChunksRef.current.length > 0) {
-              const audioBlob = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' })
-              audioChunksRef.current = []
-              await sendAudioForTranscription(audioBlob)
-            }
-          }
-        }
-
-        // Silent RMS Monitor with dynamic baseline tracking
-        const checkRMS = () => {
-          if (isCancelled) return
-          analyser.getByteTimeDomainData(dataArray)
-          let sum = 0
-          for (let i = 0; i < dataArray.length; i++) {
-            const val = (dataArray[i] - 128) / 128
-            sum += val * val
-          }
-          const rms = Math.sqrt(sum / dataArray.length)
-
-          if (!isHandsFreeRecordingRef.current) {
-            baselineNoise = baselineNoise * 0.95 + rms * 0.05
-            const triggerThreshold = Math.max(0.045, baselineNoise * 1.5 + 0.02)
-            if (rms > triggerThreshold && phase === 'standby' && !isHoldingRef.current) {
-              startSpeechChunk()
-            }
-          } else {
-            const silenceThreshold = Math.max(0.035, baselineNoise * 1.25 + 0.01)
-            if (rms < silenceThreshold) {
-              if (!silenceTimerRef.current && Date.now() - recordStartTime > 800) {
-                silenceTimerRef.current = setTimeout(() => {
-                  finishSpeechChunk()
-                }, 1000)
-              }
-            } else {
-              if (silenceTimerRef.current) {
-                clearTimeout(silenceTimerRef.current)
-                silenceTimerRef.current = null
-              }
-            }
-          }
-
-          animFrame = requestAnimationFrame(checkRMS)
-        }
-
-        checkRMS()
-      } catch (err) {
-        console.warn('Hands-free VAD initialization failed:', err)
-        setHandsFree(false)
-        localStorage.setItem('sara_handsfree_wake', 'false')
-      }
+        recognitionRef.current.stop()
+      } catch {}
     }
 
-    startSilentHandsFreeVAD()
+    // Small delay to allow any pending final onresult audio packet from browser
+    await new Promise((r) => setTimeout(r, 60))
 
-    return () => {
-      isCancelled = true
-      if (animFrame) cancelAnimationFrame(animFrame)
-      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
-      cleanupAudio()
+    const promptToSend = speechTextRef.current.trim() || text.trim()
+    if (promptToSend && !transmitting && connected) {
+      setTransmitting(true)
+      await onSend(promptToSend)
+      setText('')
+      speechTextRef.current = ''
+      setTransmitting(false)
     }
-  }, [handsFree, connected, disabled, isHolding, phase])
-
-
+  }, [text, transmitting, connected, onSend, onVoiceStateChange])
 
   // Unified Pointer Handlers for Mobile Touch + Desktop Mouse
   const handlePointerDown = (e: React.PointerEvent) => {
@@ -382,6 +199,7 @@ export const CommandDeck = memo(function CommandDeck({
 
     setTransmitting(true)
     setText('')
+    speechTextRef.current = ''
     await onSend(trimmed)
     setTransmitting(false)
   }
@@ -398,7 +216,7 @@ export const CommandDeck = memo(function CommandDeck({
 
   return (
     <div className="w-full space-y-2.5">
-      {/* 1. Hold-To-Talk Voice Button + Hands-Free "Hey S.A.R.A." Toggle */}
+      {/* 1. Hold-To-Talk Voice Button (Unified Pointer Events) */}
       <div className="flex items-center gap-2">
         <button
           type="button"
@@ -407,7 +225,7 @@ export const CommandDeck = memo(function CommandDeck({
           onPointerCancel={handlePointerUp}
           onPointerLeave={isHolding ? handlePointerUp : undefined}
           disabled={!connected || disabled}
-          className={`flex-1 py-2.5 sm:py-3 px-3 sm:px-4 rounded font-display text-[11px] sm:text-xs tracking-[0.2em] sm:tracking-[0.25em] font-bold flex items-center justify-center gap-2 transition-all select-none touch-none active:scale-[0.98] ${
+          className={`flex-1 py-2.5 sm:py-3 px-4 rounded font-display text-[11px] sm:text-xs tracking-[0.2em] sm:tracking-[0.25em] font-bold flex items-center justify-center gap-2 transition-all select-none touch-none active:scale-[0.98] ${
             isHolding
               ? 'bg-[#41e6ff] text-[#03070b] shadow-[0_0_25px_#41e6ff] animate-pulse border border-[#7ef3ff]'
               : isListening
@@ -423,31 +241,9 @@ export const CommandDeck = memo(function CommandDeck({
           ) : (
             <>
               <Mic size={15} className="text-[#41e6ff]" />
-              <span>HOLD TO TALK</span>
+              <span>HOLD TO TALK // PUSH-TO-TALK</span>
             </>
           )}
-        </button>
-
-        <button
-          type="button"
-          onClick={toggleHandsFree}
-          disabled={!connected || disabled}
-          title={handsFree ? 'Hands-Free Wake Word is Active (Say "Hey Sara")' : 'Click to enable Hands-Free "Hey Sara" Wake Word'}
-          className={`py-2.5 sm:py-3 px-3 rounded font-display text-[10px] sm:text-[11px] tracking-wider font-semibold flex items-center gap-1.5 transition-all select-none shrink-0 border ${
-            handsFree
-              ? isWoken
-                ? 'bg-[#34d399] text-[#03070b] border-[#34d399] shadow-[0_0_20px_#34d399] animate-bounce'
-                : 'bg-[rgba(16,185,129,0.15)] text-[#34d399] border-[#34d399] shadow-[0_0_12px_rgba(16,185,129,0.3)]'
-              : 'bg-[rgba(6,14,21,0.85)] text-[#7da4b8] border-[rgba(65,230,255,0.2)] hover:border-[#41e6ff] hover:text-[#41e6ff]'
-          } disabled:opacity-40 disabled:pointer-events-none`}
-        >
-          <Radio size={14} className={handsFree ? 'animate-pulse text-[#34d399]' : 'text-[#7da4b8]'} />
-          <span className="hidden sm:inline">
-            {handsFree ? (isWoken ? 'HEY SARA: ACTIVE' : 'WAKE WORD ON') : 'HEY SARA: OFF'}
-          </span>
-          <span className="sm:hidden">
-            {handsFree ? (isWoken ? 'SARA WOKE' : 'WAKE ON') : 'WAKE OFF'}
-          </span>
         </button>
       </div>
 
