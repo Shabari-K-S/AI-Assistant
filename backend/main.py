@@ -743,17 +743,12 @@ def _run_assistant(cfg, once: bool, text: str | None) -> int:
                             return 0
                         continue
                     is_wakeword_mode = cfg.audio.trigger == "wakeword"
-                    if is_wakeword_mode and cfg.audio.wake_phrase_required and not _has_wake_phrase(user_text, cfg.audio.wake_phrases):
-                        print(_WAKE_REQUIRED_HINT, flush=True)
-                        if bus is not None:
-                            bus.set(phase="standby")
-                            bus.log("WARN", _WAKE_REQUIRED_HINT)
-                        if trigger is not None:
-                            trigger.quiet_until(time.monotonic() + cfg.audio.wake_empty_cooldown)
-                        if once:
-                            return 0
-                        continue
-                    user_text = _strip_wake_phrase(user_text, cfg.audio.wake_phrases)
+                    clean_query = _strip_wake_phrase(user_text, cfg.audio.wake_phrases)
+                    if clean_query:
+                        user_text = clean_query
+                    else:
+                        user_text = user_text.strip()
+
                     if not user_text:
                         if trigger is not None and is_wakeword_mode and relisten_count < cfg.audio.wake_relisten_max:
                             relisten_count += 1

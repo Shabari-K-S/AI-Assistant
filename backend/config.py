@@ -213,7 +213,7 @@ def load_config() -> Config:
             wake_relisten_max=int(_env_float("EV_WAKE_RELISTEN_MAX", 2)),
             wake_response_cooldown=_env_float("EV_WAKE_RESPONSE_COOLDOWN", 4.0),
             wake_phrases=_csv_tuple("EV_WAKE_PHRASES", ("sara", "hey sara", "alexa")),
-            wake_phrase_required=_env_bool("EV_WAKE_PHRASE_REQUIRED", True),
+            wake_phrase_required=_env_bool("EV_WAKE_PHRASE_REQUIRED", False),
         ),
         stt=STTConfig(
             provider=_env("EV_STT_PROVIDER", "local").lower(),

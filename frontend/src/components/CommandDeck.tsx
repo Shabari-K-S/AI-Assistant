@@ -121,6 +121,7 @@ export const CommandDeck = memo(function CommandDeck({
           const data = await res.json()
           if (data.ok && data.text) {
             setText(data.text)
+            await onSend(data.text)
           }
         } catch (err) {
           console.error('Transcription upload failed:', err)
