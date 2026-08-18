@@ -477,8 +477,8 @@ def handle_camera_vision(args: dict[str, Any]) -> str:
                     {
                         "parts": [
                             {
-                                "inline_data": {
-                                    "mime_type": "image/jpeg",
+                                "inlineData": {
+                                    "mimeType": "image/jpeg",
                                     "data": img_b64,
                                 }
                             },
@@ -498,11 +498,12 @@ def handle_camera_vision(args: dict[str, Any]) -> str:
             vision_models = [
                 m for m in [
                     custom_vision_model,
-                    "gemini-2.5-flash-lite",
-                    "gemini-2.0-flash-lite",
+                    "gemini-flash-lite-latest",
+                    "gemini-3.1-flash-lite",
+                    "gemini-3.5-flash-lite",
+                    "gemini-flash-latest",
+                    "gemini-3-flash-preview",
                     "gemini-2.5-flash",
-                    "gemini-1.5-flash",
-                    "gemini-2.5-pro",
                 ] if m
             ]
             analysis = None
