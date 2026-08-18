@@ -128,22 +128,22 @@ export const CommandDeck = memo(function CommandDeck({
           // Check for Wake Phrases: "hey sara", "okay sara", "ok sara", "sara", "hey sarah", "hi sara"
           const wakeMatch = lower.match(/\b(?:hey|okay|ok|hi|hello)?\s*sara(?:h)?\b/i)
 
-          if (wakeMatch) {
+          if (wakeMatch || isWokenRef.current) {
             if (!isWokenRef.current) {
               isWokenRef.current = true
               setIsWoken(true)
               onVoiceStateChange?.(true)
-              soundFx.wakeDetected()
               try {
                 navigator.vibrate?.([40, 30, 40])
               } catch {}
             }
 
-            const cleanQuery = fullText
-              .replace(/.*?\b(?:hey\s+|okay\s+|ok\s+|hi\s+|hello\s+)?sara(?:h)?\b[\s,:]*/i, '')
-              .trim()
+            const cleanQuery = (
+              fullText.replace(/.*?\b(?:hey\s+|okay\s+|ok\s+|hi\s+|hello\s+)?sara(?:h)?\b[\s,:]*/i, '').trim() ||
+              fullText.trim()
+            )
 
-            if (cleanQuery) {
+            if (cleanQuery.length > 1) {
               setText(cleanQuery)
               speechTextRef.current = cleanQuery
 
@@ -163,7 +163,7 @@ export const CommandDeck = memo(function CommandDeck({
                   await onSend(queryToSend)
                   setTransmitting(false)
                 }
-              }, 1100)
+              }, 900)
             }
           }
         }
@@ -179,7 +179,7 @@ export const CommandDeck = memo(function CommandDeck({
           wakeRecRef.current = null
 
           // If there is pending query when onend fires -> send it immediately
-          if (isWokenRef.current && speechTextRef.current.trim() && !transmitting) {
+          if (speechTextRef.current.trim() && !transmitting) {
             const queryToSend = speechTextRef.current.trim()
             setTransmitting(true)
             setIsWoken(false)
@@ -191,14 +191,14 @@ export const CommandDeck = memo(function CommandDeck({
             return
           }
 
-          // Smooth 700ms cooldown before restarting to eliminate Android beep storm
+          // Smooth restart
           if (active && handsFree && phase === 'standby' && !isHoldingRef.current) {
             if (restartTimer) clearTimeout(restartTimer)
             restartTimer = setTimeout(() => {
               if (active && handsFree && phase === 'standby' && !isHoldingRef.current) {
                 startRecognitionSession()
               }
-            }, 700)
+            }, 600)
           }
         }
 

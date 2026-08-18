@@ -360,6 +360,63 @@ class _Handler(BaseHTTPRequestHandler):
             self._json({"ok": True, "prompt": prompt})
             return
 
+        if path == "/transcribe":
+            audio_b64 = str(body.get("audio_b64") or "").strip()
+            mime_type = str(body.get("mime_type") or "audio/webm").strip()
+            if not audio_b64:
+                self._json({"ok": False, "error": "audio_b64 required"}, 400)
+                return
+
+            api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+            if not api_key:
+                self._json({"ok": False, "error": "GEMINI_API_KEY not configured for audio STT"}, 400)
+                return
+
+            try:
+                import httpx
+                payload = {
+                    "contents": [
+                        {
+                            "parts": [
+                                {
+                                    "inlineData": {
+                                        "mimeType": mime_type,
+                                        "data": audio_b64,
+                                    }
+                                },
+                                {
+                                    "text": "Transcribe the exact spoken words in this audio clip. Return ONLY the plain transcribed text without commentary or quotes."
+                                }
+                            ]
+                        }
+                    ]
+                }
+                url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent"
+                headers = {"Content-Type": "application/json", "x-goog-api-key": api_key}
+                resp = httpx.post(url, headers=headers, json=payload, timeout=15.0)
+                resp.raise_for_status()
+                res_data = resp.json()
+                transcribed_text = ""
+                try:
+                    candidates = res_data.get("candidates", [])
+                    if candidates:
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        transcribed_text = "".join(p.get("text", "") for p in parts).strip()
+                except Exception:
+                    pass
+
+                if transcribed_text:
+                    bus.inject_prompt(transcribed_text)
+                    bus.log("INFO", f"🎙️ Transcribed Speech: '{transcribed_text}'")
+                    self._json({"ok": True, "text": transcribed_text})
+                else:
+                    self._json({"ok": False, "error": "No speech detected"}, 200)
+                return
+            except Exception as exc:
+                log.exception("Silent audio transcription failed")
+                self._json({"ok": False, "error": str(exc)}, 500)
+                return
+
         if path == "/ptt":
             state = str(body.get("state") or "").lower().strip()
             if state == "press":
