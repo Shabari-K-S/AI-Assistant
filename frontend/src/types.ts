@@ -79,7 +79,8 @@ export const DEFAULT_SNAPSHOT: Snapshot = {
  * Override with ?bridge=http://host:port.
  */
 export const BRIDGE_URL =
-  new URLSearchParams(window.location.search).get('bridge') ?? '/bridge'
+  new URLSearchParams(window.location.search).get('bridge') ??
+  (window.location.port === '2026' ? '/bridge' : '')
 
 export interface McpTool {
   name: string
