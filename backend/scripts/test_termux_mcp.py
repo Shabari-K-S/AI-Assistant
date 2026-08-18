@@ -16,11 +16,13 @@ from termux_mcp_server import (
     handle_vibrate_phone,
     handle_clipboard_sync,
     handle_notification_send,
+    handle_notification_list,
     handle_camera_vision,
     handle_location_get,
     handle_server_check,
     TOOLS,
 )
+from tools import _sanitize_schema_for_gemini
 
 
 def test_termux_mcp():
@@ -74,30 +76,51 @@ def test_termux_mcp():
     assert "notification" in notif_res.lower()
     print("   ✅ Android push notification handler passed.")
 
-    # 7. Test Camera Pocket Vision
-    print("\n7. Testing Camera Pocket Vision Handler...")
-    cam_res = handle_camera_vision({"camera_id": 0, "prompt": "Analyze desk setup."})
+    # 7. Test Android Notification List
+    print("\n7. Testing Android Notification List...")
+    notif_list_res = handle_notification_list({"limit": 5})
+    print(f"   Notification List output:\n{notif_list_res}")
+    assert "notification" in notif_list_res.lower()
+    print("   ✅ Android notification list handler passed.")
+
+    # 8. Test Camera Pocket Vision
+    print("\n8. Testing Camera Pocket Vision Handler...")
+    cam_res = handle_camera_vision({"camera_id": "0", "prompt": "Analyze desk setup."})
     print(f"   Camera output: {cam_res}")
     assert "camera" in cam_res.lower() or "vision" in cam_res.lower() or "photo" in cam_res.lower()
     print("   ✅ Camera pocket vision handler passed.")
 
-    # 8. Test GPS Location
-    print("\n8. Testing Android GPS Location Handler...")
+    # 9. Test GPS Location
+    print("\n9. Testing Android GPS Location Handler...")
     loc_res = handle_location_get({"provider": "network"})
     print(f"   Location output: {loc_res}")
     assert "location" in loc_res.lower() or "lat" in loc_res.lower()
     print("   ✅ GPS location handler passed.")
 
-    # 9. Test Pocket DevOps Server Check
-    print("\n9. Testing Pocket DevOps Server & Port Check...")
+    # 10. Test Pocket DevOps Server Check
+    print("\n10. Testing Pocket DevOps Server & Port Check...")
     devops_res = handle_server_check({"host": "127.0.0.1", "port": 80, "timeout_seconds": 1.0})
     print(f"   DevOps output: {devops_res}")
     assert "Pocket DevOps" in devops_res
     print("   ✅ Pocket DevOps server check passed.")
 
-    print(f"\n10. Total Registered Android Tools in MCP Schema: {len(TOOLS)}")
-    assert len(TOOLS) == 8
-    print("   ✅ All 8 tools defined in JSON Schema.")
+    print(f"\n11. Total Registered Android Tools in MCP Schema: {len(TOOLS)}")
+    assert len(TOOLS) == 9
+    print("   ✅ All 9 tools defined in JSON Schema.")
+
+    # 12. Test Gemini Pydantic Schema Validation
+    print("\n12. Validating Tool Schemas against Gemini types.Tool...")
+    try:
+        from google.genai import types
+        gemini_tools = [
+            {"name": t["name"], "description": t["description"], "parameters": _sanitize_schema_for_gemini(t["inputSchema"])}
+            for t in TOOLS
+        ]
+        tool_obj = types.Tool(function_declarations=gemini_tools)
+        print("   ✅ Gemini types.Tool successfully validated all 9 tool declarations with ZERO schema errors!")
+    except Exception as exc:
+        print(f"   ❌ Schema validation error: {exc}")
+        raise
 
     print("\n" + "=" * 70)
     print("✅ ALL ANDROID TERMUX MOBILE SUPERPOWERS TESTS PASSED SUCCESSFULLY!")

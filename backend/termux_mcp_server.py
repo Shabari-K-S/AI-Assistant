@@ -142,16 +142,30 @@ TOOLS = [
         },
     },
     {
+        "name": "android_notification_list",
+        "description": "List currently active notifications in the Android notification tray (e.g. WhatsApp, SMS, Email, System alerts) via Termux:API.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of notifications to return (default: 10).",
+                    "default": 10,
+                }
+            },
+        },
+    },
+    {
         "name": "android_camera_vision",
-        "description": "Snap a real-time photo from rear (0) or front/selfie (1) camera and analyze what is visible with multimodal AI vision.",
+        "description": "Snap a real-time photo from rear (0/back) or front/selfie (1/front) camera and analyze what is visible with multimodal AI vision.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "camera_id": {
-                    "type": "integer",
-                    "enum": [0, 1],
-                    "description": "0 for back/rear camera, 1 for front/selfie camera (default: 0).",
-                    "default": 0,
+                    "type": "string",
+                    "enum": ["0", "1", "back", "front"],
+                    "description": "'0' or 'back' for rear camera, '1' or 'front' for selfie camera (default: '0').",
+                    "default": "0",
                 },
                 "prompt": {
                     "type": "string",
@@ -329,9 +343,46 @@ def handle_notification_send(args: dict[str, Any]) -> str:
     return f"🔔 Android push notification posted: **{title}**"
 
 
+def handle_notification_list(args: dict[str, Any]) -> str:
+    """Read active notifications from the Android pull-down notification tray."""
+    limit = max(1, min(30, int(args.get("limit", 10))))
+
+    if not is_android_termux():
+        return (
+            "🔔 [Desktop Simulation]: Simulated Active Android Notifications:\n"
+            "1. **WhatsApp** (Alex): 'Hey, are we meeting at 4 PM today?'\n"
+            "2. **Gmail** (GitHub): '[Security Alert] New sign-in from Linux'\n"
+            "3. **System**: 'Battery fully charged (100%)'\n"
+            "(On Android Termux, this queries live notifications via termux-notification-list)."
+        )
+
+    code, stdout, stderr = _run_termux_cmd(["termux-notification-list"], timeout=6.0)
+    if code != 0 or not stdout:
+        return f"Error reading Android notifications: {stderr or 'No output from termux-notification-list'}"
+
+    try:
+        items = json.loads(stdout)
+        if not items:
+            return "🔔 No active notifications currently present in your Android notification tray."
+
+        out = [f"🔔 **Active Android Notifications ({len(items)} total, showing top {min(limit, len(items))}):**\n"]
+        for idx, notif in enumerate(items[:limit], 1):
+            pkg = notif.get("packageName", "").split(".")[-1].capitalize() or "App"
+            title = notif.get("title", "No Title")
+            content = notif.get("content", notif.get("text", "No Content"))
+            when = notif.get("when", "")
+            time_str = f" ({when})" if when else ""
+            out.append(f"{idx}. **{pkg}** — **{title}**: {content}{time_str}")
+
+        return "\n".join(out)
+    except Exception as exc:
+        return f"Error parsing notifications JSON: {exc}\nRaw output: {stdout[:300]}"
+
+
 def handle_camera_vision(args: dict[str, Any]) -> str:
     """Snap a photo from phone camera and perform vision analysis."""
-    camera_id = int(args.get("camera_id", 0))
+    raw_cam = str(args.get("camera_id", "0")).strip().lower()
+    camera_id = 1 if raw_cam in ("1", "front", "selfie") else 0
     prompt = str(args.get("prompt", "Describe this image in detail.")).strip()
 
     photo_dir = Path(__file__).resolve().parent / "data" / "camera"
@@ -446,6 +497,8 @@ def handle_call_tool(params: dict[str, Any]) -> dict[str, Any]:
         out = handle_clipboard_sync(args)
     elif name == "android_notification_send":
         out = handle_notification_send(args)
+    elif name == "android_notification_list":
+        out = handle_notification_list(args)
     elif name == "android_camera_vision":
         out = handle_camera_vision(args)
     elif name == "android_location_get":

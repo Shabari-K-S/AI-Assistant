@@ -421,6 +421,25 @@ def _make_web_search() -> Callable[[dict], str]:
     return web_search
 
 
+def _sanitize_schema_for_gemini(param_dict: Any) -> Any:
+    """Recursively ensure all enums are string lists and types are compliant with Gemini Pydantic schema."""
+    if not isinstance(param_dict, dict):
+        return param_dict
+
+    clean = dict(param_dict)
+    if "enum" in clean and isinstance(clean["enum"], (list, tuple)):
+        clean["enum"] = [str(item) for item in clean["enum"]]
+
+    if "properties" in clean and isinstance(clean["properties"], dict):
+        clean["properties"] = {
+            k: _sanitize_schema_for_gemini(v) for k, v in clean["properties"].items()
+        }
+    if "items" in clean and isinstance(clean["items"], dict):
+        clean["items"] = _sanitize_schema_for_gemini(clean["items"])
+
+    return clean
+
+
 class ToolRegistry:
     """Holds the Tool definitions and dispatches execution safely."""
 
@@ -867,7 +886,14 @@ class ToolRegistry:
             for t in self._tools.values()
         ]
         if format == "gemini":
-            return base
+            return [
+                {
+                    "name": t["name"],
+                    "description": t["description"],
+                    "parameters": _sanitize_schema_for_gemini(t["parameters"]),
+                }
+                for t in base
+            ]
         if format == "openai":
             return [
                 {
