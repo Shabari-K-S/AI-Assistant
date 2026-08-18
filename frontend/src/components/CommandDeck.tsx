@@ -1,5 +1,6 @@
 import { memo, useState, useEffect, useCallback, useRef } from 'react'
 import { soundFx } from '../lib/soundFx'
+import { BRIDGE_URL } from '../types'
 import { Send, Terminal, Activity, CloudSun, GitBranch, ExternalLink, Mic, Radio, BookOpen, Sparkles } from 'lucide-react'
 
 interface Props {
@@ -38,295 +39,131 @@ export const CommandDeck = memo(function CommandDeck({
   })
   const [isWoken, setIsWoken] = useState(false)
 
-  const recognitionRef = useRef<any>(null)
-  const wakeRecRef = useRef<any>(null)
-  const speechTextRef = useRef<string>('')
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+  const micStreamRef = useRef<MediaStream | null>(null)
+  const audioCtxRef = useRef<AudioContext | null>(null)
   const isHoldingRef = useRef<boolean>(false)
   const isWokenRef = useRef<boolean>(false)
-  const wakeDebounceRef = useRef<any>(null)
+  const isHandsFreeRecordingRef = useRef<boolean>(false)
+  const silenceTimerRef = useRef<any>(null)
 
-  // Save handsfree preference
+  // Toggle Hands-Free
   const toggleHandsFree = () => {
     soundFx.click()
     const next = !handsFree
     setHandsFree(next)
     localStorage.setItem('sara_handsfree_wake', String(next))
-    if (!next && wakeRecRef.current) {
-      try {
-        wakeRecRef.current.abort()
-      } catch {}
-      wakeRecRef.current = null
-      setIsWoken(false)
-      isWokenRef.current = false
+    if (!next) {
+      cleanupAudio()
     }
   }
 
-  // Smooth Hands-Free "Hey S.A.R.A." Continuous Speech Engine
-  useEffect(() => {
-    if (!handsFree || !connected || disabled || isHolding) {
-      if (wakeRecRef.current) {
-        try {
-          wakeRecRef.current.abort()
-        } catch {}
-        wakeRecRef.current = null
-      }
-      setIsWoken(false)
-      isWokenRef.current = false
-      return
-    }
-
-    // Do not listen for wake word if assistant is already processing or speaking
-    if (phase === 'processing' || phase === 'speaking') {
-      if (wakeRecRef.current) {
-        try {
-          wakeRecRef.current.abort()
-        } catch {}
-        wakeRecRef.current = null
-      }
-      setIsWoken(false)
-      isWokenRef.current = false
-      return
-    }
-
-    const SpeechRec =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-
-    if (!SpeechRec) return
-
-    let active = true
-    let restartTimer: any = null
-
-    const startRecognitionSession = () => {
-      if (!active || !handsFree || phase !== 'standby' || isHoldingRef.current) return
-
+  const cleanupAudio = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       try {
-        const rec = new SpeechRec()
-        rec.continuous = true
-        rec.interimResults = true
-        rec.lang = 'en-US'
-        rec.maxAlternatives = 1
-
-        rec.onresult = (event: any) => {
-          let fullText = ''
-          for (let i = 0; i < event.results.length; ++i) {
-            const piece = event.results[i][0]?.transcript?.trim() || ''
-            if (!piece) continue
-            if (!fullText) {
-              fullText = piece
-            } else if (piece.toLowerCase().startsWith(fullText.toLowerCase())) {
-              fullText = piece
-            } else if (fullText.toLowerCase().endsWith(piece.toLowerCase())) {
-              // duplicate suffix - ignore
-            } else {
-              fullText = `${fullText} ${piece}`
-            }
-          }
-
-          if (!fullText) return
-          const lower = fullText.toLowerCase()
-
-          // Check for Wake Phrases: "hey sara", "okay sara", "ok sara", "sara", "hey sarah", "hi sara"
-          const wakeMatch = lower.match(/\b(?:hey|okay|ok|hi|hello)?\s*sara(?:h)?\b/i)
-
-          if (wakeMatch || isWokenRef.current) {
-            if (!isWokenRef.current) {
-              isWokenRef.current = true
-              setIsWoken(true)
-              onVoiceStateChange?.(true)
-              try {
-                navigator.vibrate?.([40, 30, 40])
-              } catch {}
-            }
-
-            const cleanQuery = (
-              fullText.replace(/.*?\b(?:hey\s+|okay\s+|ok\s+|hi\s+|hello\s+)?sara(?:h)?\b[\s,:]*/i, '').trim() ||
-              fullText.trim()
-            )
-
-            if (cleanQuery.length > 1) {
-              setText(cleanQuery)
-              speechTextRef.current = cleanQuery
-
-              if (wakeDebounceRef.current) clearTimeout(wakeDebounceRef.current)
-              wakeDebounceRef.current = setTimeout(async () => {
-                if (speechTextRef.current.trim() && !transmitting) {
-                  const queryToSend = speechTextRef.current.trim()
-                  setTransmitting(true)
-                  setIsWoken(false)
-                  isWokenRef.current = false
-                  onVoiceStateChange?.(false)
-                  setText('')
-                  speechTextRef.current = ''
-                  try {
-                    rec.abort()
-                  } catch {}
-                  await onSend(queryToSend)
-                  setTransmitting(false)
-                }
-              }, 900)
-            }
-          }
-        }
-
-        rec.onerror = (event: any) => {
-          if (event.error === 'not-allowed') {
-            setHandsFree(false)
-            localStorage.setItem('sara_handsfree_wake', 'false')
-          }
-        }
-
-        rec.onend = () => {
-          wakeRecRef.current = null
-
-          // If there is pending query when onend fires -> send it immediately
-          if (speechTextRef.current.trim() && !transmitting) {
-            const queryToSend = speechTextRef.current.trim()
-            setTransmitting(true)
-            setIsWoken(false)
-            isWokenRef.current = false
-            onVoiceStateChange?.(false)
-            setText('')
-            speechTextRef.current = ''
-            onSend(queryToSend).finally(() => setTransmitting(false))
-            return
-          }
-
-          // Smooth restart
-          if (active && handsFree && phase === 'standby' && !isHoldingRef.current) {
-            if (restartTimer) clearTimeout(restartTimer)
-            restartTimer = setTimeout(() => {
-              if (active && handsFree && phase === 'standby' && !isHoldingRef.current) {
-                startRecognitionSession()
-              }
-            }, 600)
-          }
-        }
-
-        wakeRecRef.current = rec
-        rec.start()
-      } catch {
-        if (active && handsFree && phase === 'standby') {
-          restartTimer = setTimeout(startRecognitionSession, 1000)
-        }
-      }
-    }
-
-    startRecognitionSession()
-
-    return () => {
-      active = false
-      if (restartTimer) clearTimeout(restartTimer)
-      if (wakeDebounceRef.current) clearTimeout(wakeDebounceRef.current)
-      if (wakeRecRef.current) {
-        try {
-          wakeRecRef.current.abort()
-        } catch {}
-        wakeRecRef.current = null
-      }
-      setIsWoken(false)
-      isWokenRef.current = false
-    }
-  }, [handsFree, connected, disabled, isHolding, phase, transmitting, onSend, onVoiceStateChange])
-
-  // Clean up recognition instance on unmount
-  useEffect(() => {
-    return () => {
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.abort()
-        } catch {}
-      }
-      if (wakeRecRef.current) {
-        try {
-          wakeRecRef.current.abort()
-        } catch {}
-      }
-    }
-  }, [])
-
-  const startHoldVoice = useCallback(() => {
-    if (!connected || disabled || transmitting || isHoldingRef.current) return
-
-    // Temporarily pause hands-free wake if active
-    if (wakeRecRef.current) {
-      try {
-        wakeRecRef.current.abort()
+        mediaRecorderRef.current.stop()
       } catch {}
     }
-
-    const SpeechRec =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-
-    if (!SpeechRec) {
-      alert(
-        'Speech Recognition is not supported by this browser. Please use Google Chrome on Android or Safari on iOS.',
-      )
-      return
+    if (micStreamRef.current) {
+      micStreamRef.current.getTracks().forEach((t) => t.stop())
+      micStreamRef.current = null
     }
-
-    if (recognitionRef.current) {
+    if (audioCtxRef.current) {
       try {
-        recognitionRef.current.abort()
+        audioCtxRef.current.close()
       } catch {}
-      recognitionRef.current = null
+      audioCtxRef.current = null
     }
+    setIsWoken(false)
+    isWokenRef.current = false
+    isHandsFreeRecordingRef.current = false
+    setIsHolding(false)
+    isHoldingRef.current = false
+  }
 
+  // Get or initialize silent mic stream (Zero Android Beeps)
+  const getMicStream = async () => {
+    if (!micStreamRef.current || !micStreamRef.current.active) {
+      micStreamRef.current = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      })
+    }
+    return micStreamRef.current
+  }
+
+  // Transmit audio blob silently to /bridge/transcribe
+  const sendAudioForTranscription = async (blob: Blob) => {
+    if (blob.size < 1000) return
+    setTransmitting(true)
     try {
-      soundFx.click()
-      isHoldingRef.current = true
-      setIsHolding(true)
-      onVoiceStateChange?.(true)
-      speechTextRef.current = ''
-      setText('')
+      const reader = new FileReader()
+      reader.onloadend = async () => {
+        const base64Data = (reader.result as string).split(',')[1]
+        if (!base64Data) {
+          setTransmitting(false)
+          return
+        }
 
-      const rec = new SpeechRec()
-      rec.continuous = false
-      rec.interimResults = true
-      rec.lang = 'en-US'
-      rec.maxAlternatives = 1
-
-      rec.onresult = (event: any) => {
-        let full = ''
-        for (let i = 0; i < event.results.length; ++i) {
-          const piece = event.results[i][0]?.transcript?.trim() || ''
-          if (!piece) continue
-          if (!full) {
-            full = piece
-          } else if (piece.toLowerCase().startsWith(full.toLowerCase())) {
-            full = piece
-          } else if (full.toLowerCase().endsWith(piece.toLowerCase())) {
-            // ignore
-          } else {
-            full = `${full} ${piece}`
+        try {
+          const res = await fetch(`${BRIDGE_URL}/transcribe`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              audio_b64: base64Data,
+              mime_type: blob.type || 'audio/webm',
+            }),
+          })
+          const data = await res.json()
+          if (data.ok && data.text) {
+            setText(data.text)
           }
-        }
-        if (full) {
-          speechTextRef.current = full
-          setText(full)
-        }
-      }
-
-      rec.onerror = (event: any) => {
-        if (event.error === 'not-allowed') {
-          alert('Microphone access blocked. Please allow microphone permissions in your mobile browser.')
-        } else if (event.error !== 'no-speech') {
-          console.debug('Speech recognition event:', event.error)
-        }
-      }
-
-      rec.onend = () => {
-        if (!isHoldingRef.current) {
-          setIsHolding(false)
+        } catch (err) {
+          console.error('Transcription upload failed:', err)
+        } finally {
+          setTransmitting(false)
+          setIsWoken(false)
+          isWokenRef.current = false
           onVoiceStateChange?.(false)
         }
       }
+      reader.readAsDataURL(blob)
+    } catch {
+      setTransmitting(false)
+    }
+  }
 
-      recognitionRef.current = rec
-      rec.start()
+  // 100% Silent Hold-to-Talk (Pure HTML5 MediaRecorder - Zero Android Beeps)
+  const startHoldVoice = useCallback(async () => {
+    if (!connected || disabled || transmitting || isHoldingRef.current) return
+
+    try {
+      isHoldingRef.current = true
+      setIsHolding(true)
+      onVoiceStateChange?.(true)
+      audioChunksRef.current = []
+
+      const stream = await getMicStream()
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : 'audio/webm'
+
+      const recorder = new MediaRecorder(stream, { mimeType })
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          audioChunksRef.current.push(e.data)
+        }
+      }
+      recorder.start(100)
+      mediaRecorderRef.current = recorder
     } catch (err) {
-      console.error('Failed to start speech recognition:', err)
-      isHoldingRef.current = false
+      console.error('Failed to start silent mic recording:', err)
       setIsHolding(false)
+      isHoldingRef.current = false
       onVoiceStateChange?.(false)
     }
   }, [connected, disabled, transmitting, onVoiceStateChange])
@@ -337,24 +174,140 @@ export const CommandDeck = memo(function CommandDeck({
     setIsHolding(false)
     onVoiceStateChange?.(false)
 
-    if (recognitionRef.current) {
+    const recorder = mediaRecorderRef.current
+    if (!recorder || recorder.state === 'inactive') return
+
+    recorder.stop()
+    await new Promise((r) => setTimeout(r, 120))
+
+    if (audioChunksRef.current.length > 0) {
+      const audioBlob = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' })
+      audioChunksRef.current = []
+      await sendAudioForTranscription(audioBlob)
+    }
+  }, [sendAudioForTranscription, onVoiceStateChange])
+
+  // Silent Continuous Hands-Free VAD (Zero Android Beeps)
+  useEffect(() => {
+    if (!handsFree || !connected || disabled || isHolding) {
+      cleanupAudio()
+      return
+    }
+
+    if (phase === 'processing' || phase === 'speaking') {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        try {
+          mediaRecorderRef.current.stop()
+        } catch {}
+      }
+      isHandsFreeRecordingRef.current = false
+      return
+    }
+
+    let isCancelled = false
+    let animFrame: number | null = null
+
+    const startSilentHandsFreeVAD = async () => {
       try {
-        recognitionRef.current.stop()
-      } catch {}
+        const stream = await getMicStream()
+        if (isCancelled) return
+
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
+        const ctx = new AudioCtx()
+        audioCtxRef.current = ctx
+
+        const source = ctx.createMediaStreamSource(stream)
+        const analyser = ctx.createAnalyser()
+        analyser.fftSize = 512
+        source.connect(analyser)
+
+        const dataArray = new Uint8Array(analyser.frequencyBinCount)
+
+        const startSpeechChunk = () => {
+          if (isHandsFreeRecordingRef.current || phase !== 'standby' || isHoldingRef.current) return
+          isHandsFreeRecordingRef.current = true
+          setIsWoken(true)
+          isWokenRef.current = true
+          onVoiceStateChange?.(true)
+          audioChunksRef.current = []
+
+          try {
+            navigator.vibrate?.([40, 30, 40])
+          } catch {}
+
+          const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+            ? 'audio/webm;codecs=opus'
+            : 'audio/webm'
+
+          const recorder = new MediaRecorder(stream, { mimeType })
+          recorder.ondataavailable = (e) => {
+            if (e.data.size > 0) {
+              audioChunksRef.current.push(e.data)
+            }
+          }
+          recorder.start(100)
+          mediaRecorderRef.current = recorder
+        }
+
+        const finishSpeechChunk = async () => {
+          if (!isHandsFreeRecordingRef.current) return
+          isHandsFreeRecordingRef.current = false
+
+          const recorder = mediaRecorderRef.current
+          if (recorder && recorder.state === 'recording') {
+            recorder.stop()
+            await new Promise((r) => setTimeout(r, 120))
+            if (audioChunksRef.current.length > 0) {
+              const audioBlob = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' })
+              audioChunksRef.current = []
+              await sendAudioForTranscription(audioBlob)
+            }
+          }
+        }
+
+        // Silent RMS Monitor
+        const checkRMS = () => {
+          if (isCancelled) return
+          analyser.getByteTimeDomainData(dataArray)
+          let sum = 0
+          for (let i = 0; i < dataArray.length; i++) {
+            const val = (dataArray[i] - 128) / 128
+            sum += val * val
+          }
+          const rms = Math.sqrt(sum / dataArray.length)
+
+          if (rms > 0.045 && phase === 'standby' && !isHoldingRef.current) {
+            if (!isHandsFreeRecordingRef.current) {
+              startSpeechChunk()
+            }
+            if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
+            silenceTimerRef.current = setTimeout(() => {
+              finishSpeechChunk()
+            }, 1400)
+          }
+
+          animFrame = requestAnimationFrame(checkRMS)
+        }
+
+        checkRMS()
+      } catch (err) {
+        console.warn('Hands-free VAD initialization failed:', err)
+        setHandsFree(false)
+        localStorage.setItem('sara_handsfree_wake', 'false')
+      }
     }
 
-    // Small delay to allow any pending final onresult audio packet from browser
-    await new Promise((r) => setTimeout(r, 60))
+    startSilentHandsFreeVAD()
 
-    const promptToSend = speechTextRef.current.trim() || text.trim()
-    if (promptToSend && !transmitting && connected) {
-      setTransmitting(true)
-      await onSend(promptToSend)
-      setText('')
-      speechTextRef.current = ''
-      setTransmitting(false)
+    return () => {
+      isCancelled = true
+      if (animFrame) cancelAnimationFrame(animFrame)
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
+      cleanupAudio()
     }
-  }, [text, transmitting, connected, onSend, onVoiceStateChange])
+  }, [handsFree, connected, disabled, isHolding, phase])
+
+
 
   // Unified Pointer Handlers for Mobile Touch + Desktop Mouse
   const handlePointerDown = (e: React.PointerEvent) => {
@@ -402,7 +355,6 @@ export const CommandDeck = memo(function CommandDeck({
 
     setTransmitting(true)
     setText('')
-    speechTextRef.current = ''
     await onSend(trimmed)
     setTransmitting(false)
   }
