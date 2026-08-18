@@ -284,10 +284,6 @@ class GeminiGemmaLLM(LLMEngine):
         models_to_try = [self._config.model]
         cascade_models = [
             "gemma-4-31b-it",
-            "gemma-4-26b-it",
-            "gemma-3-27b-it",
-            "gemma-3-12b-it",
-            "gemma-3-4b-it",
             "gemini-2.5-flash",
             "gemini-1.5-flash",
             "gemini-2.5-pro",
@@ -653,10 +649,6 @@ class GeminiRestLLM(LLMEngine):
         cascade_models = [
             self._config.model,
             "gemma-4-31b-it",
-            "gemma-4-26b-it",
-            "gemma-3-27b-it",
-            "gemma-3-12b-it",
-            "gemma-3-4b-it",
             "gemini-2.5-flash",
             "gemini-1.5-flash",
             "gemini-2.5-pro",

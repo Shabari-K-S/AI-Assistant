@@ -462,28 +462,68 @@ def handle_camera_vision(args: dict[str, Any]) -> str:
             f"💡 **Android 16 Tip:** Make sure **Termux:API** has **Camera** permission granted in Android Settings -> Apps -> Termux:API -> Permissions."
         )
 
-    # Analyze with Gemini Vision if API key is present
+    # Analyze with Gemini Multimodal Vision (Pure-Python REST with zero C/pydantic dependencies)
     api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
     if api_key:
         try:
-            from google import genai
-            from google.genai import types
+            import base64
+            import httpx
 
-            client = genai.Client(api_key=api_key)
             with open(photo_path, "rb") as f:
-                img_bytes = f.read()
+                img_b64 = base64.b64encode(f.read()).decode("utf-8")
 
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=[
-                    types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg"),
-                    prompt,
+            payload = {
+                "contents": [
+                    {
+                        "parts": [
+                            {
+                                "inline_data": {
+                                    "mime_type": "image/jpeg",
+                                    "data": img_b64,
+                                }
+                            },
+                            {
+                                "text": prompt or "Describe everything visible in this camera photo in detailed, natural language.",
+                            },
+                        ]
+                    }
                 ],
-            )
-            analysis = response.text.strip() if response.text else "No description generated."
-            return f"📸 **Pocket Vision Analysis (Camera {camera_id}):**\n\n{analysis}\n\n*(Image saved: `{photo_path.name}`)*"
+                "generationConfig": {
+                    "temperature": 0.4,
+                    "maxOutputTokens": 2048,
+                },
+            }
+
+            vision_models = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.5-pro", "gemini-1.5-pro"]
+            analysis = None
+            last_err = None
+
+            with httpx.Client(timeout=30.0) as client:
+                for v_model in vision_models:
+                    try:
+                        url = f"https://generativelanguage.googleapis.com/v1beta/models/{v_model}:generateContent?key={api_key}"
+                        resp = client.post(url, json=payload, headers={"Content-Type": "application/json"})
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            candidates = data.get("candidates", [])
+                            if candidates:
+                                cand = candidates[0]
+                                parts = cand.get("content", {}).get("parts", [])
+                                text_parts = [p.get("text", "") for p in parts if "text" in p]
+                                analysis = "".join(text_parts).strip()
+                                if analysis:
+                                    break
+                        else:
+                            last_err = f"HTTP {resp.status_code}: {resp.text}"
+                    except Exception as err:
+                        last_err = str(err)
+                        continue
+
+            if analysis:
+                return f"📸 **Pocket Vision Analysis (Camera {camera_id}):**\n\n{analysis}\n\n*(Image saved: `{photo_path.name}`)*"
+            return f"📸 Photo captured to `{photo_path.name}`, but vision model analysis failed: {last_err or 'No description returned'}"
         except Exception as exc:
-            return f"📸 Photo captured to `{photo_path.name}`. Vision API analysis encountered: {exc}"
+            return f"📸 Photo captured to `{photo_path.name}`. Vision processing encountered: {exc}"
 
     return f"📸 Photo successfully captured and saved to: `{photo_path}`"
 
