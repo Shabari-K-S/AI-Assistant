@@ -137,7 +137,7 @@ def _fetch_top_news_headlines() -> list[dict[str, str]]:
 
 
 def _get_system_telemetry() -> dict[str, Any]:
-    """Inspect local Linux hardware, CPU, memory, and battery status."""
+    """Inspect local hardware, CPU, memory, and battery status with Android Termux support."""
     import psutil
 
     mem = psutil.virtual_memory()
@@ -147,6 +147,19 @@ def _get_system_telemetry() -> dict[str, Any]:
     battery_str = f"{battery.percent}%" if battery else "Connected to AC Power"
     if battery and battery.power_plugged:
         battery_str += " (Charging)"
+
+    # Android Termux Battery Fallback / Enhancement
+    try:
+        from termux_mcp_server import is_android_termux, _run_termux_cmd
+        if is_android_termux():
+            code, stdout, _ = _run_termux_cmd(["termux-battery-status"], timeout=2.0)
+            if code == 0 and stdout:
+                b_data = json.loads(stdout)
+                pct = b_data.get("percentage", 100)
+                status = b_data.get("status", "DISCHARGING")
+                battery_str = f"{pct}% ({status.title()})"
+    except Exception:
+        pass
 
     return {
         "cpu_percent": cpu_pct,

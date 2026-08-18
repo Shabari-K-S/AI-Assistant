@@ -25,6 +25,7 @@ import {
   Send,
   X,
   ShieldCheck,
+  Smartphone,
 } from 'lucide-react'
 
 const ICON_MAP: Record<string, typeof Terminal> = {
@@ -37,6 +38,7 @@ const ICON_MAP: Record<string, typeof Terminal> = {
   Wrench,
   Search,
   ShieldCheck,
+  Smartphone,
 }
 
 interface Props {

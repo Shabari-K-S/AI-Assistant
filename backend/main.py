@@ -182,23 +182,68 @@ def _transcribe(mic, stt, cfg, audio, bus=None) -> str | None:
 
 
 def clean_for_speech(text: str) -> str:
-    """Strip markdown/LaTeX/thought tags so the reply reads (and speaks) like speech."""
+    """Transform raw LLM output into clean, natural human speech with zero symbols or markdown clutter."""
     if not text:
-        return text
-    t = re.sub(r"<think>.*?</think>", " ", text, flags=re.S | re.IGNORECASE)
-    t = re.sub(r"<thought>.*?</thought>", " ", text, flags=re.S | re.IGNORECASE)
-    t = re.sub(r"```.*?```", " ", t, flags=re.S)        # fenced code
-    t = re.sub(r"`[^`]*`", " ", t)                          # inline code
-    t = re.sub(r"!?\[([^\]]*)\]\([^)]*\)", r"\1", t)        # links/images
-    t = re.sub(r"\$\$.*?\$\$", " ", t, flags=re.S)          # $$ math $$
+        return ""
+
+    t = text
+    # 1. Remove reasoning / thought tags
+    t = re.sub(r"<think>.*?</think>", " ", t, flags=re.S | re.IGNORECASE)
+    t = re.sub(r"<thought>.*?</thought>", " ", t, flags=re.S | re.IGNORECASE)
+
+    # 2. Remove code blocks and inline code
+    t = re.sub(r"```.*?```", " ", t, flags=re.S)
+    t = re.sub(r"`[^`]*`", " ", t)
+
+    # 3. Handle links & images: keep link text, discard URL
+    t = re.sub(r"!?\[([^\]]*)\]\([^)]*\)", r"\1", t)
+    t = re.sub(r"https?://\S+", " ", t)
+
+    # 4. Remove LaTeX and Math blocks
+    t = re.sub(r"\$\$.*?\$\$", " ", t, flags=re.S)
     t = re.sub(r"\\\(.*?\\\)|\\\[.*?\\\]", " ", t, flags=re.S)
-    t = re.sub(r"\$[^$\n]*\$", " ", t)                      # $inline math$
-    t = re.sub(r"^#{1,6}\s*", "", t, flags=re.M)            # headers
-    t = re.sub(r"^\s*([-*+]|\d+[.)])\s+", "", t, flags=re.M)  # list markers
-    t = re.sub(r"^\s*\|.*\|\s*$", " ", t, flags=re.M)       # table rows
-    t = re.sub(r"^\s*\|.*$", " ", t, flags=re.M)            # stray table pipes
-    t = re.sub(r"[-*_]{2,}|~~", " ", t)                     # emphasis, rules
-    t = re.sub(r"\s+", " ", t)                              # collapse whitespace
+    t = re.sub(r"\$[^$\n]*\$", " ", t)
+
+    # 5. Remove Markdown headers, rules, blockquotes
+    t = re.sub(r"^#{1,6}\s*", "", t, flags=re.M)
+    t = re.sub(r"^\s*>\s*", "", t, flags=re.M)
+    t = re.sub(r"[-*_]{2,}|~~", " ", t)
+
+    # 6. Convert list numbers & bullets to natural pauses
+    t = re.sub(r"^\s*[-*+]\s+", "", t, flags=re.M)
+    t = re.sub(r"^\s*\d+[.)]\s+", "", t, flags=re.M)
+
+    # 7. Remove table rows and pipe dividers
+    t = re.sub(r"\|", " ", t)
+
+    # 8. Conversational word replacements for symbols so they sound natural
+    t = re.sub(r"\b(\d+)\s*°\s*C\b", r"\1 degrees Celsius", t)
+    t = re.sub(r"\b(\d+)\s*°\s*F\b", r"\1 degrees Fahrenheit", t)
+    t = re.sub(r"\b(\d+)\s*%", r"\1 percent", t)
+    t = re.sub(r"&", " and ", t)
+    t = re.sub(r"\+", " plus ", t)
+    t = re.sub(r"(?<=\w)/(?=\w)", " or ", t)
+    t = re.sub(r"\$", " dollars ", t)
+    t = re.sub(r"@", " at ", t)
+    t = re.sub(r"->|→|=>|⇒", " to ", t)
+
+    # 9. Unwrap parentheses so words are spoken smoothly without bracket artifacts
+    t = re.sub(r"\(([^)]+)\)", r", \1, ", t)
+
+    # 10. Strip all emojis and Unicode symbols/pictographs
+    t = re.sub(r"[\U00010000-\U0010ffff]", " ", t)
+    t = re.sub(r"[\u2000-\u3300]", " ", t)
+
+    # 11. Strip all remaining structural/code symbols: * _ ` ~ ^ < > [ ] { } \ / = # ( )
+    t = re.sub(r"[*_`~^<>{}\[\]\\=#()]", " ", t)
+
+    # 12. Clean up punctuation and whitespace
+    t = re.sub(r"\s+:", ":", t)
+    t = re.sub(r"\.{2,}", ".", t)
+    t = re.sub(r"-{2,}", " ", t)
+    t = re.sub(r",\s*,+", ", ", t)
+    t = re.sub(r"\s+([,.!?])", r"\1", t)
+    t = re.sub(r"\s+", " ", t)
     return t.strip()
 
 

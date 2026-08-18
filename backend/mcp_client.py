@@ -323,6 +323,17 @@ CURATED_MCP_CATALOG: list[dict[str, Any]] = [
         "preinstalled": True,
     },
     {
+        "id": "android-termux",
+        "name": "Android Mobile Superpowers (Termux:API)",
+        "description": "Hardware control, live battery status, torch, haptics, phone clipboard, notifications, camera vision, and GPS location.",
+        "category": "utilities",
+        "icon": "Smartphone",
+        "command": ".venv/bin/python3",
+        "args": ["termux_mcp_server.py"],
+        "env": {},
+        "preinstalled": True,
+    },
+    {
         "id": "puppeteer",
         "name": "Puppeteer Headless Browser",
         "description": "Automate headless Chromium browser to navigate pages, capture screenshots, and scrape dynamic JS content.",

@@ -317,6 +317,28 @@ class TimerEngine:
         timer_data["spoken_text"] = spoken_text
         log.info("⏰ TIMER EXPIRED: %s", spoken_text)
 
+        # Android Termux Mobile Trigger: Haptic vibration & notification
+        try:
+            from termux_mcp_server import is_android_termux, _run_termux_cmd
+            if is_android_termux():
+                _run_termux_cmd(["termux-vibrate", "-d", "800", "-f"], timeout=2.0)
+                _run_termux_cmd(
+                    [
+                        "termux-notification",
+                        "--title",
+                        f"S.A.R.A. ⏰ {label}",
+                        "--content",
+                        spoken_text,
+                        "--priority",
+                        "max",
+                        "--id",
+                        "sara_timer_alert",
+                    ],
+                    timeout=3.0,
+                )
+        except Exception:
+            pass
+
         if self.bus is not None:
             self.bus.log("INFO", f"⏰ 🔔 {spoken_text}")
             self.bus.event("timer_expired", **timer_data)

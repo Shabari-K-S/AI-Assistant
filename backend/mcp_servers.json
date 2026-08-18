@@ -51,6 +51,14 @@
         "SECURITY_TARGET_ALLOWLIST": "localhost,127.0.0.1,::1,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12"
       },
       "enabled": true
+    },
+    "android-termux": {
+      "command": ".venv/bin/python3",
+      "args": [
+        "termux_mcp_server.py"
+      ],
+      "env": {},
+      "enabled": true
     }
   }
 }

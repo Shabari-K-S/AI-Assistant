@@ -21,10 +21,55 @@ log = logging.getLogger("ev.tts")
 _SENTENCE_END = re.compile(r"(?<=[.!?…])\s+")
 
 
+def clean_speech_text(text: str) -> str:
+    """Sanitize raw text into natural human speech, stripping all markdown, code, and symbols."""
+    if not text:
+        return ""
+    t = text
+    t = re.sub(r"<think>.*?</think>", " ", t, flags=re.S | re.IGNORECASE)
+    t = re.sub(r"<thought>.*?</thought>", " ", t, flags=re.S | re.IGNORECASE)
+    t = re.sub(r"```.*?```", " ", t, flags=re.S)
+    t = re.sub(r"`[^`]*`", " ", t)
+    t = re.sub(r"!?\[([^\]]*)\]\([^)]*\)", r"\1", t)
+    t = re.sub(r"https?://\S+", " ", t)
+    t = re.sub(r"\$\$.*?\$\$", " ", t, flags=re.S)
+    t = re.sub(r"\\\(.*?\\\)|\\\[.*?\\\]", " ", t, flags=re.S)
+    t = re.sub(r"\$[^$\n]*\$", " ", t)
+    t = re.sub(r"^#{1,6}\s*", "", t, flags=re.M)
+    t = re.sub(r"^\s*>\s*", "", t, flags=re.M)
+    t = re.sub(r"[-*_]{2,}|~~", " ", t)
+    t = re.sub(r"^\s*[-*+]\s+", "", t, flags=re.M)
+    t = re.sub(r"^\s*\d+[.)]\s+", "", t, flags=re.M)
+    t = re.sub(r"\|", " ", t)
+    t = re.sub(r"\b(\d+)\s*°\s*C\b", r"\1 degrees Celsius", t)
+    t = re.sub(r"\b(\d+)\s*°\s*F\b", r"\1 degrees Fahrenheit", t)
+    t = re.sub(r"\b(\d+)\s*%", r"\1 percent", t)
+    t = re.sub(r"&", " and ", t)
+    t = re.sub(r"\+", " plus ", t)
+    t = re.sub(r"(?<=\w)/(?=\w)", " or ", t)
+    t = re.sub(r"\$", " dollars ", t)
+    t = re.sub(r"@", " at ", t)
+    t = re.sub(r"->|→|=>|⇒", " to ", t)
+    t = re.sub(r"\(([^)]+)\)", r", \1, ", t)
+    t = re.sub(r"[\U00010000-\U0010ffff]", " ", t)
+    t = re.sub(r"[\u2000-\u3300]", " ", t)
+    t = re.sub(r"[*_`~^<>{}\[\]\\=#()]", " ", t)
+    t = re.sub(r"\s+:", ":", t)
+    t = re.sub(r"\.{2,}", ".", t)
+    t = re.sub(r"-{2,}", " ", t)
+    t = re.sub(r",\s*,+", ", ", t)
+    t = re.sub(r"\s+([,.!?])", r"\1", t)
+    t = re.sub(r"\s+", " ", t)
+    return t.strip()
+
+
 def chunk_sentences(text: str) -> list[str]:
-    """Split text into sentences, keeping punctuation attached to each chunk."""
-    parts = _SENTENCE_END.split(text.strip())
-    return [p for p in parts if p]
+    """Split clean natural text into sentences, keeping punctuation attached to each chunk."""
+    cleaned = clean_speech_text(text)
+    if not cleaned:
+        return []
+    parts = _SENTENCE_END.split(cleaned)
+    return [p for p in parts if p.strip()]
 
 
 class TTSEngine(ABC):
