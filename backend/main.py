@@ -581,6 +581,26 @@ def _run_assistant(cfg, once: bool, text: str | None) -> int:
         "tts": tts,
     })
 
+    # Conversational Tool Progress Speaker (Real-time vocal feedback during long operations)
+    def _tool_vocal_cue_speaker(cue_text: str) -> None:
+        print(f"[EV] {cue_text}", flush=True)
+        if bus is not None:
+            bus.set(reply=cue_text)
+            bus.log("INFO", f"🗣️ {cue_text}")
+            bus.event("reply", text=cue_text)
+        tts_inst = context_holder.get("tts")
+        mic_inst = context_holder.get("mic")
+        trig_inst = context_holder.get("trigger")
+        if tts_inst is not None and not muted.get("on", False):
+            try:
+                _speak(tts_inst, cue_text, bus=bus, muted=muted.get("on", False), mic=mic_inst, trigger=trig_inst)
+            except Exception:
+                pass
+        if bus is not None:
+            bus.set(phase="processing")
+
+    registry.set_cue_callback(_tool_vocal_cue_speaker)
+
     # Configure Autonomous Deep Research Engine
     from deep_research import get_deep_research_engine
     deep_res_engine = get_deep_research_engine()

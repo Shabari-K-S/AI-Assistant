@@ -915,11 +915,61 @@ class ToolRegistry:
             for t in base
         ]
 
+    TOOL_VOCAL_CUES: dict[str, str] = {
+        "android_camera_vision": "Opening the camera now.",
+        "android_battery_status": "Checking battery telemetry.",
+        "android_torch_control": "Toggling flashlight.",
+        "android_location_get": "Checking your GPS coordinates.",
+        "android_vibrate_phone": "Sending haptic pulse.",
+        "android_clipboard_sync": "Checking clipboard.",
+        "android_notification_send": "Sending push notification.",
+        "android_notification_list": "Checking active notifications.",
+        "android_system_diagnostics": "Running system diagnostics.",
+        "scrape_web_page": "Reading that web page for you.",
+        "extract_page_links": "Extracting hyperlinks from the page.",
+        "duckduckgo_web_search": "Searching the web.",
+        "duckduckgo_news_search": "Checking the latest news.",
+        "notes_add_note": "Saving note to vault.",
+        "notes_read_note": "Reading note from vault.",
+        "notes_search_notes": "Searching your notes.",
+        "notes_semantic_rag_search": "Searching your knowledge vault.",
+        "voice_brain_dump_processor": "Organizing your thoughts into tasks and notes.",
+        "notes_add_todo": "Adding task to your checklist.",
+        "notes_list_todos": "Checking your to-do checklist.",
+        "notes_complete_todo": "Updating task status.",
+        "deep_research_report": "Initiating deep research.",
+        "security_cve_search": "Searching vulnerability advisories.",
+        "security_passive_recon": "Performing passive subdomain reconnaissance.",
+        "security_header_audit": "Auditing security headers.",
+        "security_code_audit": "Running static security code audit.",
+        "security_port_scan": "Inspecting network ports.",
+        "opencode_run_terminal": "Executing terminal command.",
+        "opencode_read_code": "Reading project code.",
+        "opencode_write_code": "Writing code to workspace.",
+        "opencode_search_code": "Searching workspace codebase.",
+        "opencode_git_summary": "Checking Git repository status.",
+        "timer_create": "Setting timer.",
+        "timer_list": "Checking active timers.",
+    }
+
+    def set_cue_callback(self, callback: Callable[[str], None] | None) -> None:
+        """Set a vocal/HUD cue callback invoked right before long-running tools execute."""
+        self._cue_callback = callback
+
     def execute(self, name: str, args: dict) -> str:
         """Execute a tool by name. Returns a string result suitable for the model."""
         tool = self._tools.get(name)
         if tool is None:
             return f"error: unknown tool {name!r}"
+
+        # Emit conversational progress cue if registered
+        cue_cb = getattr(self, "_cue_callback", None)
+        if cue_cb and name in self.TOOL_VOCAL_CUES:
+            try:
+                cue_cb(self.TOOL_VOCAL_CUES[name])
+            except Exception:
+                pass
+
         try:
             return tool.handler(args or {})
         except PermissionError as exc:
