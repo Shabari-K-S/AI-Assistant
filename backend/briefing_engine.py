@@ -33,7 +33,7 @@ def _fetch_chennai_weather() -> dict[str, Any]:
         "hourly=relativehumidity_2m&timezone=Asia%2FKolkata"
     )
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "SARA-Assistant/1.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": "ATHENA-Assistant/1.0"})
         with urllib.request.urlopen(req, timeout=4.0) as resp:
             data = json.loads(resp.read().decode())
             cw = data.get("current_weather", {})

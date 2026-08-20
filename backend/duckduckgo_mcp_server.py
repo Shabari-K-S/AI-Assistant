@@ -71,7 +71,7 @@ def _fetch_wikipedia_results(query: str, max_results: int = 4) -> list[dict[str,
     try:
         w_q = urllib.parse.quote(query)
         w_url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={w_q}&utf8=&format=json"
-        req = urllib.request.Request(w_url, headers={"User-Agent": "SARA-Research-Intelligence/2.0"})
+        req = urllib.request.Request(w_url, headers={"User-Agent": "ATHENA-Research-Intelligence/2.0"})
         with urllib.request.urlopen(req, timeout=6) as response:
             data = json.loads(response.read().decode("utf-8", errors="replace"))
             search_items = data.get("query", {}).get("search", [])

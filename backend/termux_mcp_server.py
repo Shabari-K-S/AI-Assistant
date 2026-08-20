@@ -579,7 +579,7 @@ def handle_location_get(args: dict[str, Any]) -> str:
 
     # 2. Automatic Fallback: IP-based Geolocation (works 100% even if GPS is disabled)
     try:
-        req = urllib.request.Request("https://ipapi.co/json/", headers={"User-Agent": "SARA-Assistant/1.0"})
+        req = urllib.request.Request("https://ipapi.co/json/", headers={"User-Agent": "ATHENA-Assistant/1.0"})
         with urllib.request.urlopen(req, timeout=4.0) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             city = data.get("city", "Unknown City")

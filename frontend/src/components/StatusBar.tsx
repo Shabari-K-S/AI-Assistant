@@ -76,9 +76,11 @@ export function StatusBar({ phase, online, wakeWord }: Props) {
       <div className="flex items-center gap-2 sm:gap-3">
         <div className="flex items-center gap-1.5 sm:gap-2">
           <Radio size={15} className={`text-[#41e6ff] ${online ? 'animate-pulse' : 'opacity-40'}`} />
-          <div className="font-display text-sm sm:text-base font-bold tracking-[0.25em] sm:tracking-[0.32em] text-[#e8fbff] flex items-center">
-            S<span className="text-[#41e6ff]">.</span>A
-            <span className="text-[#41e6ff]">.</span>R
+          <div className="font-display text-sm sm:text-base font-bold tracking-[0.22em] sm:tracking-[0.28em] text-[#e8fbff] flex items-center">
+            A<span className="text-[#41e6ff]">.</span>T
+            <span className="text-[#41e6ff]">.</span>H
+            <span className="text-[#41e6ff]">.</span>E
+            <span className="text-[#41e6ff]">.</span>N
             <span className="text-[#41e6ff]">.</span>A
           </div>
         </div>

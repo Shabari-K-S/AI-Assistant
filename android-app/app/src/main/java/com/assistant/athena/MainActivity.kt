@@ -11,7 +11,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
-import android.speech.tts.TextToSpeech
 import android.util.Log
 import android.widget.Button
 import android.widget.TextView
@@ -24,13 +23,14 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.IOException
-import java.util.*
 import java.util.concurrent.TimeUnit
 
 /**
  * A.T.H.E.N.A. Dashboard — Control center for the 24/7 voice bridge.
+ *
+ * Speech is handled exclusively by Termux Python TTS (no duplicate Android speech).
  */
-class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
+class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "Athena.Main"
@@ -52,8 +52,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private lateinit var switchAutoStart: SwitchCompat
 
     private var isServiceRunning = false
-    private var localTts: TextToSpeech? = null
-    private var localTtsReady = false
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
@@ -78,7 +76,16 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             btnCheckBackend = findViewById(R.id.btnCheckBackend)
             switchAutoStart = findViewById(R.id.switchAutoStart)
 
-            localTts = TextToSpeech(this, this)
+            // Ensure all phone audio streams are unmuted
+            val am = getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && am != null) {
+                try {
+                    am.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, android.media.AudioManager.ADJUST_UNMUTE, 0)
+                    am.adjustStreamVolume(android.media.AudioManager.STREAM_NOTIFICATION, android.media.AudioManager.ADJUST_UNMUTE, 0)
+                    am.adjustStreamVolume(android.media.AudioManager.STREAM_ALARM, android.media.AudioManager.ADJUST_UNMUTE, 0)
+                    am.adjustStreamVolume(android.media.AudioManager.STREAM_SYSTEM, android.media.AudioManager.ADJUST_UNMUTE, 0)
+                } catch (_: Exception) {}
+            }
 
             // Attach log listener to VoiceBridgeService
             VoiceBridgeService.onLogListener = { msg ->
@@ -123,8 +130,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
     override fun onDestroy() {
         VoiceBridgeService.onLogListener = null
-        localTts?.stop()
-        localTts?.shutdown()
         super.onDestroy()
     }
 
@@ -140,12 +145,12 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     }
 
     // =========================================================================
-    // Test Voice Uplink
+    // Test Voice Uplink (Triggers Termux Python TTS)
     // =========================================================================
 
     private fun runTestQuery() {
         val testPrompt = "Hello Athena, what is the system status and time?"
-        appendLog("⚡ Sending test query: '$testPrompt'")
+        appendLog("⚡ Sending test query to Termux: '$testPrompt'")
         btnTestQuery.isEnabled = false
         btnTestQuery.text = "⏳ Contacting Termux AI..."
 
@@ -177,10 +182,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                         val ok = json.optBoolean("ok", false)
                         val reply = json.optString("reply", "")
                         if (ok && reply.isNotEmpty()) {
-                            appendLog("🤖 Termux Reply: \"$reply\"")
-                            if (localTtsReady) {
-                                localTts?.speak(reply, TextToSpeech.QUEUE_FLUSH, null, "test_reply")
-                            }
+                            appendLog("🤖 Termux Speaking: \"$reply\"")
                         } else {
                             val err = json.optString("error", "Unknown error")
                             appendLog("⚠️ Termux: $err")
@@ -191,13 +193,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 }
             }
         })
-    }
-
-    override fun onInit(status: Int) {
-        if (status == TextToSpeech.SUCCESS) {
-            localTts?.language = Locale.US
-            localTtsReady = true
-        }
     }
 
     // =========================================================================
@@ -219,7 +214,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             }
             isServiceRunning = true
             updateServiceUI(true)
-            appendLog("🟢 Voice Bridge service activated (24/7 background listening)")
+            appendLog("🟢 Voice Bridge active (Termux TTS mode)")
             Log.i(TAG, "Voice Bridge service started")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start service", e)

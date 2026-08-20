@@ -10,11 +10,12 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
-import android.speech.tts.TextToSpeech
-import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import okhttp3.*
@@ -31,14 +32,13 @@ import java.util.concurrent.TimeUnit
 /**
  * A.T.H.E.N.A. — Adaptive Thinking Hands-free Engine for Neural Assistance
  *
- * 24/7 Foreground Service that continuously listens for "Athena" (and phonetic
- * variations like "Atina", "Adina", "Athina", etc.).
- *
- * Supports:
- *   1. One-Shot mode: "Athena, what time is it?" -> Immediate answer
- *   2. Two-Step mode: "Athena" -> "Yes, I'm listening" -> Follow-up command
+ * 24/7 Foreground Voice Bridge:
+ *   - Continuous SpeechRecognizer listening for "Athena" / phonetic variants.
+ *   - Uplinks prompts to Termux backend (/ask).
+ *   - TTS audio output is handled EXCLUSIVELY by the Termux Python engine
+ *     (no duplicate Android speech).
  */
-class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
+class VoiceBridgeService : Service() {
 
     companion object {
         private const val TAG = "Athena.Service"
@@ -48,7 +48,6 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
         // Backend endpoints — Termux evbridge.py
         private const val BACKEND_BASE = "http://127.0.0.1:2027"
         private const val ASK_URL = "$BACKEND_BASE/ask"
-        private const val PROMPT_URL = "$BACKEND_BASE/prompt"
         private const val STREAM_URL = "$BACKEND_BASE/stream"
 
         // Wake word variants (covering all regional phonetic variations)
@@ -68,10 +67,10 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
             "(?i)\\b(?:hey\\s+|hi\\s+|ok\\s+|okay\\s+|hello\\s+)?(a[td]h?e?i?n[ae]|ath?ee?n[ae]|atena|atina|adina|adena|edina|ethina)\\b"
         )
 
-        // Restart delays (smooth, silent loop)
+        // Restart delays
         private const val RESTART_DELAY_NORMAL_MS = 250L
         private const val RESTART_DELAY_ERROR_MS = 800L
-        private const val RESTART_DELAY_AFTER_RESPONSE_MS = 700L
+        private const val RESTART_DELAY_AFTER_RESPONSE_MS = 1000L
 
         // State constants for notification
         const val STATE_STANDBY = "standby"
@@ -86,8 +85,6 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
     // --- Core components ---
     private var speechRecognizer: SpeechRecognizer? = null
     private var speechIntent: Intent? = null
-    private var tts: TextToSpeech? = null
-    private var ttsReady = false
     private var wakeLock: PowerManager.WakeLock? = null
     private val handler = Handler(Looper.getMainLooper())
     private val audioManager by lazy { getSystemService(Context.AUDIO_SERVICE) as AudioManager }
@@ -103,61 +100,47 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
     // --- State ---
     private var isDestroyed = false
     private var isListening = false
-    private var isSpeaking = false
+    private var isTermuxSpeaking = false
     private var currentState = STATE_STANDBY
     private var consecutiveErrors = 0
-    private var pendingReply = false
-    private var isMuted = false
 
     // Two-stage conversation state ("Hey Google" style)
     private var isAwaitingCommand = false
     private var awaitingCommandTimeout = 0L
 
     // =========================================================================
-    // Beep & Chime Suppression Engine
+    // Beep & Chime Suppression Engine (Non-Intrusive)
     // =========================================================================
 
     private fun suppressMicrophoneBeep() {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                audioManager.adjustStreamVolume(AudioManager.STREAM_NOTIFICATION, AudioManager.ADJUST_MUTE, 0)
                 audioManager.adjustStreamVolume(AudioManager.STREAM_SYSTEM, AudioManager.ADJUST_MUTE, 0)
-                audioManager.adjustStreamVolume(AudioManager.STREAM_ALARM, AudioManager.ADJUST_MUTE, 0)
-                audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_MUTE, 0)
-            } else {
-                @Suppress("DEPRECATION")
-                audioManager.setStreamMute(AudioManager.STREAM_NOTIFICATION, true)
-                @Suppress("DEPRECATION")
-                audioManager.setStreamMute(AudioManager.STREAM_SYSTEM, true)
-                @Suppress("DEPRECATION")
-                audioManager.setStreamMute(AudioManager.STREAM_MUSIC, true)
             }
-            isMuted = true
+            handler.postDelayed({
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        audioManager.adjustStreamVolume(AudioManager.STREAM_SYSTEM, AudioManager.ADJUST_UNMUTE, 0)
+                    }
+                } catch (_: Exception) {}
+            }, 80L)
         } catch (e: Exception) {
             Log.w(TAG, "Beep mute error: ${e.message}")
         }
     }
 
-    private fun restoreAudioStreams() {
-        if (!isMuted) return
+    private fun triggerHapticFeedback() {
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                audioManager.adjustStreamVolume(AudioManager.STREAM_NOTIFICATION, AudioManager.ADJUST_UNMUTE, 0)
-                audioManager.adjustStreamVolume(AudioManager.STREAM_SYSTEM, AudioManager.ADJUST_UNMUTE, 0)
-                audioManager.adjustStreamVolume(AudioManager.STREAM_ALARM, AudioManager.ADJUST_UNMUTE, 0)
-                audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val vm = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
+                vm?.defaultVibrator?.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK))
             } else {
                 @Suppress("DEPRECATION")
-                audioManager.setStreamMute(AudioManager.STREAM_NOTIFICATION, false)
+                val v = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
                 @Suppress("DEPRECATION")
-                audioManager.setStreamMute(AudioManager.STREAM_SYSTEM, false)
-                @Suppress("DEPRECATION")
-                audioManager.setStreamMute(AudioManager.STREAM_MUSIC, false)
+                v?.vibrate(50L)
             }
-            isMuted = false
-        } catch (e: Exception) {
-            Log.w(TAG, "Audio restore error: ${e.message}")
-        }
+        } catch (_: Exception) {}
     }
 
     private fun broadcastLog(msg: String) {
@@ -172,7 +155,7 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
 
     override fun onCreate() {
         super.onCreate()
-        Log.i(TAG, "═══ A.T.H.E.N.A. Silent Voice Bridge starting ═══")
+        Log.i(TAG, "═══ A.T.H.E.N.A. Voice Bridge starting (Termux Audio Mode) ═══")
 
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = pm.newWakeLock(
@@ -185,12 +168,11 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification(STATE_STANDBY, "Listening for \"Athena\"..."))
 
-        tts = TextToSpeech(this, this)
         connectSSEStream()
         initSpeechRecognizer()
 
-        broadcastLog("🎙️ Voice Bridge initialized (24/7 background mode)")
-        Log.i(TAG, "═══ A.T.H.E.N.A. Silent Voice Bridge online ═══")
+        broadcastLog("🎙️ Voice Bridge initialized (Audio: Python Termux TTS)")
+        Log.i(TAG, "═══ A.T.H.E.N.A. Voice Bridge online ═══")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -201,18 +183,12 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
         Log.i(TAG, "═══ A.T.H.E.N.A. Voice Bridge shutting down ═══")
         isDestroyed = true
 
-        restoreAudioStreams()
-
         handler.removeCallbacksAndMessages(null)
         speechRecognizer?.destroy()
         speechRecognizer = null
 
         sseEventSource?.cancel()
         sseEventSource = null
-
-        tts?.stop()
-        tts?.shutdown()
-        tts = null
 
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
@@ -253,7 +229,7 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
         val title = when (state) {
             STATE_LISTENING -> "🎙️ ATHENA — Listening..."
             STATE_PROCESSING -> "⚡ ATHENA — Processing..."
-            STATE_SPEAKING -> "🔊 ATHENA — Speaking..."
+            STATE_SPEAKING -> "🔊 ATHENA — Speaking (Termux)..."
             STATE_ERROR -> "⚠️ ATHENA — Error"
             else -> "🛡️ ATHENA — Standing By (Silent)"
         }
@@ -386,7 +362,7 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun startListening() {
-        if (isDestroyed || isSpeaking) return
+        if (isDestroyed || isTermuxSpeaking) return
         try {
             suppressMicrophoneBeep()
             speechRecognizer?.startListening(speechIntent)
@@ -399,7 +375,7 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
     private fun restartListening(delayMs: Long) {
         if (isDestroyed) return
         handler.postDelayed({
-            if (!isDestroyed && !isSpeaking) {
+            if (!isDestroyed && !isTermuxSpeaking) {
                 startListening()
             }
         }, delayMs)
@@ -461,12 +437,13 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
         }
 
         if (query.isEmpty()) {
-            // Wake word only -> Greet user and listen for follow-up command!
+            // Wake word only -> Trigger gentle haptic vibration and listen for command!
+            triggerHapticFeedback()
             broadcastLog("✨ Athena awake! Listening for your command...")
             updateState(STATE_LISTENING, "Yes? Listening for your command...")
             isAwaitingCommand = true
             awaitingCommandTimeout = System.currentTimeMillis() + 12_000L // 12 seconds window
-            speakReply("Yes, I'm listening.")
+            restartListening(RESTART_DELAY_NORMAL_MS)
             return
         }
 
@@ -477,11 +454,10 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
     }
 
     // =========================================================================
-    // Backend Communication (Direct Synchronous /ask + Fallback)
+    // Backend Communication (Direct Synchronous /ask)
     // =========================================================================
 
     private fun sendToBackend(query: String) {
-        pendingReply = true
         val jsonBody = JSONObject().put("text", query).toString()
         val requestBody = jsonBody.toRequestBody("application/json; charset=utf-8".toMediaType())
 
@@ -496,7 +472,6 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
                 handler.post {
                     broadcastLog("❌ Backend error: ${e.message} (Is Termux running?)")
                     updateState(STATE_ERROR, "Termux offline: ${e.message}")
-                    pendingReply = false
                     restartListening(RESTART_DELAY_ERROR_MS)
                 }
             }
@@ -512,12 +487,15 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
                         val reply = json.optString("reply", "")
 
                         if (ok && reply.isNotEmpty()) {
-                            pendingReply = false
-                            broadcastLog("🤖 Answer: \"$reply\"")
-                            speakReply(reply)
+                            // Termux Python TTS speaks the reply directly through phone speaker!
+                            broadcastLog("🤖 Termux Speaking: \"$reply\"")
+                            updateState(STATE_SPEAKING, "Termux speaking reply...")
+                            // Resume listening smoothly after Termux audio finishes
+                            restartListening(RESTART_DELAY_AFTER_RESPONSE_MS)
                         } else {
                             broadcastLog("⚠️ Sent: '$query' (Waiting for reply...)")
                             updateState(STATE_PROCESSING, "Thinking...")
+                            restartListening(RESTART_DELAY_NORMAL_MS)
                         }
                     } catch (e: Exception) {
                         broadcastLog("⚠️ Parse error: ${e.message}")
@@ -529,7 +507,7 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
     }
 
     // =========================================================================
-    // SSE Stream
+    // SSE Stream (Tracks Termux speaking state)
     // =========================================================================
 
     private fun connectSSEStream() {
@@ -552,13 +530,19 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
                     val json = JSONObject(data)
                     val eventType = json.optString("type", "")
 
-                    if (eventType == "reply") {
-                        val replyText = json.optString("text", "")
-                        if (replyText.isNotEmpty() && pendingReply) {
-                            pendingReply = false
+                    if (eventType == "snapshot") {
+                        val phase = json.optString("phase", "")
+                        if (phase == "speaking") {
+                            isTermuxSpeaking = true
                             handler.post {
-                                broadcastLog("🤖 Reply: \"$replyText\"")
-                                speakReply(replyText)
+                                updateState(STATE_SPEAKING, "Termux speaking...")
+                                try { speechRecognizer?.stopListening() } catch (_: Exception) {}
+                            }
+                        } else if (isTermuxSpeaking && (phase == "standby" || phase == "idle")) {
+                            isTermuxSpeaking = false
+                            handler.post {
+                                updateState(STATE_STANDBY, "Listening for \"Athena\"...")
+                                restartListening(RESTART_DELAY_NORMAL_MS)
                             }
                         }
                     }
@@ -575,68 +559,5 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
                 handler.postDelayed({ if (!isDestroyed) connectSSEStream() }, 3000)
             }
         })
-    }
-
-    // =========================================================================
-    // Text-to-Speech
-    // =========================================================================
-
-    override fun onInit(status: Int) {
-        if (status == TextToSpeech.SUCCESS) {
-            tts?.language = Locale.US
-            tts?.setSpeechRate(1.05f)
-            ttsReady = true
-
-            tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                override fun onStart(utteranceId: String?) {
-                    isSpeaking = true
-                    restoreAudioStreams()
-                    handler.post { updateState(STATE_SPEAKING, "Speaking response...") }
-                }
-
-                override fun onDone(utteranceId: String?) {
-                    isSpeaking = false
-                    handler.post {
-                        if (isAwaitingCommand) {
-                            updateState(STATE_LISTENING, "Listening for your command...")
-                        } else {
-                            updateState(STATE_STANDBY, "Listening for \"Athena\"...")
-                        }
-                        restartListening(RESTART_DELAY_AFTER_RESPONSE_MS)
-                    }
-                }
-
-                @Deprecated("Deprecated in API level 21")
-                override fun onError(utteranceId: String?) {
-                    isSpeaking = false
-                    handler.post { restartListening(RESTART_DELAY_NORMAL_MS) }
-                }
-            })
-        }
-    }
-
-    private fun speakReply(text: String) {
-        if (!ttsReady || text.isBlank()) {
-            restartListening(RESTART_DELAY_NORMAL_MS)
-            return
-        }
-
-        updateState(STATE_SPEAKING, "Speaking: \"${text.take(50)}...\"")
-        try { speechRecognizer?.stopListening() } catch (_: Exception) {}
-        restoreAudioStreams()
-        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "athena_reply_${System.currentTimeMillis()}")
-    }
-
-    private fun speechErrorToString(error: Int): String = when (error) {
-        SpeechRecognizer.ERROR_AUDIO -> "ERROR_AUDIO"
-        SpeechRecognizer.ERROR_CLIENT -> "ERROR_CLIENT"
-        SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "ERROR_INSUFFICIENT_PERMISSIONS"
-        SpeechRecognizer.ERROR_NETWORK -> "ERROR_NETWORK"
-        SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "ERROR_NETWORK_TIMEOUT"
-        SpeechRecognizer.ERROR_NO_MATCH -> "ERROR_NO_MATCH"
-        SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "ERROR_RECOGNIZER_BUSY"
-        SpeechRecognizer.ERROR_SERVER -> "ERROR_SERVER"
-        SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "ERROR_SPEECH_TIMEOUT"
-        else -> "UNKNOWN_ERROR($error)"
     }
 }
