@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import queue
 import threading
 import time
@@ -442,7 +443,6 @@ class _Handler(BaseHTTPRequestHandler):
                 return
 
             try:
-                import httpx
                 payload = {
                     "contents": [
                         {
@@ -460,11 +460,15 @@ class _Handler(BaseHTTPRequestHandler):
                         }
                     ]
                 }
-                url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent"
-                headers = {"Content-Type": "application/json", "x-goog-api-key": api_key}
-                resp = httpx.post(url, headers=headers, json=payload, timeout=15.0)
-                resp.raise_for_status()
-                res_data = resp.json()
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key={api_key}"
+                req = urllib.request.Request(
+                    url,
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={"Content-Type": "application/json"}
+                )
+                with urllib.request.urlopen(req, timeout=15.0) as resp:
+                    res_data = json.loads(resp.read().decode("utf-8"))
+
                 transcribed_text = ""
                 try:
                     candidates = res_data.get("candidates", [])
