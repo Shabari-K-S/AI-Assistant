@@ -461,23 +461,35 @@ class _Handler(BaseHTTPRequestHandler):
                         }
                     ]
                 }
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key={api_key}"
-                req = urllib.request.Request(
-                    url,
-                    data=json.dumps(payload).encode("utf-8"),
-                    headers={"Content-Type": "application/json"}
-                )
-                with urllib.request.urlopen(req, timeout=15.0) as resp:
-                    res_data = json.loads(resp.read().decode("utf-8"))
-
                 transcribed_text = ""
-                try:
-                    candidates = res_data.get("candidates", [])
-                    if candidates:
-                        parts = candidates[0].get("content", {}).get("parts", [])
-                        transcribed_text = "".join(p.get("text", "") for p in parts).strip()
-                except Exception:
-                    pass
+                models_to_try = [
+                    "gemma-4-31b",
+                    
+                ]
+
+                for model_name in models_to_try:
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+                    req = urllib.request.Request(
+                        url,
+                        data=json.dumps(payload).encode("utf-8"),
+                        headers={"Content-Type": "application/json"}
+                    )
+                    try:
+                        with urllib.request.urlopen(req, timeout=15.0) as resp:
+                            res_data = json.loads(resp.read().decode("utf-8"))
+                            
+                        candidates = res_data.get("candidates", [])
+                        if candidates:
+                            parts = candidates[0].get("content", {}).get("parts", [])
+                            transcribed_text = "".join(p.get("text", "") for p in parts).strip()
+                            if transcribed_text:
+                                break  # Success!
+                    except urllib.error.HTTPError as e:
+                        logger.warning(f"Transcription failed with model {model_name}: {e.code} {e.reason}")
+                        continue
+                    except Exception as e:
+                        logger.warning(f"Transcription exception with model {model_name}: {e}")
+                        continue
 
                 if not transcribed_text:
                     self._json({"ok": False, "error": "No speech detected"}, 200)
