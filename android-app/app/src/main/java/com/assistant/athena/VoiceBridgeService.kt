@@ -1,13 +1,10 @@
 package com.assistant.athena
 
-import android.annotation.SuppressLint
 import android.app.*
 import android.content.Context
 import android.content.Intent
-import android.media.AudioFormat
-import android.media.AudioRecord
-import android.media.MediaRecorder
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -15,7 +12,9 @@ import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
-import android.util.Base64
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import okhttp3.*
@@ -25,23 +24,21 @@ import okhttp3.sse.EventSource
 import okhttp3.sse.EventSourceListener
 import okhttp3.sse.EventSources
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
 import java.io.IOException
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
+import java.util.Locale
 import java.util.concurrent.TimeUnit
-import kotlin.math.abs
+import java.util.regex.Pattern
 
 /**
  * A.T.H.E.N.A. — Adaptive Thinking Hands-free Engine for Neural Assistance
  *
- * ChatGPT-Style Continuous Voice Engine:
- *   - 100% Silent raw AudioRecord PCM stream (ZERO Google beeps/chimes).
- *   - Real-time Voice Activity Detection (VAD).
- *   - Sends speech chunks to Termux backend (/transcribe).
- *   - Audio output is spoken by Termux Python TTS.
+ * High-Accuracy On-Device Acoustic Engine + Termux Neural AI Brain:
+ *   - Uses Android's native high-precision acoustic speech recognizer (100% accurate on technical words like "telemetry log").
+ *   - Wake word filtering (Athena, Atina, Adina, Athina, Atena).
+ *   - Direct JSON dispatch to Termux HTTP /ask endpoint.
+ *   - Single-voice audio output spoken exclusively by Termux Python TTS.
  */
-class VoiceBridgeService : Service() {
+class VoiceBridgeService : Service(), RecognitionListener {
 
     companion object {
         private const val TAG = "Athena.Service"
@@ -50,7 +47,7 @@ class VoiceBridgeService : Service() {
 
         // Backend endpoints — Termux evbridge.py
         private const val BACKEND_BASE = "http://127.0.0.1:2027"
-        private const val TRANSCRIBE_URL = "$BACKEND_BASE/transcribe"
+        private const val ASK_URL = "$BACKEND_BASE/ask"
         private const val STREAM_URL = "$BACKEND_BASE/stream"
 
         // State constants
@@ -61,24 +58,28 @@ class VoiceBridgeService : Service() {
         const val STATE_ERROR = "error"
 
         var onLogListener: ((String) -> Unit)? = null
+
+        // Wake word phonetic pattern (Athena, Atina, Adina, Athina, etc.)
+        private val WAKE_PATTERN = Pattern.compile(
+            "\\b(?:hey\\s+|hi\\s+|ok\\s+|okay\\s+|hello\\s+)?(a[td]h?e?i?n[ae]|ath?ee?n[ae]|atena|atina|adina|adena|edina|ethina)\\b",
+            Pattern.CASE_INSENSITIVE
+        )
     }
 
     // --- Core components ---
     private var wakeLock: PowerManager.WakeLock? = null
     private val handler = Handler(Looper.getMainLooper())
 
-    // --- AudioRecord VAD Engine ---
-    private var audioRecord: AudioRecord? = null
-    private var vadThread: Thread? = null
-    private var isRecording = false
+    // --- Native High-Precision Speech Recognizer ---
+    private var speechRecognizer: SpeechRecognizer? = null
+    private var speechIntent: Intent? = null
+    private var isListening = false
     private var isTermuxSpeaking = false
     private var isDestroyed = false
 
-    // Audio config
-    private val sampleRate = 16000
-    private val channelConfig = AudioFormat.CHANNEL_IN_MONO
-    private val audioFormat = AudioFormat.ENCODING_PCM_16BIT
-    private val minBufferSize = maxOf(AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat), 4096)
+    // Follow-up conversation window state
+    private var isAwaitingCommand = false
+    private var followUpTimeoutRunnable: Runnable? = null
 
     // --- Network ---
     private val client = OkHttpClient.Builder()
@@ -114,7 +115,7 @@ class VoiceBridgeService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        Log.i(TAG, "═══ A.T.H.E.N.A. Continuous Silent Voice Engine starting ═══")
+        Log.i(TAG, "═══ A.T.H.E.N.A. High-Accuracy Speech Engine starting ═══")
 
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = pm.newWakeLock(
@@ -125,12 +126,12 @@ class VoiceBridgeService : Service() {
         }
 
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification(STATE_LISTENING, "Continuous silent listening active..."))
+        startForeground(NOTIFICATION_ID, buildNotification(STATE_STANDBY, "Listening for 'Athena'..."))
 
+        initSpeechRecognizer()
         connectSSEStream()
-        startVadListening()
 
-        broadcastLog("🎙️ ChatGPT Continuous Voice Engine active (100% silent, 0 beeps)")
+        broadcastLog("🎙️ ATHENA High-Accuracy Voice Engine active")
         Log.i(TAG, "═══ A.T.H.E.N.A. Voice Bridge online ═══")
     }
 
@@ -142,7 +143,8 @@ class VoiceBridgeService : Service() {
         Log.i(TAG, "═══ A.T.H.E.N.A. Voice Bridge shutting down ═══")
         isDestroyed = true
 
-        stopVadListening()
+        followUpTimeoutRunnable?.let { handler.removeCallbacks(it) }
+        destroySpeechRecognizer()
 
         sseEventSource?.cancel()
         sseEventSource = null
@@ -184,11 +186,11 @@ class VoiceBridgeService : Service() {
         }
 
         val title = when (state) {
-            STATE_LISTENING -> "🎙️ ATHENA — Continuous Listening (Silent)"
-            STATE_PROCESSING -> "⚡ ATHENA — Thinking..."
+            STATE_LISTENING -> "🎙️ ATHENA — Listening..."
+            STATE_PROCESSING -> "⚡ ATHENA — Processing..."
             STATE_SPEAKING -> "🔊 ATHENA — Speaking (Termux)..."
             STATE_ERROR -> "⚠️ ATHENA — Error"
-            else -> "🛡️ ATHENA — Ready"
+            else -> "🛡️ ATHENA — Standby (Say 'Athena')"
         }
 
         val pendingIntent = PendingIntent.getActivity(
@@ -215,185 +217,182 @@ class VoiceBridgeService : Service() {
     }
 
     // =========================================================================
-    // Silent AudioRecord VAD Engine (ChatGPT Style)
+    // Speech Recognition Setup
     // =========================================================================
 
-    @SuppressLint("MissingPermission")
-    private fun startVadListening() {
-        if (isRecording || isDestroyed) return
+    private fun initSpeechRecognizer() {
+        if (speechRecognizer != null) return
 
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            Log.e(TAG, "SpeechRecognizer not available on device")
+            updateState(STATE_ERROR, "Speech recognition unavailable")
+            return
+        }
+
+        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
+            setRecognitionListener(this@VoiceBridgeService)
+        }
+
+        speechIntent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 3000L)
+        }
+
+        startListeningSafe()
+    }
+
+    private fun destroySpeechRecognizer() {
         try {
-            audioRecord = AudioRecord(
-                MediaRecorder.AudioSource.MIC,
-                sampleRate,
-                channelConfig,
-                audioFormat,
-                minBufferSize
-            )
+            speechRecognizer?.stopListening()
+            speechRecognizer?.cancel()
+            speechRecognizer?.destroy()
+        } catch (_: Exception) {}
+        speechRecognizer = null
+        isListening = false
+    }
 
-            if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
-                Log.e(TAG, "AudioRecord failed to initialize")
-                updateState(STATE_ERROR, "Microphone hardware busy")
-                return
-            }
-
-            audioRecord?.startRecording()
-            isRecording = true
-
-            vadThread = Thread {
-                val buffer = ShortArray(1024)
-                val speechBuffer = ByteArrayOutputStream()
-                var isSpeaking = false
-                var silenceFrames = 0
-                var speechFrames = 0
-                var noiseFloor = 400.0
-
-                while (isRecording && !isDestroyed) {
-                    if (isTermuxSpeaking) {
-                        // Sleep briefly while Termux is outputting speech to prevent echo loop
-                        Thread.sleep(100)
-                        continue
-                    }
-
-                    val read = audioRecord?.read(buffer, 0, buffer.size) ?: 0
-                    if (read > 0) {
-                        var sum = 0.0
-                        for (i in 0 until read) {
-                            sum += abs(buffer[i].toDouble())
-                        }
-                        val rms = sum / read
-
-                        // Dynamic noise floor tracking
-                        if (!isSpeaking) {
-                            noiseFloor = noiseFloor * 0.96 + rms * 0.04
-                        }
-
-                        val speechThreshold = maxOf(noiseFloor * 2.0, 650.0)
-
-                        if (rms > speechThreshold) {
-                            silenceFrames = 0
-                            speechFrames++
-                            if (!isSpeaking && speechFrames >= 2) {
-                                isSpeaking = true
-                                speechBuffer.reset()
-                                handler.post {
-                                    updateState(STATE_LISTENING, "Hearing your voice...")
-                                }
-                            }
-                        } else {
-                            if (isSpeaking) {
-                                silenceFrames++
-                                // ~0.8 second of silence after speaking -> turn complete!
-                                if (silenceFrames >= 12) {
-                                    isSpeaking = false
-                                    speechFrames = 0
-                                    val pcmData = speechBuffer.toByteArray()
-                                    speechBuffer.reset()
-
-                                    // Process if audio is at least 0.5s long
-                                    if (pcmData.size >= sampleRate * 0.5 * 2) {
-                                        val wavData = addWavHeader(pcmData, sampleRate)
-                                        handler.post {
-                                            triggerHapticFeedback()
-                                            sendAudioToBackend(wavData)
-                                        }
-                                    } else {
-                                        handler.post {
-                                            updateState(STATE_LISTENING, "Listening silently...")
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        if (isSpeaking) {
-                            val byteBuf = ByteArray(read * 2)
-                            ByteBuffer.wrap(byteBuf).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().put(buffer, 0, read)
-                            speechBuffer.write(byteBuf)
-                        }
+    private fun startListeningSafe() {
+        if (isDestroyed || isTermuxSpeaking || isListening) return
+        handler.post {
+            try {
+                if (speechRecognizer == null) {
+                    speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
+                        setRecognitionListener(this@VoiceBridgeService)
                     }
                 }
-            }.apply {
-                priority = Thread.MAX_PRIORITY
-                start()
+                speechIntent?.let {
+                    speechRecognizer?.startListening(it)
+                    isListening = true
+                    val stateLabel = if (isAwaitingCommand) "Awaiting command..." else "Listening for 'Athena'..."
+                    updateState(STATE_LISTENING, stateLabel)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "startListening error", e)
+                isListening = false
+                restartListeningWithDelay(2000)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "VAD error", e)
-            updateState(STATE_ERROR, "Mic error: ${e.message}")
         }
     }
 
-    private fun stopVadListening() {
-        isRecording = false
-        vadThread?.interrupt()
-        vadThread = null
-        try {
-            audioRecord?.stop()
-            audioRecord?.release()
-        } catch (_: Exception) {}
-        audioRecord = null
+    private fun restartListeningWithDelay(delayMs: Long = 800) {
+        if (isDestroyed) return
+        handler.postDelayed({
+            if (!isDestroyed && !isTermuxSpeaking) {
+                startListeningSafe()
+            }
+        }, delayMs)
     }
 
-    private fun addWavHeader(pcm: ByteArray, rate: Int): ByteArray {
-        val totalDataLen = pcm.size + 36
-        val byteRate = rate * 2 * 1
-        val header = ByteArray(44)
-        header[0] = 'R'.code.toByte(); header[1] = 'I'.code.toByte(); header[2] = 'F'.code.toByte(); header[3] = 'F'.code.toByte()
-        header[4] = (totalDataLen and 0xff).toByte()
-        header[5] = ((totalDataLen shr 8) and 0xff).toByte()
-        header[6] = ((totalDataLen shr 16) and 0xff).toByte()
-        header[7] = ((totalDataLen shr 24) and 0xff).toByte()
-        header[8] = 'W'.code.toByte(); header[9] = 'A'.code.toByte(); header[10] = 'V'.code.toByte(); header[11] = 'E'.code.toByte()
-        header[12] = 'f'.code.toByte(); header[13] = 'm'.code.toByte(); header[14] = 't'.code.toByte(); header[15] = ' '.code.toByte()
-        header[16] = 16; header[17] = 0; header[18] = 0; header[19] = 0
-        header[20] = 1; header[21] = 0 // PCM format
-        header[22] = 1; header[23] = 0 // Mono
-        header[24] = (rate and 0xff).toByte()
-        header[25] = ((rate shr 8) and 0xff).toByte()
-        header[26] = ((rate shr 16) and 0xff).toByte()
-        header[27] = ((rate shr 24) and 0xff).toByte()
-        header[28] = (byteRate and 0xff).toByte()
-        header[29] = ((byteRate shr 8) and 0xff).toByte()
-        header[30] = ((byteRate shr 16) and 0xff).toByte()
-        header[31] = ((byteRate shr 24) and 0xff).toByte()
-        header[32] = 2; header[33] = 0
-        header[34] = 16; header[35] = 0
-        header[36] = 'd'.code.toByte(); header[37] = 'a'.code.toByte(); header[38] = 't'.code.toByte(); header[39] = 'a'.code.toByte()
-        header[40] = (pcm.size and 0xff).toByte()
-        header[41] = ((pcm.size shr 8) and 0xff).toByte()
-        header[42] = ((pcm.size shr 16) and 0xff).toByte()
-        header[43] = ((pcm.size shr 24) and 0xff).toByte()
+    // =========================================================================
+    // RecognitionListener Callbacks
+    // =========================================================================
 
-        val out = ByteArray(44 + pcm.size)
-        System.arraycopy(header, 0, out, 0, 44)
-        System.arraycopy(pcm, 0, out, 44, pcm.size)
-        return out
+    override fun onReadyForSpeech(params: Bundle?) {
+        isListening = true
     }
+
+    override fun onBeginningOfSpeech() {}
+    override fun onRmsChanged(rmsdB: Float) {}
+    override fun onBufferReceived(buffer: ByteArray?) {}
+    override fun onEndOfSpeech() {
+        isListening = false
+    }
+
+    override fun onError(error: Int) {
+        isListening = false
+        val delay = when (error) {
+            SpeechRecognizer.ERROR_NO_MATCH,
+            SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> 500L
+            SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> 1500L
+            else -> 1000L
+        }
+        restartListeningWithDelay(delay)
+    }
+
+    override fun onResults(results: Bundle?) {
+        isListening = false
+        val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+        if (matches.isNullOrEmpty()) {
+            restartListeningWithDelay(400)
+            return
+        }
+
+        val rawText = matches[0].trim()
+        Log.i(TAG, "Heard: '$rawText'")
+
+        // 1. If in 12-second follow-up window: accept ANY command directly
+        if (isAwaitingCommand) {
+            followUpTimeoutRunnable?.let { handler.removeCallbacks(it) }
+            isAwaitingCommand = false
+            triggerHapticFeedback()
+            broadcastLog("🗣️ Command: \"$rawText\"")
+            sendTextToBackend(rawText)
+            return
+        }
+
+        // 2. Check for wake word
+        val matcher = WAKE_PATTERN.matcher(rawText)
+        if (matcher.find()) {
+            triggerHapticFeedback()
+            val command = rawText.substring(matcher.end()).trim().trim(',', '.', '!', '?')
+
+            if (command.isEmpty()) {
+                // User only said "Athena" -> Open 12-second follow-up window
+                isAwaitingCommand = true
+                broadcastLog("✨ Athena awake! (Say your command...)")
+                updateState(STATE_LISTENING, "Listening for command...")
+
+                followUpTimeoutRunnable?.let { handler.removeCallbacks(it) }
+                followUpTimeoutRunnable = Runnable {
+                    isAwaitingCommand = false
+                    broadcastLog("⏱️ Listening window closed.")
+                    updateState(STATE_STANDBY, "Listening for 'Athena'...")
+                }
+                handler.postDelayed(followUpTimeoutRunnable!!, 12000L)
+                restartListeningWithDelay(300)
+            } else {
+                // Full sentence: "Athena, show telemetry log"
+                broadcastLog("🎯 Wake hit: \"$command\"")
+                sendTextToBackend(command)
+            }
+        } else {
+            // Background speech without wake word -> discard silently
+            broadcastLog("👂 Ignored: \"$rawText\"")
+            restartListeningWithDelay(400)
+        }
+    }
+
+    override fun onPartialResults(partialResults: Bundle?) {}
+    override fun onEvent(eventType: Int, params: Bundle?) {}
 
     // =========================================================================
     // Backend Communication
     // =========================================================================
 
-    private fun sendAudioToBackend(wavBytes: ByteArray) {
-        updateState(STATE_PROCESSING, "Transcribing voice signal...")
-        val b64 = Base64.encodeToString(wavBytes, Base64.NO_WRAP)
+    private fun sendTextToBackend(prompt: String) {
+        updateState(STATE_PROCESSING, "Processing: \"$prompt\"")
 
         val jsonBody = JSONObject().apply {
-            put("audio_b64", b64)
-            put("mime_type", "audio/wav")
+            put("text", prompt)
         }.toString()
 
         val requestBody = jsonBody.toRequestBody("application/json; charset=utf-8".toMediaType())
         val request = Request.Builder()
-            .url(TRANSCRIBE_URL)
+            .url(ASK_URL)
             .post(requestBody)
             .build()
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 handler.post {
-                    broadcastLog("❌ Transcribe failed: ${e.message}")
-                    updateState(STATE_ERROR, "Uplink offline")
+                    broadcastLog("❌ Uplink failed: ${e.message}")
+                    updateState(STATE_ERROR, "Backend offline")
+                    restartListeningWithDelay(3000)
                 }
             }
 
@@ -404,29 +403,12 @@ class VoiceBridgeService : Service() {
                 handler.post {
                     try {
                         val json = JSONObject(body)
-                        val ok = json.optBoolean("ok", false)
-                        val text = json.optString("text", "")
-                        val reason = json.optString("reason", "")
-                        val command = json.optString("command", "")
-
-                        if (ok && text.isNotEmpty()) {
-                            triggerHapticFeedback()
-                            if (command.isNotEmpty()) {
-                                broadcastLog("🎯 Wake hit: \"$command\"")
-                                updateState(STATE_PROCESSING, "Processing: \"$command\"")
-                            } else {
-                                broadcastLog("✨ Athena awake! (\"$text\")")
-                                updateState(STATE_PROCESSING, "Athena listening...")
-                            }
-                        } else if (reason == "no_wake_word") {
-                            broadcastLog("👂 Ignored (No wake word): \"$text\"")
-                            updateState(STATE_LISTENING, "Listening for \"Athena\"...")
-                        } else {
-                            updateState(STATE_LISTENING, "Listening for \"Athena\"...")
+                        val reply = json.optString("reply", "")
+                        if (reply.isNotEmpty()) {
+                            broadcastLog("🤖 Termux: \"$reply\"")
                         }
-                    } catch (_: Exception) {
-                        updateState(STATE_LISTENING, "Listening silently...")
-                    }
+                    } catch (_: Exception) {}
+                    // Listening will be resumed when Termux finishes speaking (tracked via SSE)
                 }
             }
         })
@@ -468,12 +450,15 @@ class VoiceBridgeService : Service() {
                         if (phase == "speaking") {
                             isTermuxSpeaking = true
                             handler.post {
+                                try { speechRecognizer?.stopListening() } catch (_: Exception) {}
+                                isListening = false
                                 updateState(STATE_SPEAKING, "Termux speaking reply...")
                             }
                         } else if (isTermuxSpeaking && (phase == "standby" || phase == "idle")) {
                             isTermuxSpeaking = false
                             handler.post {
-                                updateState(STATE_LISTENING, "Listening silently...")
+                                updateState(STATE_STANDBY, "Listening for 'Athena'...")
+                                startListeningSafe()
                             }
                         }
                     }
