@@ -202,7 +202,7 @@ def load_config() -> Config:
             max_utterance_seconds=_env_float("EV_MAX_UTTERANCE_SECONDS", 60.0),
             ptt_key=_env("EV_PTT_KEY", "space"),
             trigger=_env("EV_TRIGGER", "wakeword").lower(),
-            wake_word_models=_csv_tuple("EV_WAKE_WORDS", ("sara", "alexa")),
+            wake_word_models=_csv_tuple("EV_WAKE_WORDS", ("athena", "alexa")),
             wake_word_weights=_env("EV_WAKE_WORD_WEIGHTS"),
             wake_word_threshold=_env_float("EV_WAKE_WORD_THRESHOLD", 0.5),
             wake_grace_seconds=_env_float("EV_WAKE_GRACE_SECONDS", 1.2),
@@ -212,7 +212,7 @@ def load_config() -> Config:
             wake_empty_cooldown=_env_float("EV_WAKE_EMPTY_COOLDOWN", 8.0),
             wake_relisten_max=int(_env_float("EV_WAKE_RELISTEN_MAX", 2)),
             wake_response_cooldown=_env_float("EV_WAKE_RESPONSE_COOLDOWN", 4.0),
-            wake_phrases=_csv_tuple("EV_WAKE_PHRASES", ("sara", "hey sara", "alexa")),
+            wake_phrases=_csv_tuple("EV_WAKE_PHRASES", ("athena", "hey athena", "alexa")),
             wake_phrase_required=_env_bool("EV_WAKE_PHRASE_REQUIRED", False),
         ),
         stt=STTConfig(

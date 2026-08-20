@@ -99,7 +99,7 @@ class MCPProcessClient:
                 {
                     "protocolVersion": "2024-11-05",
                     "capabilities": {},
-                    "clientInfo": {"name": "sara-assistant", "version": "2.0.0"},
+                    "clientInfo": {"name": "athena-assistant", "version": "2.0.0"},
                 },
                 timeout=timeout,
             )

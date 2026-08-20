@@ -106,12 +106,12 @@ export const FeedPanel = memo(function FeedPanel({ snap, logs, onClearLogs, onCl
         </p>
       </div>
 
-      {/* 2. S.A.R.A. Response */}
+      {/* 2. A.T.H.E.N.A. Response */}
       <div className="hud-panel p-3.5 rounded relative">
         <div className="flex items-center justify-between mb-2">
           <div className="hud-label flex items-center gap-1.5 text-[9.5px]">
             <Bot size={12} className="text-[#7ef3ff]" />
-            <span>S.A.R.A. Synthesis</span>
+            <span>A.T.H.E.N.A. Synthesis</span>
           </div>
           {snap.reply && (
             <button

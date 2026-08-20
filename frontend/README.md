@@ -1,6 +1,6 @@
-# S.A.R.A. — Holographic Voice & Reasoning HUD
+# A.T.H.E.N.A. — Holographic Voice & Reasoning HUD
 
-A **JARVIS-style sci-fi holographic command deck** for S.A.R.A. (Synthesized Artificial Reasoning Agent) — arc-reactor core, live oscilloscope waveform, wake sensitivity meter, terminal uplink console, personal Markdown notes vault, active timers, briefing modal, MCP server manager, and telemetry streams. Built with **React 19 + Vite + Tailwind CSS**, served at **http://localhost:2026**.
+A **JARVIS-style sci-fi holographic command deck** for A.T.H.E.N.A. (Adaptive Thinking Hands-free Engine for Neural Assistance) — arc-reactor core, live oscilloscope waveform, wake sensitivity meter, terminal uplink console, personal Markdown notes vault, active timers, briefing modal, MCP server manager, and telemetry streams. Built with **React 19 + Vite + Tailwind CSS**, served at **http://localhost:2026**.
 
 ---
 
@@ -26,7 +26,7 @@ The web HUD connects to the Python voice & engine backend (`evbridge.py` on `:20
 - `POST /notes/save` & `POST /notes/delete`: Create, update, or remove markdown notes in the vault.
 - `GET /timers` & `POST /timers/cancel`: Manage active countdown timers and Pomodoro sessions.
 - `POST /config`: Interactive calibration for wake threshold (`{"threshold": 0.35}`) and speech mute.
-- `POST /prompt`: Direct terminal command uplink (`{"text": "Sara, run deep research on quantum computing"}`).
+- `POST /prompt`: Direct terminal command uplink (`{"text": "Athena, run deep research on quantum computing"}`).
 
 ```
 src/

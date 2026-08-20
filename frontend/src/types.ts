@@ -64,7 +64,7 @@ export const DEFAULT_SNAPSHOT: Snapshot = {
   threshold: 0.5,
   noise_floor: 0,
   muted: false,
-  wake_word: 'SARA',
+  wake_word: 'ATHENA',
   stt_model: 'WHISPER',
   llm_model: 'GEMMA-4',
   tts: 'PIPER',

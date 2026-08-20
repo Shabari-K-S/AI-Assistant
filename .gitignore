@@ -20,6 +20,22 @@ dist/
 dist-ssr/
 *.local
 
+# Android & Gradle Build Artifacts
+.gradle/
+**/build/
+**/app/build/
+android-app/.gradle/
+android-app/local.properties
+local.properties
+*.apk
+*.aab
+*.aar
+.cxx/
+captures/
+.idea/
+*.iml
+run_build.sh
+
 # System & OS
 .DS_Store
 Thumbs.db
@@ -30,4 +46,3 @@ backend/data/
 **/data/notes/
 **/data/notes_index.json
 **/data/user_notes.json
-

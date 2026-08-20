@@ -581,11 +581,11 @@ export function NotesVaultPanel({ onSendPrompt }: Props) {
     setTimeout(() => setCopied(false), 2000)
   }, [selectedNote])
 
-  const handleAskSara = useCallback(async () => {
+  const handleAskAthena = useCallback(async () => {
     if (!selectedNote) return
     soundFx.uplink()
     setAskStatus(true)
-    const prompt = `Sara, please provide a concise executive summary and key insights regarding my note: "${selectedNote.title}".`
+    const prompt = `Athena, please provide a concise executive summary and key insights regarding my note: "${selectedNote.title}".`
     await onSendPrompt(prompt)
     setTimeout(() => setAskStatus(false), 2500)
   }, [selectedNote, onSendPrompt])
@@ -748,13 +748,13 @@ export function NotesVaultPanel({ onSendPrompt }: Props) {
             {/* Toolbar Buttons */}
             <div className="flex items-center flex-wrap gap-1.5 ml-auto">
               <button
-                onClick={handleAskSara}
+                onClick={handleAskAthena}
                 disabled={askStatus}
                 className="px-2.5 py-1 rounded bg-[rgba(186,104,255,0.18)] border border-[rgba(186,104,255,0.4)] text-[#ba68ff] hover:bg-[rgba(186,104,255,0.3)] transition-all font-mono text-[11px] font-bold flex items-center gap-1 shadow-[0_0_8px_rgba(186,104,255,0.25)]"
-                title="Ask S.A.R.A. to summarize or give insights on this note"
+                title="Ask A.T.H.E.N.A. to summarize or give insights on this note"
               >
                 <Sparkles size={12} />
-                <span>{askStatus ? 'TRANSMITTING...' : 'ASK S.A.R.A.'}</span>
+                <span>{askStatus ? 'TRANSMITTING...' : 'ASK A.T.H.E.N.A.'}</span>
               </button>
               <button
                 onClick={handleCopyMarkdown}

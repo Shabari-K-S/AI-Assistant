@@ -49,10 +49,10 @@ import evbridge  # noqa: E402  (web HUD — optional, never blocks the loop)
 
 log = logging.getLogger("ev.main")
 
-_PROMPT_WAKE = 'Say "sara" to talk (Ctrl+C to quit)...'
+_PROMPT_WAKE = 'Say "athena" to talk (Ctrl+C to quit)...'
 _PROMPT_PTT = 'Hold Space or tap Hold-To-Talk in Web HUD to speak (Ctrl+C to quit)...'
-_WAKE_REQUIRED_HINT = "you have to say my name first — try \"sara, ...\""
-_SILENCE_RETRY_HINT_WAKE = "didn't catch that — say \"sara, ...\" and try again"
+_WAKE_REQUIRED_HINT = "you have to say my name first — try \"athena, ...\""
+_SILENCE_RETRY_HINT_WAKE = "didn't catch that — say \"athena, ...\" and try again"
 _SILENCE_RETRY_HINT_PTT = "didn't catch that — try speaking into your microphone or hold-to-talk button again"
 
 
@@ -123,8 +123,12 @@ def _capture_utterance(mic, trigger, cfg, bus=None, timeout: float | None = None
 
 
 def _wake_regex(phrase: str) -> re.Pattern:
-    """Match the wake phrase as a word, tolerating speech variations (e.g. sara, sarah, s.a.r.a., saara, sa ra, case or a, que sera, etc.)."""
+    """Match the wake phrase as a word, tolerating speech variations (e.g. athena, athina, a.t.h.e.n.a., sara, etc.)."""
     base = phrase.lower().strip()
+    if base in ("athena", "athina"):
+        # Match athena, athina, a.t.h.e.n.a., a tina, a thena, athene, athana, athenna, atena
+        pattern = r"\b(a\.?t\.?h\.?e\.?n\.?a\.?|athena?|athina|athene|athana|athenna|atena|a\s+thena|a\s+tina|a\s+t\s+h\s+e\s+n\s+a)\b"
+        return re.compile(pattern, re.IGNORECASE)
     if base in ("sara", "sarah"):
         # Match sara, sarah, s.a.r.a., saara, sahra, sera, serah, zara, zarah, sa ra, saa raa, case or a, que sera, k sara
         pattern = r"\b(s\.?a\.?r\.?a\.?|sarah?|saara|sahra|sera|serah|zara|zarah|sa\s+ra|saa\s+raa|s\s+a\s+r\s+a|case\s+or\s+a|k\s+sara|que\s+sera|say\s+ra|cera)\b"

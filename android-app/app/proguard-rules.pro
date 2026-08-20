@@ -1,0 +1,6 @@
+# ATHENA ProGuard Rules
+# Keep OkHttp classes
+-dontwarn okhttp3.**
+-dontwarn okio.**
+-keep class okhttp3.** { *; }
+-keep class okio.** { *; }

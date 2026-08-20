@@ -22,7 +22,7 @@ import time
 import urllib.request
 from typing import Any
 
-log = logging.getLogger("sara.rgb")
+log = logging.getLogger("athena.rgb")
 
 # Predefined Color Palettes mapped to HUD phases
 RGB_COLOR_PALETTES: dict[str, dict[str, Any]] = {
@@ -197,7 +197,7 @@ class RgbSyncManager:
         """Send generic HTTP webhook to Home Assistant or custom API."""
         url = self.target
         if not url.startswith("http"):
-            url = f"http://{url}/api/webhook/sara-rgb"
+            url = f"http://{url}/api/webhook/athena-rgb"
         payload = {
             "phase": phase,
             "color_hex": palette["hex"],

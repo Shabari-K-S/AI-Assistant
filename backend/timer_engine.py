@@ -326,13 +326,13 @@ class TimerEngine:
                     [
                         "termux-notification",
                         "--title",
-                        f"S.A.R.A. ⏰ {label}",
+                        f"ATHENA ⏰ {label}",
                         "--content",
                         spoken_text,
                         "--priority",
                         "max",
                         "--id",
-                        "sara_timer_alert",
+                        "athena_timer_alert",
                     ],
                     timeout=3.0,
                 )

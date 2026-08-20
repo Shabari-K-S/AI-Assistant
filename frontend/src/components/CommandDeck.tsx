@@ -12,15 +12,15 @@ interface Props {
 }
 
 const QUICK_ACTIONS = [
-  { label: 'Morning Briefing', query: 'Sara, give me my morning briefing with weather, tasks, and headlines.', icon: Sparkles },
-  { label: 'Pomodoro 25m', query: 'Sara, set a Pomodoro focus timer for 25 minutes.', icon: Activity },
-  { label: 'Evening Debrief', query: 'Sara, give me my evening debrief and recap.', icon: Sparkles },
-  { label: 'Deep Research', query: 'Sara, run deep research on solid-state battery technology and breakthroughs.', icon: Sparkles },
+  { label: 'Morning Briefing', query: 'Athena, give me my morning briefing with weather, tasks, and headlines.', icon: Sparkles },
+  { label: 'Pomodoro 25m', query: 'Athena, set a Pomodoro focus timer for 25 minutes.', icon: Activity },
+  { label: 'Evening Debrief', query: 'Athena, give me my evening debrief and recap.', icon: Sparkles },
+  { label: 'Deep Research', query: 'Athena, run deep research on solid-state battery technology and breakthroughs.', icon: Sparkles },
   { label: 'System Status', query: 'What is the current system status, memory, and active window?', icon: Activity },
-  { label: 'MCP Weather', query: 'Sara, what is the weather in Chennai, Tamil Nadu, India according to the MCP weather tool?', icon: CloudSun },
-  { label: 'MCP Notes', query: 'Sara, list my saved notes and active tasks from memory.', icon: BookOpen },
-  { label: 'Code Git Status', query: 'Sara, what is the git status and active branch in our project workspace?', icon: GitBranch },
-  { label: 'Open in VS Code', query: 'Sara, open the application project in VS Code.', icon: ExternalLink },
+  { label: 'MCP Weather', query: 'Athena, what is the weather in Chennai, Tamil Nadu, India according to the MCP weather tool?', icon: CloudSun },
+  { label: 'MCP Notes', query: 'Athena, list my saved notes and active tasks from memory.', icon: BookOpen },
+  { label: 'Code Git Status', query: 'Athena, what is the git status and active branch in our project workspace?', icon: GitBranch },
+  { label: 'Open in VS Code', query: 'Athena, open the application project in VS Code.', icon: ExternalLink },
 ]
 
 export const CommandDeck = memo(function CommandDeck({

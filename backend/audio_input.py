@@ -317,13 +317,19 @@ class WakeWordTrigger(Trigger):
 
         self._on_score = on_score  # optional live telemetry hook (web HUD)
 
-        models = config.wake_word_models or ("hey_jarvis",)
+        models = config.wake_word_models or ("athena", "alexa")
         paths: list[str] = []
         for name in models:
             path = Path(name)
             if path.is_file():
                 paths.append(str(path))
                 continue
+            local_models = Path(__file__).parent / "models"
+            if local_models.exists():
+                local_matches = sorted(local_models.glob(f"{name}*.onnx"))
+                if local_matches:
+                    paths.append(str(local_matches[0]))
+                    continue
             bundled_dir = (
                 Path(__import__("openwakeword").__file__).parent
                 / "resources" / "models"
@@ -334,7 +340,20 @@ class WakeWordTrigger(Trigger):
                 continue
             if config.wake_word_weights:
                 continue  # custom classifier below; bundled name may be nominal
-            raise RuntimeError(f"wake word model not found: {name!r}")
+            log.info("Wake word model %r not bundled in openwakeword (will rely on STT transcript gating or fallbacks)", name)
+
+        if not paths and not config.wake_word_weights:
+            # Fallback to any available bundled openWakeWord model for energy gating
+            bundled_dir = (
+                Path(__import__("openwakeword").__file__).parent
+                / "resources" / "models"
+            )
+            fallback_matches = sorted(bundled_dir.glob("*.onnx"))
+            if fallback_matches:
+                paths.append(str(fallback_matches[0]))
+                log.info("Using bundled wake trigger model: %s", Path(paths[0]).stem)
+            else:
+                raise RuntimeError("No openwakeword models available")
 
         if config.wake_word_weights:
             self._model: object = _CustomWakeScorer(config.wake_word_weights)

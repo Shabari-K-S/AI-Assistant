@@ -1,6 +1,6 @@
-# S.A.R.A. — Backend Engine Architecture
+# A.T.H.E.N.A. — Backend Engine Architecture
 
-The core python backend for **S.A.R.A.** (*Synthesized Artificial Reasoning Agent*). Implements an end-to-end voice and reasoning pipeline, autonomous background engines, Model Context Protocol (MCP) servers, and real-time SSE telemetry bridge.
+The core python backend for **A.T.H.E.N.A.** (*Adaptive Thinking Hands-free Engine for Neural Assistance*). Implements an end-to-end voice and reasoning pipeline, autonomous background engines, Model Context Protocol (MCP) servers, and real-time SSE telemetry bridge.
 
 ```
 Mic Input → Wake Word (openWakeWord) → STT (faster-whisper) → LLM (Gemma 4 / Gemini API) → TTS (Edge-TTS / Piper) → Speaker
@@ -13,7 +13,7 @@ Mic Input → Wake Word (openWakeWord) → STT (faster-whisper) → LLM (Gemma 4
 
 | Stage / Module | Source File | Description |
 | :--- | :--- | :--- |
-| **Stage 1: Audio Input & Wake Word** | `audio_input.py` | Continuous ring buffer, pre-roll audio slicing, openWakeWord neural inference (`"S.A.R.A."`). |
+| **Stage 1: Audio Input & Wake Word** | `audio_input.py` | Continuous ring buffer, pre-roll audio slicing, openWakeWord neural inference (`"A.T.H.E.N.A."`). |
 | **Stage 2: Neural STT** | `stt.py` | High-speed local transcription via `faster-whisper` (`int8`/`float16`), Silero VAD. |
 | **Stage 3: LLM Brain & Tools** | `llm.py`, `tools.py` | Multi-round tool chaining loop, Gemini API client, local Ollama client, safety validation. |
 | **Stage 4: Neural TTS** | `tts.py` | Zero-cost Edge-TTS neural streaming, local Piper ONNX, ElevenLabs, PyAV in-memory decoding. |
@@ -88,7 +88,7 @@ EV_EDGE_PITCH=+0Hz
 
 # --- Wake Word & Audio ---
 EV_TRIGGER=wakeword                 # wakeword | ptt
-EV_WAKE_WORDS=sara
+EV_WAKE_WORDS=athena
 EV_WAKE_WORD_THRESHOLD=0.35
 EV_WAKE_GRACE_SECONDS=1.2
 EV_WAKE_END_SILENCE_SECONDS=1.0
@@ -115,11 +115,11 @@ source .venv/bin/activate
 
 ### CLI Command Options
 ```bash
-python3 main.py                    # Standard interactive voice assistant loop
-python3 main.py --text "hi SARA"   # Skip microphone; send direct text query
-python3 main.py --once             # Single voice turn, then exit
-python3 main.py transcribe         # Run STT engine only (audio debug)
-python3 main.py --list-devices     # List all system audio input/output devices
+python3 main.py                      # Standard interactive voice assistant loop
+python3 main.py --text "hi Athena"   # Skip microphone; send direct text query
+python3 main.py --once               # Single voice turn, then exit
+python3 main.py transcribe           # Run STT engine only (audio debug)
+python3 main.py --list-devices       # List all system audio input/output devices
 ```
 
 ### Running Test Suites

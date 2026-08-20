@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-log = logging.getLogger("sara.memory")
+log = logging.getLogger("athena.memory")
 
 DATA_DIR = Path(__file__).resolve().parent / "data" / "memory"
 DATA_DIR.mkdir(parents=True, exist_ok=True)

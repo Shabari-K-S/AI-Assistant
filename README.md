@@ -1,6 +1,6 @@
-# S.A.R.A. (Synthesized Artificial Reasoning Agent)
+# A.T.H.E.N.A. (Adaptive Thinking Hands-free Engine for Neural Assistance)
 
-> **S.A.R.A.** — *A local-first, voice-driven autonomous AI assistant with Model Context Protocol (MCP) tool orchestration, autonomous multi-source deep research engine, personal Markdown notes vault, and a real-time holographic cyberpunk web telemetry HUD.*
+> **A.T.H.E.N.A.** — *A local-first, voice-driven autonomous AI assistant with 24/7 always-on Android voice bridge, Model Context Protocol (MCP) tool orchestration, autonomous multi-source deep research engine, personal Markdown notes vault, and a real-time holographic cyberpunk web telemetry HUD.*
 
 ---
 
@@ -9,7 +9,7 @@
 ### 🎙️ 1. Real-Time Neural Voice Pipeline
 - **Stage 1: Always-On Voice Capture & Wake Word (`audio_input.py`)**
   - Zero-latency timestamped ring buffer with pre-roll audio slicing.
-  - Local CPU neural inference via `openWakeWord` with custom acoustic models (`"S.A.R.A."`).
+  - Local CPU neural inference via `openWakeWord` with custom acoustic models (`"A.T.H.E.N.A."`).
   - Adaptive ambient noise floor tracking, anti-spike trigger gating, and push-to-talk (PTT) support.
 - **Stage 2: Fast Local Neural STT (`stt.py`)**
   - High-speed neural speech transcription powered by `faster-whisper` (CTranslate2 `int8` / `float16`).
@@ -160,7 +160,7 @@ cd frontend
 npm install
 ```
 
-### 4. Launching S.A.R.A.
+### 4. Launching A.T.H.E.N.A.
 - **Start the Voice & Engine Backend:**
   ```bash
   cd backend
@@ -187,7 +187,7 @@ npm install
 | `EV_OLLAMA_MODEL` | `gemma4:e4b` | Local fallback model tag |
 | `EV_TTS_PROVIDER` | `edge` | Neural TTS provider (`edge`, `piper`, `gtts`, `elevenlabs`) |
 | `EV_TRIGGER` | `wakeword` | Activation mode (`wakeword` or `ptt`) |
-| `EV_WAKE_WORDS` | `sara` | Target wake phrase |
+| `EV_WAKE_WORDS` | `athena` | Target wake phrase |
 | `EV_WAKE_WORD_THRESHOLD` | `0.35` | Wake word sensitivity threshold |
 | `EV_CONFIRM_SHELL` | `ask` | Shell execution safety policy (`ask` / `always` / `never`) |
 | `EV_BRIDGE_PORT` | `2027` | SSE event bridge port |

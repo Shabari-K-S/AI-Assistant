@@ -36,8 +36,8 @@ export function BriefingModal({ briefing, onClose, onSendPrompt }: Props) {
   const handleReadAloud = async () => {
     soundFx.uplink()
     const prompt = isMorning
-      ? 'Sara, please give me my morning briefing aloud.'
-      : 'Sara, please give me my evening debrief aloud.'
+      ? 'Athena, please give me my morning briefing aloud.'
+      : 'Athena, please give me my evening debrief aloud.'
     await onSendPrompt(prompt)
     onClose()
   }
@@ -95,7 +95,7 @@ export function BriefingModal({ briefing, onClose, onSendPrompt }: Props) {
             <Volume2 size={18} className="text-[#41e6ff] shrink-0 mt-0.5" />
             <div className="space-y-1">
               <span className="text-[10px] font-bold text-[#41e6ff] tracking-wider uppercase">
-                S.A.R.A. Spoken Executive Summary
+                A.T.H.E.N.A. Spoken Executive Summary
               </span>
               <p className="text-[#e8fbff] text-xs leading-relaxed opacity-95">{briefing.spoken_summary}</p>
             </div>
@@ -241,7 +241,7 @@ export function BriefingModal({ briefing, onClose, onSendPrompt }: Props) {
             className="px-4 py-1.5 rounded-lg bg-[rgba(65,230,255,0.2)] border border-[#41e6ff] text-[#41e6ff] hover:bg-[rgba(65,230,255,0.35)] shadow-[0_0_12px_rgba(65,230,255,0.3)] font-mono text-xs font-bold tracking-wider flex items-center gap-1.5 transition-all"
           >
             <Volume2 size={14} />
-            <span>READ ALOUD WITH S.A.R.A.</span>
+            <span>READ ALOUD WITH A.T.H.E.N.A.</span>
           </button>
         </div>
       </div>

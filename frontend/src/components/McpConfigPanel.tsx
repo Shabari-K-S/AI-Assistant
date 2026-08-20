@@ -172,7 +172,7 @@ export const McpConfigPanel = memo(function McpConfigPanel({ onSendPrompt, onClo
             </span>
           </div>
           <p className="font-mono text-[10px] sm:text-[11px] tracking-wider text-[#7da4b8] mt-1">
-            Dynamic Model Context Protocol supervision — enable, calibrate, or hot-swap tools for S.A.R.A.
+            Dynamic Model Context Protocol supervision — enable, calibrate, or hot-swap tools for A.T.H.E.N.A.
           </p>
         </div>
 
@@ -435,7 +435,7 @@ export const McpConfigPanel = memo(function McpConfigPanel({ onSendPrompt, onClo
                                 {tool.name === 'mcp_get_weather' && (
                                   <button
                                     onClick={() =>
-                                      handleTestQuery('Sara, what is the weather in Chennai, Tamil Nadu, India according to the MCP weather tool?')
+                                      handleTestQuery('Athena, what is the weather in Chennai, Tamil Nadu, India according to the MCP weather tool?')
                                     }
                                     className="font-mono text-[8.5px] text-[#41e6ff] hover:text-white bg-[rgba(65,230,255,0.1)] hover:bg-[rgba(65,230,255,0.2)] px-1.5 py-0.5 rounded border border-[rgba(65,230,255,0.2)] flex items-center gap-1"
                                     title="Run Chennai weather test prompt"
@@ -447,7 +447,7 @@ export const McpConfigPanel = memo(function McpConfigPanel({ onSendPrompt, onClo
 
                                 {tool.name === 'notes_list_notes' && (
                                   <button
-                                    onClick={() => handleTestQuery('Sara, list all my saved notes from user memory.')}
+                                    onClick={() => handleTestQuery('Athena, list all my saved notes from user memory.')}
                                     className="font-mono text-[8.5px] text-[#41e6ff] hover:text-white bg-[rgba(65,230,255,0.1)] hover:bg-[rgba(65,230,255,0.2)] px-1.5 py-0.5 rounded border border-[rgba(65,230,255,0.2)] flex items-center gap-1"
                                     title="List notes prompt"
                                   >

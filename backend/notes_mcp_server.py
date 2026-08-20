@@ -493,7 +493,7 @@ def handle_voice_brain_dump(args: dict[str, Any]) -> str:
 
     # Clean introductory conversational starters
     cleaned_speech = re.sub(
-        r"(?i)^(?:hey\s+sara|sara|hi\s+sara|ok\s+sara|assistant)?[\s,:-]*(?:take\s+a\s+brain\s+dump|brain\s+dump(?:\s+mode)?|quick\s+note)?[\s,:-]*",
+        r"(?i)^(?:hey\s+athena|athena|hi\s+athena|ok\s+athena|hey\s+sara|sara|hi\s+sara|ok\s+sara|assistant)?[\s,:-]*(?:take\s+a\s+brain\s+dump|brain\s+dump(?:\s+mode)?|quick\s+note)?[\s,:-]*",
         "",
         raw_speech,
     ).strip()

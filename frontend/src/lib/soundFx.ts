@@ -1,5 +1,5 @@
 /**
- * Procedural Web Audio sci-fi sound effects engine for S.A.R.A. HUD.
+ * Procedural Web Audio sci-fi sound effects engine for A.T.H.E.N.A. HUD.
  * Synthesizes pure Web Audio oscillator waveforms without needing external mp3/wav files.
  */
 

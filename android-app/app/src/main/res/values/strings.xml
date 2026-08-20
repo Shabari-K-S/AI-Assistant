@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">ATHENA</string>
+    <string name="footer_instructions">Say &quot;Athena&quot; followed by your command\nVoice bridge connects to Termux @ 127.0.0.1:2027</string>
+</resources>

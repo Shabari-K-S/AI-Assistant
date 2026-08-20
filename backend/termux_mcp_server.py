@@ -27,7 +27,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-log = logging.getLogger("sara.termux")
+log = logging.getLogger("athena.termux")
 
 
 def is_android_termux() -> bool:
@@ -387,7 +387,7 @@ def handle_notification_send(args: dict[str, Any]) -> str:
         "--priority",
         priority,
         "--id",
-        "sara_alert",
+        "athena_alert",
     ]
     code, _stdout, stderr = _run_termux_cmd(cmd)
     if code != 0:
