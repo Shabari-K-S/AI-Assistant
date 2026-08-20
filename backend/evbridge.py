@@ -356,11 +356,13 @@ class _Handler(BaseHTTPRequestHandler):
                 elif file_path.suffix == ".html":
                     mime_type = "text/html"
 
-                try:
                     content = file_path.read_bytes()
                     self.send_response(200)
                     self.send_header("Content-Type", mime_type or "application/octet-stream")
                     self.send_header("Content-Length", str(len(content)))
+                    self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+                    self.send_header("Pragma", "no-cache")
+                    self.send_header("Expires", "0")
                     self._cors()
                     self.end_headers()
                     self.wfile.write(content)
