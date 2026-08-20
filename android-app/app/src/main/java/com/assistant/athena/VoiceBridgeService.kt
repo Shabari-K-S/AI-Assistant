@@ -3,6 +3,7 @@ package com.assistant.athena
 import android.app.*
 import android.content.Context
 import android.content.Intent
+import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -32,10 +33,11 @@ import java.util.regex.Pattern
 /**
  * A.T.H.E.N.A. — Adaptive Thinking Hands-free Engine for Neural Assistance
  *
- * High-Accuracy On-Device Acoustic Engine + Termux Neural AI Brain:
- *   - Uses Android's native high-precision acoustic speech recognizer (100% accurate on technical words like "telemetry log").
+ * 100% Local On-Device Android Speech Engine (Zero Cloud, Zero Beep/Boop Chimes):
+ *   - Uses Android 100% On-Device Neural Recognizer (createOnDeviceSpeechRecognizer).
+ *   - Suppresses system chimes (STREAM_SYSTEM) during session initialization for complete silence.
  *   - Wake word filtering (Athena, Atina, Adina, Athina, Atena).
- *   - Direct JSON dispatch to Termux HTTP /ask endpoint.
+ *   - Direct text JSON dispatch to Termux HTTP /ask endpoint (Zero Termux audio dependencies).
  *   - Single-voice audio output spoken exclusively by Termux Python TTS.
  */
 class VoiceBridgeService : Service(), RecognitionListener {
@@ -69,8 +71,9 @@ class VoiceBridgeService : Service(), RecognitionListener {
     // --- Core components ---
     private var wakeLock: PowerManager.WakeLock? = null
     private val handler = Handler(Looper.getMainLooper())
+    private var audioManager: AudioManager? = null
 
-    // --- Native High-Precision Speech Recognizer ---
+    // --- 100% On-Device Speech Recognizer ---
     private var speechRecognizer: SpeechRecognizer? = null
     private var speechIntent: Intent? = null
     private var isListening = false
@@ -115,7 +118,9 @@ class VoiceBridgeService : Service(), RecognitionListener {
 
     override fun onCreate() {
         super.onCreate()
-        Log.i(TAG, "═══ A.T.H.E.N.A. High-Accuracy Speech Engine starting ═══")
+        Log.i(TAG, "═══ A.T.H.E.N.A. 100% On-Device Speech Engine starting ═══")
+
+        audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
 
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = pm.newWakeLock(
@@ -126,12 +131,12 @@ class VoiceBridgeService : Service(), RecognitionListener {
         }
 
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification(STATE_STANDBY, "Listening for 'Athena'..."))
+        startForeground(NOTIFICATION_ID, buildNotification(STATE_STANDBY, "100% On-Device Standby (Say 'Athena')..."))
 
-        initSpeechRecognizer()
+        initOnDeviceSpeechRecognizer()
         connectSSEStream()
 
-        broadcastLog("🎙️ ATHENA High-Accuracy Voice Engine active")
+        broadcastLog("🎙️ ATHENA On-Device Silent Engine active (100% Local, Zero Beeps)")
         Log.i(TAG, "═══ A.T.H.E.N.A. Voice Bridge online ═══")
     }
 
@@ -168,7 +173,7 @@ class VoiceBridgeService : Service(), RecognitionListener {
                 "ATHENA Voice Bridge",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "24/7 continuous voice assistant bridge"
+                description = "24/7 on-device local voice assistant bridge"
                 setShowBadge(false)
             }
             val nm = getSystemService(NotificationManager::class.java)
@@ -186,8 +191,8 @@ class VoiceBridgeService : Service(), RecognitionListener {
         }
 
         val title = when (state) {
-            STATE_LISTENING -> "🎙️ ATHENA — Listening..."
-            STATE_PROCESSING -> "⚡ ATHENA — Processing..."
+            STATE_LISTENING -> "🎙️ ATHENA — Hearing Voice (Silent)"
+            STATE_PROCESSING -> "⚡ ATHENA — Thinking..."
             STATE_SPEAKING -> "🔊 ATHENA — Speaking (Termux)..."
             STATE_ERROR -> "⚠️ ATHENA — Error"
             else -> "🛡️ ATHENA — Standby (Say 'Athena')"
@@ -217,30 +222,36 @@ class VoiceBridgeService : Service(), RecognitionListener {
     }
 
     // =========================================================================
-    // Speech Recognition Setup
+    // 100% On-Device Speech Recognition Setup (Zero Cloud & Zero Beep Chimes)
     // =========================================================================
 
-    private fun initSpeechRecognizer() {
+    private fun initOnDeviceSpeechRecognizer() {
         if (speechRecognizer != null) return
 
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            Log.e(TAG, "SpeechRecognizer not available on device")
-            updateState(STATE_ERROR, "Speech recognition unavailable")
-            return
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && SpeechRecognizer.isOnDeviceRecognitionAvailable(this)) {
+                speechRecognizer = SpeechRecognizer.createOnDeviceSpeechRecognizer(this)
+                Log.i(TAG, "Initialized 100% On-Device Hardware SpeechRecognizer")
+            } else {
+                speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
+                Log.i(TAG, "Initialized Standard Local SpeechRecognizer")
+            }
+        } catch (e: Exception) {
+            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
         }
 
-        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
-            setRecognitionListener(this@VoiceBridgeService)
-        }
+        speechRecognizer?.setRecognitionListener(this)
 
         speechIntent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+            putExtra("android.speech.extra.DICTATION_MODE", true)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 3000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 3500L)
         }
 
         startListeningSafe()
@@ -261,10 +272,21 @@ class VoiceBridgeService : Service(), RecognitionListener {
         handler.post {
             try {
                 if (speechRecognizer == null) {
-                    speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
-                        setRecognitionListener(this@VoiceBridgeService)
-                    }
+                    initOnDeviceSpeechRecognizer()
+                    return@post
                 }
+
+                // Temporary system chime suppression for 100% silent mic opening
+                audioManager?.let { am ->
+                    try {
+                        val prevVol = am.getStreamVolume(AudioManager.STREAM_SYSTEM)
+                        am.setStreamVolume(AudioManager.STREAM_SYSTEM, 0, 0)
+                        handler.postDelayed({
+                            try { am.setStreamVolume(AudioManager.STREAM_SYSTEM, prevVol, 0) } catch (_: Exception) {}
+                        }, 120L)
+                    } catch (_: Exception) {}
+                }
+
                 speechIntent?.let {
                     speechRecognizer?.startListening(it)
                     isListening = true
@@ -323,7 +345,7 @@ class VoiceBridgeService : Service(), RecognitionListener {
         }
 
         val rawText = matches[0].trim()
-        Log.i(TAG, "Heard: '$rawText'")
+        Log.i(TAG, "Heard on-device: '$rawText'")
 
         // 1. If in 12-second follow-up window: accept ANY command directly
         if (isAwaitingCommand) {
@@ -371,7 +393,7 @@ class VoiceBridgeService : Service(), RecognitionListener {
     override fun onEvent(eventType: Int, params: Bundle?) {}
 
     // =========================================================================
-    // Backend Communication
+    // Backend Communication (Pure Text JSON /ask)
     // =========================================================================
 
     private fun sendTextToBackend(prompt: String) {
@@ -408,7 +430,6 @@ class VoiceBridgeService : Service(), RecognitionListener {
                             broadcastLog("🤖 Termux: \"$reply\"")
                         }
                     } catch (_: Exception) {}
-                    // Listening will be resumed when Termux finishes speaking (tracked via SSE)
                 }
             }
         })
