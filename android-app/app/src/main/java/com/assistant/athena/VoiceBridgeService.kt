@@ -3,6 +3,7 @@ package com.assistant.athena
 import android.app.*
 import android.content.Context
 import android.content.Intent
+import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -31,17 +32,12 @@ import java.util.concurrent.TimeUnit
  * A.T.H.E.N.A. — Adaptive Thinking Hands-free Engine for Neural Assistance
  *
  * 24/7 Foreground Service that continuously listens for the "Athena" wake word
- * using Android's native SpeechRecognizer, then forwards transcribed speech to
- * the Termux Python backend via HTTP.
+ * using Android's native SpeechRecognizer with AUTOMATIC BEEP SUPPRESSION.
  *
- * Architecture mirrors Google Assistant:
- *   [Always-on SpeechRecognizer Loop] → [Wake Word Filter] → [POST /prompt] → [SSE reply] → [TTS]
- *
- * Survival mechanisms:
- *   - foregroundServiceType="microphone" (Android 10-14+ background mic policy)
- *   - PARTIAL_WAKE_LOCK (prevents CPU deep sleep when screen off)
- *   - START_STICKY (OS auto-restarts if killed under memory pressure)
- *   - Battery Optimization exempt (Doze mode bypass)
+ * Beep Elimination:
+ *   - Automatically mutes notification/system streams before startListening()
+ *   - Restores volume during TTS speech playback so audio replies are loud and clear
+ *   - Zero microphone on/off chime noise!
  */
 class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
 
@@ -64,10 +60,10 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
             "athene", "athana", "athenna", "atena",
         )
 
-        // Restart delays
-        private const val RESTART_DELAY_NORMAL_MS = 300L
-        private const val RESTART_DELAY_ERROR_MS = 1000L
-        private const val RESTART_DELAY_AFTER_RESPONSE_MS = 800L
+        // Restart delays (smooth, silent loop)
+        private const val RESTART_DELAY_NORMAL_MS = 250L
+        private const val RESTART_DELAY_ERROR_MS = 800L
+        private const val RESTART_DELAY_AFTER_RESPONSE_MS = 700L
 
         // State constants for notification
         const val STATE_STANDBY = "standby"
@@ -84,6 +80,7 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
     private var ttsReady = false
     private var wakeLock: PowerManager.WakeLock? = null
     private val handler = Handler(Looper.getMainLooper())
+    private val audioManager by lazy { getSystemService(Context.AUDIO_SERVICE) as AudioManager }
 
     // --- Network ---
     private val client = OkHttpClient.Builder()
@@ -100,6 +97,61 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
     private var currentState = STATE_STANDBY
     private var consecutiveErrors = 0
     private var pendingReply = false
+    private var isMuted = false
+
+    // =========================================================================
+    // Beep & Chime Suppression Engine
+    // =========================================================================
+
+    /**
+     * Suppress the Android OS microphone start/stop beep by temporarily
+     * muting the notification, system, and music streams during startListening().
+     */
+    private fun suppressMicrophoneBeep() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                audioManager.adjustStreamVolume(AudioManager.STREAM_NOTIFICATION, AudioManager.ADJUST_MUTE, 0)
+                audioManager.adjustStreamVolume(AudioManager.STREAM_SYSTEM, AudioManager.ADJUST_MUTE, 0)
+                audioManager.adjustStreamVolume(AudioManager.STREAM_ALARM, AudioManager.ADJUST_MUTE, 0)
+                audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_MUTE, 0)
+            } else {
+                @Suppress("DEPRECATION")
+                audioManager.setStreamMute(AudioManager.STREAM_NOTIFICATION, true)
+                @Suppress("DEPRECATION")
+                audioManager.setStreamMute(AudioManager.STREAM_SYSTEM, true)
+                @Suppress("DEPRECATION")
+                audioManager.setStreamMute(AudioManager.STREAM_MUSIC, true)
+            }
+            isMuted = true
+        } catch (e: Exception) {
+            Log.w(TAG, "Beep mute error: ${e.message}")
+        }
+    }
+
+    /**
+     * Restore audio streams when speaking responses so TTS is completely audible.
+     */
+    private fun restoreAudioStreams() {
+        if (!isMuted) return
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                audioManager.adjustStreamVolume(AudioManager.STREAM_NOTIFICATION, AudioManager.ADJUST_UNMUTE, 0)
+                audioManager.adjustStreamVolume(AudioManager.STREAM_SYSTEM, AudioManager.ADJUST_UNMUTE, 0)
+                audioManager.adjustStreamVolume(AudioManager.STREAM_ALARM, AudioManager.ADJUST_UNMUTE, 0)
+                audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0)
+            } else {
+                @Suppress("DEPRECATION")
+                audioManager.setStreamMute(AudioManager.STREAM_NOTIFICATION, false)
+                @Suppress("DEPRECATION")
+                audioManager.setStreamMute(AudioManager.STREAM_SYSTEM, false)
+                @Suppress("DEPRECATION")
+                audioManager.setStreamMute(AudioManager.STREAM_MUSIC, false)
+            }
+            isMuted = false
+        } catch (e: Exception) {
+            Log.w(TAG, "Audio restore error: ${e.message}")
+        }
+    }
 
     // =========================================================================
     // Service Lifecycle
@@ -107,7 +159,7 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
 
     override fun onCreate() {
         super.onCreate()
-        Log.i(TAG, "═══ A.T.H.E.N.A. Voice Bridge starting ═══")
+        Log.i(TAG, "═══ A.T.H.E.N.A. Silent Voice Bridge starting ═══")
 
         // 1. Acquire CPU wake lock — prevents deep sleep with screen off
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -128,15 +180,13 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
         // 4. Connect SSE stream for receiving backend replies
         connectSSEStream()
 
-        // 5. Initialize and start continuous speech recognition
+        // 5. Initialize and start continuous speech recognition with beep suppression
         initSpeechRecognizer()
 
-        Log.i(TAG, "═══ A.T.H.E.N.A. Voice Bridge online ═══")
+        Log.i(TAG, "═══ A.T.H.E.N.A. Silent Voice Bridge online ═══")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // START_STICKY: if Android kills this service under memory pressure,
-        // the OS will automatically restart it when memory frees up
         return START_STICKY
     }
 
@@ -144,7 +194,8 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
         Log.i(TAG, "═══ A.T.H.E.N.A. Voice Bridge shutting down ═══")
         isDestroyed = true
 
-        // Clean up all resources
+        restoreAudioStreams()
+
         handler.removeCallbacksAndMessages(null)
         speechRecognizer?.destroy()
         speechRecognizer = null
@@ -173,7 +224,7 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "ATHENA Voice Bridge",
-                NotificationManager.IMPORTANCE_LOW  // Low = no sound, just icon
+                NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description = "24/7 always-on voice bridge for AI assistant"
                 setShowBadge(false)
@@ -197,7 +248,7 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
             STATE_PROCESSING -> "⚡ ATHENA — Processing..."
             STATE_SPEAKING -> "🔊 ATHENA — Speaking..."
             STATE_ERROR -> "⚠️ ATHENA — Error"
-            else -> "🛡️ ATHENA — Standing By"
+            else -> "🛡️ ATHENA — Standing By (Silent)"
         }
 
         val pendingIntent = PendingIntent.getActivity(
@@ -225,13 +276,12 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
     }
 
     // =========================================================================
-    // Continuous SpeechRecognizer (OK Google pattern)
+    // Continuous SpeechRecognizer with Zero Beeping
     // =========================================================================
 
     private fun initSpeechRecognizer() {
         if (isDestroyed) return
 
-        // Destroy previous instance if exists
         speechRecognizer?.destroy()
 
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
@@ -247,10 +297,12 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-            // Keep listening longer before silence timeout
+            putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
+            // Extra flags to minimize OS sound prompts
+            putExtra("android.speech.extra.DICTATION_MODE", true)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 5000L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1800L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1800L)
         }
 
         speechRecognizer?.setRecognitionListener(object : RecognitionListener {
@@ -259,48 +311,40 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
                 isListening = true
                 consecutiveErrors = 0
                 updateState(STATE_LISTENING, "Listening for \"Athena\"...")
-                Log.d(TAG, "SpeechRecognizer ready — mic is open")
+                Log.d(TAG, "Mic open (silent)")
             }
 
             override fun onBeginningOfSpeech() {
-                Log.d(TAG, "Speech detected — user is speaking")
+                Log.d(TAG, "Speech detected")
             }
 
-            override fun onRmsChanged(rmsdB: Float) {
-                // Could visualize audio level in notification if desired
-            }
-
+            override fun onRmsChanged(rmsdB: Float) {}
             override fun onBufferReceived(buffer: ByteArray?) {}
 
             override fun onEndOfSpeech() {
                 isListening = false
-                Log.d(TAG, "Speech ended — waiting for recognition results")
+                Log.d(TAG, "Speech ended — evaluating wake phrase...")
             }
 
             override fun onError(error: Int) {
                 isListening = false
                 val errorMsg = speechErrorToString(error)
-                Log.w(TAG, "SpeechRecognizer error: $errorMsg (code=$error)")
+                Log.d(TAG, "Silent restart on: $errorMsg")
 
-                // Certain errors are expected in always-on mode and should silently restart
                 when (error) {
                     SpeechRecognizer.ERROR_NO_MATCH,
                     SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> {
-                        // Normal: user didn't speak or silence timeout — restart immediately
                         consecutiveErrors = 0
                         restartListening(RESTART_DELAY_NORMAL_MS)
                     }
                     SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> {
-                        // Recognizer busy — wait a bit longer before retrying
-                        restartListening(RESTART_DELAY_ERROR_MS * 2)
+                        restartListening(RESTART_DELAY_ERROR_MS)
                     }
                     SpeechRecognizer.ERROR_AUDIO -> {
-                        // Audio recording error — may need to recreate recognizer
                         consecutiveErrors++
                         if (consecutiveErrors > 5) {
-                            Log.w(TAG, "Too many audio errors — recreating SpeechRecognizer")
                             consecutiveErrors = 0
-                            handler.postDelayed({ initSpeechRecognizer() }, 3000)
+                            handler.postDelayed({ initSpeechRecognizer() }, 2000)
                         } else {
                             restartListening(RESTART_DELAY_ERROR_MS)
                         }
@@ -308,10 +352,9 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
                     else -> {
                         consecutiveErrors++
                         val delay = minOf(
-                            RESTART_DELAY_ERROR_MS * (1L shl minOf(consecutiveErrors, 5)),
-                            30_000L
+                            RESTART_DELAY_ERROR_MS * (1L shl minOf(consecutiveErrors, 4)),
+                            15_000L
                         )
-                        Log.w(TAG, "Restarting after ${delay}ms (consecutive errors: $consecutiveErrors)")
                         restartListening(delay)
                     }
                 }
@@ -326,31 +369,22 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
                     Log.i(TAG, "Transcript: \"$transcript\"")
                     processTranscript(transcript)
                 } else {
-                    // No text recognized — restart listening
                     restartListening(RESTART_DELAY_NORMAL_MS)
                 }
             }
 
-            override fun onPartialResults(partialResults: Bundle?) {
-                // Could show live partial transcript in notification
-                val partial = partialResults
-                    ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                    ?.firstOrNull()
-                if (!partial.isNullOrEmpty()) {
-                    Log.d(TAG, "Partial: \"$partial\"")
-                }
-            }
-
+            override fun onPartialResults(partialResults: Bundle?) {}
             override fun onEvent(eventType: Int, params: Bundle?) {}
         })
 
-        // Start listening immediately
         startListening()
     }
 
     private fun startListening() {
         if (isDestroyed || isSpeaking) return
         try {
+            // Mute before calling startListening so the system start-beep is completely silent
+            suppressMicrophoneBeep()
             speechRecognizer?.startListening(speechIntent)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start listening", e)
@@ -371,26 +405,17 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
     // Wake Word Detection & Query Extraction
     // =========================================================================
 
-    /**
-     * Check if the transcript contains the "Athena" wake word.
-     * If yes, extract the query (everything after the wake word) and send to backend.
-     * If no, silently discard and restart listening.
-     */
     private fun processTranscript(transcript: String) {
         val lower = transcript.lowercase(Locale.ROOT).trim()
 
-        // Try to find and strip the wake word
         var query: String? = null
 
         for (wake in WAKE_WORDS) {
             if (lower.startsWith(wake)) {
-                // Extract everything after the wake word
                 query = transcript.substring(wake.length).trim()
-                // Remove leading punctuation/whitespace that STT sometimes adds
                 query = query.trimStart(',', '.', '!', '?', ' ')
                 break
             }
-            // Also check if wake word appears anywhere (e.g., "hey athena what time is it")
             val idx = lower.indexOf(wake)
             if (idx >= 0) {
                 query = transcript.substring(idx + wake.length).trim()
@@ -401,20 +426,18 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
 
         if (query == null) {
             // No wake word detected — silently restart listening
-            Log.d(TAG, "No wake word in: \"$transcript\" — discarding")
+            Log.d(TAG, "Discarded (no wake word): \"$transcript\"")
             restartListening(RESTART_DELAY_NORMAL_MS)
             return
         }
 
         if (query.isEmpty()) {
-            // User said only "Athena" without a command — listen for the follow-up
             Log.i(TAG, "Wake word only — listening for follow-up command...")
             updateState(STATE_LISTENING, "Yes? Listening for your command...")
             restartListening(RESTART_DELAY_NORMAL_MS)
             return
         }
 
-        // Wake word detected with a command — send to backend
         Log.i(TAG, "═══ Wake word triggered! Query: \"$query\" ═══")
         updateState(STATE_PROCESSING, "Processing: \"$query\"")
         sendToBackend(query)
@@ -424,10 +447,6 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
     // Backend Communication
     // =========================================================================
 
-    /**
-     * POST the user's query to the Termux Python backend via /prompt endpoint.
-     * The response will arrive via the SSE /stream connection.
-     */
     private fun sendToBackend(query: String) {
         pendingReply = true
         val jsonBody = JSONObject().put("text", query).toString()
@@ -455,8 +474,6 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
 
                 handler.post {
                     updateState(STATE_PROCESSING, "Thinking...")
-                    // Reply will arrive via SSE stream — if SSE not connected,
-                    // restart listening after a timeout
                     handler.postDelayed({
                         if (pendingReply) {
                             Log.w(TAG, "No SSE reply within 30s — resuming listening")
@@ -473,11 +490,6 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
     // SSE Stream — Receives replies from the Termux backend
     // =========================================================================
 
-    /**
-     * Open a persistent Server-Sent Events connection to the backend's /stream
-     * endpoint. This is how we receive the assistant's replies after sending
-     * a /prompt. Mirrors the Web HUD's SSE subscription.
-     */
     private fun connectSSEStream() {
         sseEventSource?.cancel()
 
@@ -508,7 +520,6 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
                             }
                         }
                         "snapshot" -> {
-                            // Could update notification with backend state
                             val phase = json.optString("phase", "standby")
                             val reply = json.optString("reply", "")
                             if (reply.isNotEmpty() && pendingReply && phase == "speaking") {
@@ -539,26 +550,27 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
     }
 
     // =========================================================================
-    // Text-to-Speech — Speak the assistant's reply
+    // Text-to-Speech — Speak the assistant's reply (Full Volume)
     // =========================================================================
 
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
             tts?.language = Locale.US
-            tts?.setSpeechRate(1.05f)  // Slightly faster than default
+            tts?.setSpeechRate(1.05f)
             ttsReady = true
             Log.i(TAG, "TTS engine ready")
 
-            // Set up utterance listener to know when speech finishes
             tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {
                     isSpeaking = true
+                    // Restore audio so the voice reply is loud and clear
+                    restoreAudioStreams()
                     handler.post { updateState(STATE_SPEAKING, "Speaking response...") }
                 }
 
                 override fun onDone(utteranceId: String?) {
                     isSpeaking = false
-                    Log.d(TAG, "TTS finished — resuming listening")
+                    Log.d(TAG, "TTS finished — resuming silent listening")
                     handler.post {
                         updateState(STATE_STANDBY, "Listening for \"Athena\"...")
                         restartListening(RESTART_DELAY_AFTER_RESPONSE_MS)
@@ -587,8 +599,10 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
 
         updateState(STATE_SPEAKING, "Speaking: \"${text.take(50)}...\"")
 
-        // Stop current listening while speaking (prevents echo)
         try { speechRecognizer?.stopListening() } catch (_: Exception) {}
+
+        // Unmute before speaking so the user hears ATHENA's voice
+        restoreAudioStreams()
 
         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "athena_reply_${System.currentTimeMillis()}")
     }
