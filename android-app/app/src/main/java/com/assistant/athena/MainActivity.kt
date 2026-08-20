@@ -2,10 +2,8 @@ package com.assistant.athena
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.net.Uri
@@ -16,9 +14,9 @@ import android.provider.Settings
 import android.speech.tts.TextToSpeech
 import android.util.Log
 import android.widget.Button
-import android.widget.Switch
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.SwitchCompat
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import okhttp3.*
@@ -31,14 +29,6 @@ import java.util.concurrent.TimeUnit
 
 /**
  * A.T.H.E.N.A. Dashboard — Control center for the 24/7 voice bridge.
- *
- * Features:
- *  - Start/Stop the background voice service
- *  - Backend connection health check
- *  - Live activity log feed showing real-time speech and answers
- *  - Instant Test Voice Uplink button
- *  - Permission status display
- *  - Auto-start on boot toggle
  */
 class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
@@ -47,8 +37,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         private const val PERMISSION_REQUEST_CODE = 101
         private const val BACKEND_STATE_URL = "http://127.0.0.1:2027/state"
         private const val BACKEND_ASK_URL = "http://127.0.0.1:2027/ask"
-        const val ACTION_LOG_UPDATE = "com.assistant.athena.LOG_UPDATE"
-        const val EXTRA_LOG_TEXT = "log_text"
     }
 
     // UI elements
@@ -61,7 +49,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private lateinit var btnToggleService: Button
     private lateinit var btnTestQuery: Button
     private lateinit var btnCheckBackend: Button
-    private lateinit var switchAutoStart: Switch
+    private lateinit var switchAutoStart: SwitchCompat
 
     private var isServiceRunning = false
     private var localTts: TextToSpeech? = null
@@ -73,79 +61,68 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         .writeTimeout(10, TimeUnit.SECONDS)
         .build()
 
-    // Broadcast receiver for live activity logs from the service
-    private val logReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            val logText = intent?.getStringExtra(EXTRA_LOG_TEXT)
-            if (!logText.isNullOrEmpty()) {
-                appendLog(logText)
-            }
-        }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        try {
+            setContentView(R.layout.activity_main)
 
-        // Bind views
-        txtTitle = findViewById(R.id.txtTitle)
-        txtSubtitle = findViewById(R.id.txtSubtitle)
-        txtServiceStatus = findViewById(R.id.txtServiceStatus)
-        txtLiveLog = findViewById(R.id.txtLiveLog)
-        txtBackendStatus = findViewById(R.id.txtBackendStatus)
-        txtPermissionStatus = findViewById(R.id.txtPermissionStatus)
-        btnToggleService = findViewById(R.id.btnToggleService)
-        btnTestQuery = findViewById(R.id.btnTestQuery)
-        btnCheckBackend = findViewById(R.id.btnCheckBackend)
-        switchAutoStart = findViewById(R.id.switchAutoStart)
+            // Bind views
+            txtTitle = findViewById(R.id.txtTitle)
+            txtSubtitle = findViewById(R.id.txtSubtitle)
+            txtServiceStatus = findViewById(R.id.txtServiceStatus)
+            txtLiveLog = findViewById(R.id.txtLiveLog)
+            txtBackendStatus = findViewById(R.id.txtBackendStatus)
+            txtPermissionStatus = findViewById(R.id.txtPermissionStatus)
+            btnToggleService = findViewById(R.id.btnToggleService)
+            btnTestQuery = findViewById(R.id.btnTestQuery)
+            btnCheckBackend = findViewById(R.id.btnCheckBackend)
+            switchAutoStart = findViewById(R.id.switchAutoStart)
 
-        localTts = TextToSpeech(this, this)
+            localTts = TextToSpeech(this, this)
 
-        // Check and request permissions
-        checkAndRequestPermissions()
-        requestBatteryOptimizationExemption()
-
-        // Load auto-start preference
-        val prefs = getSharedPreferences("athena_prefs", Context.MODE_PRIVATE)
-        switchAutoStart.isChecked = prefs.getBoolean("auto_start_on_boot", true)
-
-        // --- Event handlers ---
-
-        btnToggleService.setOnClickListener {
-            if (!isServiceRunning) {
-                startVoiceService()
-            } else {
-                stopVoiceService()
+            // Attach log listener to VoiceBridgeService
+            VoiceBridgeService.onLogListener = { msg ->
+                appendLog(msg)
             }
-        }
 
-        btnTestQuery.setOnClickListener {
-            runTestQuery()
-        }
+            // Check and request permissions
+            checkAndRequestPermissions()
+            requestBatteryOptimizationExemption()
 
-        btnCheckBackend.setOnClickListener {
+            // Load auto-start preference
+            val prefs = getSharedPreferences("athena_prefs", Context.MODE_PRIVATE)
+            switchAutoStart.isChecked = prefs.getBoolean("auto_start_on_boot", true)
+
+            // Event handlers
+            btnToggleService.setOnClickListener {
+                if (!isServiceRunning) {
+                    startVoiceService()
+                } else {
+                    stopVoiceService()
+                }
+            }
+
+            btnTestQuery.setOnClickListener {
+                runTestQuery()
+            }
+
+            btnCheckBackend.setOnClickListener {
+                checkBackendHealth()
+            }
+
+            switchAutoStart.setOnCheckedChangeListener { _, isChecked ->
+                prefs.edit().putBoolean("auto_start_on_boot", isChecked).apply()
+            }
+
+            updatePermissionStatus()
             checkBackendHealth()
+        } catch (e: Exception) {
+            Log.e(TAG, "Fatal error in onCreate", e)
         }
-
-        switchAutoStart.setOnCheckedChangeListener { _, isChecked ->
-            prefs.edit().putBoolean("auto_start_on_boot", isChecked).apply()
-        }
-
-        // Register broadcast receiver for live log feed
-        val filter = IntentFilter(ACTION_LOG_UPDATE)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(logReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            registerReceiver(logReceiver, filter)
-        }
-
-        // Initial status checks
-        updatePermissionStatus()
-        checkBackendHealth()
     }
 
     override fun onDestroy() {
-        try { unregisterReceiver(logReceiver) } catch (_: Exception) {}
+        VoiceBridgeService.onLogListener = null
         localTts?.stop()
         localTts?.shutdown()
         super.onDestroy()
@@ -153,10 +130,12 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
     private fun appendLog(line: String) {
         runOnUiThread {
-            val current = txtLiveLog.text.toString()
-            val lines = current.split("\n").takeLast(5).toMutableList()
-            lines.add("• $line")
-            txtLiveLog.text = lines.joinToString("\n")
+            try {
+                val current = txtLiveLog.text.toString()
+                val lines = current.split("\n").takeLast(5).toMutableList()
+                lines.add("• $line")
+                txtLiveLog.text = lines.joinToString("\n")
+            } catch (_: Exception) {}
         }
     }
 

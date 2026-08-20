@@ -10,27 +10,26 @@
         android:layout_height="wrap_content"
         android:gravity="center_horizontal"
         android:orientation="vertical"
-        android:padding="24dp">
+        android:padding="20dp">
 
         <!-- ═══ Header ═══ -->
         <TextView
             android:id="@+id/txtTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
+            android:layout_marginTop="20dp"
             android:text="A.T.H.E.N.A."
             android:textColor="#E0E0E0"
             android:textSize="32sp"
             android:textStyle="bold"
-            android:letterSpacing="0.15"
-            android:fontFamily="sans-serif-light" />
+            android:letterSpacing="0.15" />
 
         <TextView
             android:id="@+id/txtSubtitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:layout_marginBottom="28dp"
+            android:layout_marginBottom="24dp"
             android:text="Adaptive Thinking Hands-free Engine\nfor Neural Assistance"
             android:textColor="#9E9E9E"
             android:textSize="12sp"
@@ -43,8 +42,8 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="@drawable/card_background"
-            android:padding="18dp"
-            android:layout_marginBottom="14dp">
+            android:padding="16dp"
+            android:layout_marginBottom="12dp">
 
             <TextView
                 android:layout_width="wrap_content"
@@ -77,19 +76,19 @@
             android:textStyle="bold"
             android:textAllCaps="false"
             android:background="@drawable/btn_rounded"
-            android:layout_marginBottom="12dp" />
+            android:layout_marginBottom="10dp" />
 
         <!-- ═══ Test Query Button ═══ -->
         <Button
             android:id="@+id/btnTestQuery"
             android:layout_width="match_parent"
-            android:layout_height="46dp"
-            android:text="⚡  Test Voice Uplink (Speak 'Hello Athena')"
+            android:layout_height="48dp"
+            android:text="⚡  Test Voice Uplink"
             android:textColor="#41E6FF"
             android:textSize="13sp"
             android:textAllCaps="false"
             android:background="@drawable/card_background"
-            android:layout_marginBottom="16dp" />
+            android:layout_marginBottom="14dp" />
 
         <!-- ═══ Live Activity Log Card ═══ -->
         <LinearLayout
@@ -98,11 +97,7 @@
             android:orientation="vertical"
             android:background="@drawable/card_background"
             android:padding="16dp"
-            android:layout_marginBottom="14dp">
-
-            <div
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content" />
+            android:layout_marginBottom="12dp">
 
             <TextView
                 android:layout_width="wrap_content"
@@ -132,8 +127,8 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="@drawable/card_background"
-            android:padding="18dp"
-            android:layout_marginBottom="14dp">
+            android:padding="16dp"
+            android:layout_marginBottom="12dp">
 
             <TextView
                 android:layout_width="wrap_content"
@@ -171,8 +166,8 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="@drawable/card_background"
-            android:padding="18dp"
-            android:layout_marginBottom="14dp">
+            android:padding="16dp"
+            android:layout_marginBottom="12dp">
 
             <TextView
                 android:layout_width="wrap_content"
@@ -199,8 +194,8 @@
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:background="@drawable/card_background"
-            android:padding="18dp"
-            android:layout_marginBottom="20dp"
+            android:padding="16dp"
+            android:layout_marginBottom="16dp"
             android:gravity="center_vertical">
 
             <TextView
@@ -211,13 +206,11 @@
                 android:textColor="#E0E0E0"
                 android:textSize="14sp" />
 
-            <Switch
+            <androidx.appcompat.widget.SwitchCompat
                 android:id="@+id/switchAutoStart"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:checked="true"
-                android:thumbTint="#BB86FC"
-                android:trackTint="#424242" />
+                android:checked="true" />
         </LinearLayout>
 
         <!-- ═══ Footer ═══ -->

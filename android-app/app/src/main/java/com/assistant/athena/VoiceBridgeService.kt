@@ -66,6 +66,8 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
         const val STATE_PROCESSING = "processing"
         const val STATE_SPEAKING = "speaking"
         const val STATE_ERROR = "error"
+
+        var onLogListener: ((String) -> Unit)? = null
     }
 
     // --- Core components ---
@@ -142,11 +144,9 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun broadcastLog(msg: String) {
-        val intent = Intent(MainActivity.ACTION_LOG_UPDATE).apply {
-            putExtra(MainActivity.EXTRA_LOG_TEXT, msg)
-            setPackage(packageName)
-        }
-        sendBroadcast(intent)
+        try {
+            onLogListener?.invoke(msg)
+        } catch (_: Exception) {}
     }
 
     // =========================================================================
