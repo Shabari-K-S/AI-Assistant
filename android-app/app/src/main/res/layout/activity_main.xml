@@ -88,6 +88,18 @@
             android:textSize="13sp"
             android:textAllCaps="false"
             android:background="@drawable/card_background"
+            android:layout_marginBottom="10dp" />
+
+        <!-- ═══ Set Default Assistant Button ═══ -->
+        <Button
+            android:id="@+id/btnSetDefaultAssistant"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="📱  Replace Google Assistant with ATHENA"
+            android:textColor="#BA68C8"
+            android:textSize="13sp"
+            android:textAllCaps="false"
+            android:background="@drawable/card_background"
             android:layout_marginBottom="14dp" />
 
         <!-- ═══ Live Activity Log Card ═══ -->

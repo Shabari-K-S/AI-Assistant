@@ -48,6 +48,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var txtPermissionStatus: TextView
     private lateinit var btnToggleService: Button
     private lateinit var btnTestQuery: Button
+    private lateinit var btnSetDefaultAssistant: Button
     private lateinit var btnCheckBackend: Button
     private lateinit var switchAutoStart: SwitchCompat
 
@@ -73,6 +74,7 @@ class MainActivity : AppCompatActivity() {
             txtPermissionStatus = findViewById(R.id.txtPermissionStatus)
             btnToggleService = findViewById(R.id.btnToggleService)
             btnTestQuery = findViewById(R.id.btnTestQuery)
+            btnSetDefaultAssistant = findViewById(R.id.btnSetDefaultAssistant)
             btnCheckBackend = findViewById(R.id.btnCheckBackend)
             switchAutoStart = findViewById(R.id.switchAutoStart)
 
@@ -111,6 +113,21 @@ class MainActivity : AppCompatActivity() {
 
             btnTestQuery.setOnClickListener {
                 runTestQuery()
+            }
+
+            btnSetDefaultAssistant.setOnClickListener {
+                try {
+                    val intent = Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    try {
+                        val intent = Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)
+                        startActivity(intent)
+                    } catch (_: Exception) {
+                        val intent = Intent(Settings.ACTION_SETTINGS)
+                        startActivity(intent)
+                    }
+                }
             }
 
             btnCheckBackend.setOnClickListener {

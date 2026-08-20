@@ -4,13 +4,14 @@
 
     <!-- ═══════════════════════════════════════════════════════════════════
          A.T.H.E.N.A. — Adaptive Thinking Hands-free Engine for Neural Assistance
-         24/7 Always-On Voice Bridge for Termux AI Backend
+         24/7 Always-On Voice Bridge & Android Default Assistant
          ═══════════════════════════════════════════════════════════════════ -->
 
     <!-- Core Permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <!-- 24/7 Background Survival Permissions -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
@@ -41,12 +42,53 @@
             </intent-filter>
         </activity>
 
+        <!-- Android System ASSIST Activity (Replaces Google Assistant Trigger) -->
+        <activity
+            android:name=".AssistActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
         <!-- 24/7 Voice Bridge Foreground Service -->
         <service
             android:name=".VoiceBridgeService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="microphone" />
+
+        <!-- Android Default Digital Assistant System Service -->
+        <service
+            android:name=".AthenaVoiceInteractionService"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.BIND_VOICE_INTERACTION">
+            <meta-data
+                android:name="android.voice_interaction"
+                android:resource="@xml/voice_interaction_service" />
+            <intent-filter>
+                <action android:name="android.service.voice.VoiceInteractionService" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".AthenaVoiceSessionService"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.BIND_VOICE_INTERACTION" />
+
+        <service
+            android:name=".AthenaRecognitionService"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.speech.RecognitionService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
 
         <!-- Auto-Start on Device Boot -->
         <receiver

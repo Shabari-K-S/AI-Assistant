@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<voice-interaction-service
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:sessionService="com.assistant.athena.AthenaVoiceSessionService"
+    android:recognitionService="com.assistant.athena.AthenaRecognitionService"
+    android:supportsAssist="true"
+    android:supportsLaunchVoiceAssistFromKeyguard="true" />
