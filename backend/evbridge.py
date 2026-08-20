@@ -356,6 +356,7 @@ class _Handler(BaseHTTPRequestHandler):
                 elif file_path.suffix == ".html":
                     mime_type = "text/html"
 
+                try:
                     content = file_path.read_bytes()
                     self.send_response(200)
                     self.send_header("Content-Type", mime_type or "application/octet-stream")
