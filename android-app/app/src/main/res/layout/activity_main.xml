@@ -10,17 +10,17 @@
         android:layout_height="wrap_content"
         android:gravity="center_horizontal"
         android:orientation="vertical"
-        android:padding="28dp">
+        android:padding="24dp">
 
         <!-- ═══ Header ═══ -->
         <TextView
             android:id="@+id/txtTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="32dp"
+            android:layout_marginTop="24dp"
             android:text="A.T.H.E.N.A."
             android:textColor="#E0E0E0"
-            android:textSize="36sp"
+            android:textSize="32sp"
             android:textStyle="bold"
             android:letterSpacing="0.15"
             android:fontFamily="sans-serif-light" />
@@ -30,10 +30,10 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:layout_marginBottom="40dp"
+            android:layout_marginBottom="28dp"
             android:text="Adaptive Thinking Hands-free Engine\nfor Neural Assistance"
             android:textColor="#9E9E9E"
-            android:textSize="13sp"
+            android:textSize="12sp"
             android:gravity="center"
             android:lineSpacingExtra="2dp" />
 
@@ -43,18 +43,18 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="@drawable/card_background"
-            android:padding="20dp"
-            android:layout_marginBottom="16dp">
+            android:padding="18dp"
+            android:layout_marginBottom="14dp">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Voice Bridge"
                 android:textColor="#BDBDBD"
-                android:textSize="12sp"
+                android:textSize="11sp"
                 android:textAllCaps="true"
                 android:letterSpacing="0.1"
-                android:layout_marginBottom="8dp" />
+                android:layout_marginBottom="6dp" />
 
             <TextView
                 android:id="@+id/txtServiceStatus"
@@ -62,22 +62,69 @@
                 android:layout_height="wrap_content"
                 android:text="🔴  Voice Bridge: STOPPED"
                 android:textColor="#E53935"
-                android:textSize="16sp"
+                android:textSize="15sp"
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <!-- ═══ Toggle Button ═══ -->
+        <!-- ═══ Primary Toggle Button ═══ -->
         <Button
             android:id="@+id/btnToggleService"
             android:layout_width="match_parent"
-            android:layout_height="56dp"
+            android:layout_height="52dp"
             android:text="▶  Start ATHENA"
             android:textColor="#FFFFFF"
-            android:textSize="16sp"
+            android:textSize="15sp"
             android:textStyle="bold"
             android:textAllCaps="false"
             android:background="@drawable/btn_rounded"
-            android:layout_marginBottom="24dp" />
+            android:layout_marginBottom="12dp" />
+
+        <!-- ═══ Test Query Button ═══ -->
+        <Button
+            android:id="@+id/btnTestQuery"
+            android:layout_width="match_parent"
+            android:layout_height="46dp"
+            android:text="⚡  Test Voice Uplink (Speak 'Hello Athena')"
+            android:textColor="#41E6FF"
+            android:textSize="13sp"
+            android:textAllCaps="false"
+            android:background="@drawable/card_background"
+            android:layout_marginBottom="16dp" />
+
+        <!-- ═══ Live Activity Log Card ═══ -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/card_background"
+            android:padding="16dp"
+            android:layout_marginBottom="14dp">
+
+            <div
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Live Activity &amp; Transcripts"
+                android:textColor="#BDBDBD"
+                android:textSize="11sp"
+                android:textAllCaps="true"
+                android:letterSpacing="0.1"
+                android:layout_marginBottom="6dp" />
+
+            <TextView
+                android:id="@+id/txtLiveLog"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minLines="3"
+                android:text="[Ready] Tap 'Start ATHENA' or say 'Athena, what time is it?'"
+                android:textColor="#80D8FF"
+                android:textSize="12sp"
+                android:fontFamily="monospace"
+                android:lineSpacingExtra="2dp" />
+        </LinearLayout>
 
         <!-- ═══ Backend Status Card ═══ -->
         <LinearLayout
@@ -85,18 +132,18 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="@drawable/card_background"
-            android:padding="20dp"
-            android:layout_marginBottom="12dp">
+            android:padding="18dp"
+            android:layout_marginBottom="14dp">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Termux Backend"
                 android:textColor="#BDBDBD"
-                android:textSize="12sp"
+                android:textSize="11sp"
                 android:textAllCaps="true"
                 android:letterSpacing="0.1"
-                android:layout_marginBottom="8dp" />
+                android:layout_marginBottom="6dp" />
 
             <TextView
                 android:id="@+id/txtBackendStatus"
@@ -104,18 +151,18 @@
                 android:layout_height="wrap_content"
                 android:text="⏳  Checking Termux backend..."
                 android:textColor="#FF9800"
-                android:textSize="14sp" />
+                android:textSize="13sp" />
 
             <Button
                 android:id="@+id/btnCheckBackend"
                 android:layout_width="wrap_content"
-                android:layout_height="40dp"
-                android:text="Refresh"
+                android:layout_height="36dp"
+                android:text="Check Connection"
                 android:textColor="#BB86FC"
                 android:textSize="12sp"
                 android:textAllCaps="false"
                 android:background="?attr/selectableItemBackground"
-                android:layout_marginTop="8dp" />
+                android:layout_marginTop="6dp" />
         </LinearLayout>
 
         <!-- ═══ Permissions Card ═══ -->
@@ -124,18 +171,18 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="@drawable/card_background"
-            android:padding="20dp"
-            android:layout_marginBottom="12dp">
+            android:padding="18dp"
+            android:layout_marginBottom="14dp">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Permissions"
                 android:textColor="#BDBDBD"
-                android:textSize="12sp"
+                android:textSize="11sp"
                 android:textAllCaps="true"
                 android:letterSpacing="0.1"
-                android:layout_marginBottom="8dp" />
+                android:layout_marginBottom="6dp" />
 
             <TextView
                 android:id="@+id/txtPermissionStatus"
@@ -143,7 +190,7 @@
                 android:layout_height="wrap_content"
                 android:text="Checking..."
                 android:textColor="#E0E0E0"
-                android:textSize="13sp" />
+                android:textSize="12sp" />
         </LinearLayout>
 
         <!-- ═══ Settings Card ═══ -->
@@ -152,8 +199,8 @@
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:background="@drawable/card_background"
-            android:padding="20dp"
-            android:layout_marginBottom="24dp"
+            android:padding="18dp"
+            android:layout_marginBottom="20dp"
             android:gravity="center_vertical">
 
             <TextView
@@ -162,7 +209,7 @@
                 android:layout_weight="1"
                 android:text="Auto-start on boot"
                 android:textColor="#E0E0E0"
-                android:textSize="15sp" />
+                android:textSize="14sp" />
 
             <Switch
                 android:id="@+id/switchAutoStart"

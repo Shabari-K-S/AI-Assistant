@@ -392,6 +392,40 @@ class _Handler(BaseHTTPRequestHandler):
             self._json({"ok": True, "prompt": prompt})
             return
 
+        if path == "/ask":
+            prompt = str(body.get("text") or "").strip()
+            if not prompt:
+                self._json({"ok": False, "error": "empty prompt"}, 400)
+                return
+
+            # Subscribe to bus events to wait synchronously for assistant reply
+            q = bus.subscribe()
+            bus.inject_prompt(prompt)
+            bus.log("INFO", f"android uplink: {prompt}")
+
+            reply_text = ""
+            start_t = time.monotonic()
+            try:
+                while time.monotonic() - start_t < 30.0:
+                    try:
+                        line = q.get(timeout=0.25)
+                        event = json.loads(line)
+                        if event.get("type") == "reply":
+                            reply_text = str(event.get("text", "")).strip()
+                            if reply_text:
+                                break
+                    except (queue.Empty, json.JSONDecodeError):
+                        continue
+            finally:
+                bus.unsubscribe(q)
+
+            if reply_text:
+                self._json({"ok": True, "reply": reply_text})
+            else:
+                last_reply = str(bus.get().get("reply", "")).strip()
+                self._json({"ok": bool(last_reply), "reply": last_reply or "I processed your request.", "timeout": True})
+            return
+
         if path == "/transcribe":
             audio_b64 = str(body.get("audio_b64") or "").strip()
             mime_type = str(body.get("mime_type") or "audio/webm").strip()
