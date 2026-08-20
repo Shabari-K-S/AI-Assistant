@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import queue
+import re
 import threading
 import time
 import urllib.parse
@@ -478,12 +479,35 @@ class _Handler(BaseHTTPRequestHandler):
                 except Exception:
                     pass
 
-                if transcribed_text:
-                    bus.inject_prompt(transcribed_text)
-                    bus.log("INFO", f"🎙️ Transcribed Speech: '{transcribed_text}'")
-                    self._json({"ok": True, "text": transcribed_text})
-                else:
+                if not transcribed_text:
                     self._json({"ok": False, "error": "No speech detected"}, 200)
+                    return
+
+                # Wake word gating (supports Athena, Atina, Adina, Athina, Atena, etc.)
+                wake_pattern = re.compile(
+                    r"\b(?:hey\s+|hi\s+|ok\s+|okay\s+|hello\s+)?(a[td]h?e?i?n[ae]|ath?ee?n[ae]|atena|atina|adina|adena|edina|ethina|alexa|assistant)\b",
+                    re.IGNORECASE,
+                )
+                match = wake_pattern.search(transcribed_text)
+                if not match:
+                    bus.log("DEBUG", f"👂 Ignored background speech (no wake word): '{transcribed_text}'")
+                    self._json({"ok": False, "reason": "no_wake_word", "text": transcribed_text}, 200)
+                    return
+
+                # Extract command following the wake word
+                start_pos = match.end()
+                command = transcribed_text[start_pos:].strip(" ,.!?")
+
+                if not command:
+                    # User said only the wake word (e.g. "Athena")
+                    prompt = "Hello Athena, acknowledge you are listening."
+                    bus.inject_prompt(prompt)
+                    bus.log("INFO", f"🎯 Wake word detected: '{transcribed_text}'")
+                    self._json({"ok": True, "wake_hit": True, "text": transcribed_text, "command": ""})
+                else:
+                    bus.inject_prompt(command)
+                    bus.log("INFO", f"🎯 Wake word hit! Command: '{command}'")
+                    self._json({"ok": True, "wake_hit": True, "text": transcribed_text, "command": command})
                 return
             except Exception as exc:
                 log.exception("Silent audio transcription failed")

@@ -406,12 +406,23 @@ class VoiceBridgeService : Service() {
                         val json = JSONObject(body)
                         val ok = json.optBoolean("ok", false)
                         val text = json.optString("text", "")
+                        val reason = json.optString("reason", "")
+                        val command = json.optString("command", "")
 
                         if (ok && text.isNotEmpty()) {
-                            broadcastLog("🗣️ You: \"$text\"")
-                            updateState(STATE_PROCESSING, "Reasoning: \"$text\"")
+                            triggerHapticFeedback()
+                            if (command.isNotEmpty()) {
+                                broadcastLog("🎯 Wake hit: \"$command\"")
+                                updateState(STATE_PROCESSING, "Processing: \"$command\"")
+                            } else {
+                                broadcastLog("✨ Athena awake! (\"$text\")")
+                                updateState(STATE_PROCESSING, "Athena listening...")
+                            }
+                        } else if (reason == "no_wake_word") {
+                            broadcastLog("👂 Ignored (No wake word): \"$text\"")
+                            updateState(STATE_LISTENING, "Listening for \"Athena\"...")
                         } else {
-                            updateState(STATE_LISTENING, "Listening silently...")
+                            updateState(STATE_LISTENING, "Listening for \"Athena\"...")
                         }
                     } catch (_: Exception) {
                         updateState(STATE_LISTENING, "Listening silently...")
