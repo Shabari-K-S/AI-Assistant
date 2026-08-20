@@ -31,8 +31,12 @@ import java.util.concurrent.TimeUnit
 /**
  * A.T.H.E.N.A. — Adaptive Thinking Hands-free Engine for Neural Assistance
  *
- * 24/7 Foreground Service that continuously listens for the "Athena" wake word,
- * sends queries to the Termux backend via /ask, and speaks the AI response aloud.
+ * 24/7 Foreground Service that continuously listens for "Athena" (and phonetic
+ * variations like "Atina", "Adina", "Athina", etc.).
+ *
+ * Supports:
+ *   1. One-Shot mode: "Athena, what time is it?" -> Immediate answer
+ *   2. Two-Step mode: "Athena" -> "Yes, I'm listening" -> Follow-up command
  */
 class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
 
@@ -47,12 +51,21 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
         private const val PROMPT_URL = "$BACKEND_BASE/prompt"
         private const val STREAM_URL = "$BACKEND_BASE/stream"
 
-        // Wake word variants (case-insensitive matching)
+        // Wake word variants (covering all regional phonetic variations)
         private val WAKE_WORDS = listOf(
             "athena", "hey athena", "athena,", "hey athena,",
             "a]thena", "athena.", "athina", "a tina", "a thena",
-            "athene", "athana", "athenna", "atena",
+            "athene", "athana", "athenna", "atena", "attina",
+            "atina", "hey atina", "hi atina", "ok atina", "okay atina", "atina,",
+            "adina", "hey adina", "hi adina", "ok adina", "okay adina", "adina,",
+            "atheena", "hey atheena", "hi atheena",
+            "adena", "adhena", "ethina", "edina",
             "sara", "hey sara", "sarah", "zara", "alexa", "assistant"
+        )
+
+        // Phonetic Regex Matcher for any variation of A-t-h-e-n-a / A-t-i-n-a / A-d-i-n-a
+        private val WAKE_REGEX = Regex(
+            "(?i)\\b(?:hey\\s+|hi\\s+|ok\\s+|okay\\s+|hello\\s+)?(a[td]h?e?i?n[ae]|ath?ee?n[ae]|atena|atina|adina|adena|edina|ethina)\\b"
         )
 
         // Restart delays (smooth, silent loop)
@@ -95,6 +108,10 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
     private var consecutiveErrors = 0
     private var pendingReply = false
     private var isMuted = false
+
+    // Two-stage conversation state ("Hey Google" style)
+    private var isAwaitingCommand = false
+    private var awaitingCommandTimeout = 0L
 
     // =========================================================================
     // Beep & Chime Suppression Engine
@@ -299,7 +316,11 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
             override fun onReadyForSpeech(params: Bundle?) {
                 isListening = true
                 consecutiveErrors = 0
-                updateState(STATE_LISTENING, "Listening for \"Athena\"...")
+                if (isAwaitingCommand) {
+                    updateState(STATE_LISTENING, "Listening for your command...")
+                } else {
+                    updateState(STATE_LISTENING, "Listening for \"Athena\"...")
+                }
             }
 
             override fun onBeginningOfSpeech() {
@@ -385,13 +406,26 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
     }
 
     // =========================================================================
-    // Wake Word Detection & Query Extraction
+    // Wake Word Detection & Two-Stage Command Handling
     // =========================================================================
 
     private fun processTranscript(transcript: String) {
         val lower = transcript.lowercase(Locale.ROOT).trim()
+
+        // 1. If we are in the follow-up window after "Athena", take this speech directly as command!
+        if (isAwaitingCommand && System.currentTimeMillis() < awaitingCommandTimeout) {
+            isAwaitingCommand = false
+            broadcastLog("🎯 Command: \"$transcript\"")
+            updateState(STATE_PROCESSING, "Processing: \"$transcript\"")
+            sendToBackend(transcript)
+            return
+        }
+        isAwaitingCommand = false
+
+        // 2. Check for Wake Word
         var query: String? = null
 
+        // A. Direct list check
         for (wake in WAKE_WORDS) {
             if (lower.startsWith(wake)) {
                 query = transcript.substring(wake.length).trim()
@@ -406,6 +440,19 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
             }
         }
 
+        // B. Regex phonetic check (e.g. "Atina", "Adina", "Atena", etc.)
+        if (query == null) {
+            val match = WAKE_REGEX.find(lower)
+            if (match != null) {
+                val endIdx = match.range.last + 1
+                query = if (endIdx < transcript.length) {
+                    transcript.substring(endIdx).trim().trimStart(',', '.', '!', '?', ' ')
+                } else {
+                    ""
+                }
+            }
+        }
+
         if (query == null) {
             // Discard speech that doesn't include the wake word
             broadcastLog("👂 Heard (No wake word): \"$transcript\"")
@@ -414,12 +461,16 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
         }
 
         if (query.isEmpty()) {
-            broadcastLog("✨ Wake word detected! Listening for command...")
+            // Wake word only -> Greet user and listen for follow-up command!
+            broadcastLog("✨ Athena awake! Listening for your command...")
             updateState(STATE_LISTENING, "Yes? Listening for your command...")
+            isAwaitingCommand = true
+            awaitingCommandTimeout = System.currentTimeMillis() + 12_000L // 12 seconds window
             speakReply("Yes, I'm listening.")
             return
         }
 
+        // One-shot: "Athena, what time is it?"
         broadcastLog("🎯 Wake triggered! Query: \"$query\"")
         updateState(STATE_PROCESSING, "Processing: \"$query\"")
         sendToBackend(query)
@@ -546,7 +597,11 @@ class VoiceBridgeService : Service(), TextToSpeech.OnInitListener {
                 override fun onDone(utteranceId: String?) {
                     isSpeaking = false
                     handler.post {
-                        updateState(STATE_STANDBY, "Listening for \"Athena\"...")
+                        if (isAwaitingCommand) {
+                            updateState(STATE_LISTENING, "Listening for your command...")
+                        } else {
+                            updateState(STATE_STANDBY, "Listening for \"Athena\"...")
+                        }
                         restartListening(RESTART_DELAY_AFTER_RESPONSE_MS)
                     }
                 }
