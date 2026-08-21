@@ -533,7 +533,7 @@ class MemoryEngine:
             heading_boost = 0.15 if row["heading"] and any(q in row["heading"].lower() for q in query_tokens) else 0.0
 
             final_score = (0.55 * cos_sim) + (0.30 * keyword_score) + title_boost + heading_boost
-            if final_score > 0.08:
+            if final_score > 0.35 and (overlap > 0 or title_boost > 0 or heading_boost > 0):
                 scored.append((
                     final_score,
                     {

@@ -693,11 +693,13 @@ class GeminiRestLLM(LLMEngine):
             last_err = None
             last_used_model = self._config.model
 
+            text_chunks: list[str] = []
             for cycle in range(2):
                 if success:
                     break
                 for model_name in unique_models:
                     try:
+                        text_chunks = []
                         for chunk in self._stream_model(model_name, payload):
                             candidates = chunk.get("candidates", [])
                             if not candidates:
@@ -705,14 +707,14 @@ class GeminiRestLLM(LLMEngine):
                             cand = candidates[0]
                             content = cand.get("content", {})
                             for part in content.get("parts", []):
-                                if part.get("thought"):
+                                if part.get("thought") or part.get("executableCode") or part.get("codeExecutionResult"):
                                     continue
                                 if "text" in part and part["text"]:
                                     text_val = part["text"]
                                     if ttft is None:
                                         ttft = time.perf_counter() - t0
+                                    text_chunks.append(text_val)
                                     parts.append({"text": text_val})
-                                    yield text_val
                                 elif "functionCall" in part:
                                     fc = part["functionCall"]
                                     key = fc.get("name") or f"fc{len(seen_calls)}"
@@ -756,6 +758,10 @@ class GeminiRestLLM(LLMEngine):
             if tool_calls:
                 _run_tool_round(conversation, parts, tool_calls, self._tool_executor, t0)
                 continue
+
+            # Final answer round — yield all text chunks to caller
+            for chunk in text_chunks:
+                yield chunk
 
             text = "".join(p["text"] for p in parts if "text" in p)
             if text.strip():

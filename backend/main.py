@@ -196,10 +196,10 @@ def clean_for_speech(text: str) -> str:
     if not text:
         return ""
 
-    t = text
-    # 1. Remove reasoning / thought tags
+    # 1. Remove reasoning / thought tags and internal tool calling artifacts
     t = re.sub(r"<think>.*?</think>", " ", t, flags=re.S | re.IGNORECASE)
     t = re.sub(r"<thought>.*?</thought>", " ", t, flags=re.S | re.IGNORECASE)
+    t = re.sub(r"^(?:tool code print|tool_code|thought\b).*?(?=[A-Z][a-z]|\Z)", " ", t, flags=re.S | re.IGNORECASE)
 
     # 2. Remove code blocks and inline code
     t = re.sub(r"```.*?```", " ", t, flags=re.S)
