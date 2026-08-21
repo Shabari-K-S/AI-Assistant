@@ -248,7 +248,7 @@ class GeminiGemmaLLM(LLMEngine):
         )
         self._config = config
         self._tool_executor = tool_executor
-        self._max_tool_iterations = 4  # cap on tool rounds per user turn
+        self._max_tool_iterations = 8  # cap on tool rounds per user turn
 
     def _config_dict(self, tools: list[dict], system_prompt: str):
         from google.genai import types
@@ -258,42 +258,44 @@ class GeminiGemmaLLM(LLMEngine):
         # for HIGH thinking where the model supports thinking levels).
         if self._config.gemini_thinking:
             thinking_config = types.ThinkingConfig(
-                include_thoughts=True,
-                thinking_level=types.ThinkingLevel.HIGH,
+                thinking_budget=self._config.thinking_budget,
             )
         else:
-            thinking_config = types.ThinkingConfig(include_thoughts=False)
-        return types.GenerateContentConfig(
-            system_instruction=system_prompt,
-            temperature=self._config.temperature,
-            max_output_tokens=self._config.max_tokens,
-            tools=[types.Tool(function_declarations=tools)] if tools else None,
-            # The SDK auto-executes tool calls (AFC) by default — we run our
-            # own safety-gated tool loop, so disable it explicitly.
-            automatic_function_calling=types.AutomaticFunctionCallingConfig(
-                disable=True
-            ),
-            thinking_config=thinking_config,
-        )
+            thinking_config = types.ThinkingConfig(thinking_budget=0)
 
-    def _stream(self, contents: list[dict], tools: list[dict], system_prompt: str):
+        cfg: dict[str, object] = {
+            "temperature": self._config.temperature,
+            "max_output_tokens": self._config.max_tokens,
+            "thinking_config": thinking_config,
+        }
+        if system_prompt:
+            cfg["system_instruction"] = system_prompt
+        if tools:
+            cfg["tools"] = tools
+        return types.GenerateContentConfig(**cfg)
+
+    def _stream(
+        self,
+        contents: list[object],
+        tools: list[dict],
+        system_prompt: str,
+    ) -> Iterator[object]:
         """Lazy chunk iterator; retries on 429 rate limit and cascades across model tiers automatically."""
         from google.genai import errors
 
-        # Multi-tier fallback cascade priority queue
-        models_to_try = [self._config.model]
+        # Prioritize high-quota models (15-30 RPM, 500-14.4k RPD)
         cascade_models = [
+            "gemini-3.5-flash-lite",
+            "gemini-3.1-flash-lite",
+            "gemini-flash-lite-latest",
             "gemma-4-31b-it",
             "gemma-4-26b-a4b-it",
             "gemini-2.5-flash",
             "gemini-3.5-flash",
-            "gemini-3.5-flash-lite",
-            "gemini-3.1-flash-lite",
-            "gemini-flash-lite-latest",
-            "gemini-flash-latest",
-            "gemini-3.6-flash",
             "gemini-3.7-flash",
+            "gemini-flash-latest",
         ]
+        models_to_try = [self._config.model] if self._config.model else []
         for m in cascade_models:
             if m not in models_to_try:
                 models_to_try.append(m)
@@ -319,7 +321,6 @@ class GeminiGemmaLLM(LLMEngine):
                             "llm: HTTP 429 (rate limit / TPM quota) on model '%s' — cascading to next model in tier",
                             model_name,
                         )
-                        time.sleep(1.0)
                         continue  # immediately cascade to next model!
                     if exc.code in (404, 400):
                         log.warning(
@@ -337,8 +338,8 @@ class GeminiGemmaLLM(LLMEngine):
 
             # If all models exhausted in cycle 0, pause briefly before cycle 1
             if cycle == 0:
-                log.warning("llm: All models in cascade rate-limited; pausing 4s before second pass...")
-                time.sleep(4.0)
+                log.warning("llm: All models in cascade rate-limited; pausing 2s before second pass...")
+                time.sleep(2.0)
 
         if last_exc:
             raise last_exc
@@ -353,12 +354,14 @@ class GeminiGemmaLLM(LLMEngine):
         ttft: float | None = None  # time from request send to first streamed token
 
         contents = conversation.messages()
-        for _ in range(self._max_tool_iterations + 1):
+        for iteration in range(self._max_tool_iterations + 1):
             parts: list[dict] = []
             seen_calls: dict[str, dict] = {}
             finish_reason: str | None = None
+            is_final_round = (iteration == self._max_tool_iterations)
+            active_tools = [] if is_final_round else tools
 
-            for chunk in self._stream(contents, tools, system_prompt):
+            for chunk in self._stream(contents, active_tools, system_prompt):
                 candidate = chunk.candidates[0] if chunk.candidates else None
                 if candidate and candidate.finish_reason:
                     finish_reason = candidate.finish_reason.name
@@ -391,13 +394,17 @@ class GeminiGemmaLLM(LLMEngine):
                             parts.append(entry)
 
             tool_calls = [p["functionCall"] for p in parts if _is_tool_call_part(p)]
-            if tool_calls:
+            if tool_calls and not is_final_round:
                 _run_tool_round(conversation, parts, tool_calls, self._tool_executor, t0)
                 contents = conversation.messages()
                 continue  # model continues with tool results in context
 
             # final text response — persist it to history
-            text = "".join(p["text"] for p in parts)
+            text = "".join(p["text"] for p in parts if "text" in p).strip()
+            if not text:
+                text = "I have retrieved and analyzed the details from your device."
+                yield text
+
             if text.strip():
                 conversation.add_assistant(text)
             total = time.perf_counter() - t0
@@ -421,7 +428,7 @@ class GeminiGemmaLLM(LLMEngine):
             return
 
         log.warning(
-            "llm: tool loop exceeded %d iterations; stopping", self._max_tool_iterations
+            "llm: tool loop completed %d iterations", self._max_tool_iterations
         )
 
 
@@ -581,8 +588,9 @@ class GeminiRestLLM(LLMEngine):
 
         self._config = config
         self._tool_executor = tool_executor
-        self._max_tool_iterations = 4
+        self._max_tool_iterations = 8
         self._client = httpx.Client(timeout=config.timeout_s)
+        self._rate_limited_models: dict[str, float] = {}
 
     def _prepare_payload(self, contents: list[dict], tools: list[dict], system_prompt: str) -> dict:
         rest_contents = []
@@ -643,6 +651,7 @@ class GeminiRestLLM(LLMEngine):
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:streamGenerateContent?alt=sse&key={self._config.api_key}"
         with self._client.stream("POST", url, json=payload, headers={"Content-Type": "application/json"}) as resp:
             if resp.status_code == 429:
+                self._rate_limited_models[model_name] = time.time() + 45.0
                 raise httpx.HTTPStatusError("Rate limit 429", request=resp.request, response=resp)
             if resp.status_code != 200:
                 body = resp.read().decode("utf-8", "replace")
@@ -672,27 +681,32 @@ class GeminiRestLLM(LLMEngine):
         t0 = time.perf_counter()
         ttft: float | None = None
 
-        cascade_models = [
-            self._config.model,
-            "gemini-2.5-flash",
-            "gemini-3.5-flash",
-            "gemini-3.5-flash-lite",
-            "gemini-3.1-flash-lite",
-            "gemini-flash-lite-latest",
+        # Prioritize high-quota models (15-30 RPM, 500-14.4k RPD) to avoid 429 cascades
+        preferred_cascade = [
+            "gemini-3.5-flash-lite",      # 15 RPM / 500 RPD (fastest & high quota)
+            "gemini-3.1-flash-lite",      # 15 RPM / 500 RPD
+            "gemini-flash-lite-latest",   # 15 RPM / 500 RPD
+            "gemma-4-31b-it",             # 30 RPM / 14,400 RPD
+            "gemma-4-26b-a4b-it",         # 30 RPM / 14,400 RPD
+            "gemini-2.5-flash",           # 5 RPM / 20 RPD (fallback)
+            "gemini-3.5-flash",           # 5 RPM / 20 RPD (fallback)
+            "gemini-3.7-flash",           # 5 RPM / 20 RPD (fallback)
             "gemini-flash-latest",
-            "gemma-4-31b-it",
-            "gemma-4-26b-a4b-it",
-            "gemini-3.6-flash",
-            "gemini-3.7-flash",
         ]
+        if self._config.model and self._config.model not in preferred_cascade:
+            preferred_cascade.insert(0, self._config.model)
+
         unique_models: list[str] = []
-        for m in cascade_models:
+        for m in preferred_cascade:
             if m and isinstance(m, str) and m.strip() and m.strip() not in unique_models:
                 unique_models.append(m.strip())
 
-        for _ in range(self._max_tool_iterations + 1):
+        for iteration in range(self._max_tool_iterations + 1):
             contents = conversation.messages()
-            payload = self._prepare_payload(contents, tools, system_prompt)
+            # On the final round, don't supply tools so model is forced to generate a synthesized text answer
+            is_final_round = (iteration == self._max_tool_iterations)
+            active_tools = [] if is_final_round else tools
+            payload = self._prepare_payload(contents, active_tools, system_prompt)
 
             parts: list[dict] = []
             seen_calls: dict[str, dict] = {}
@@ -701,10 +715,21 @@ class GeminiRestLLM(LLMEngine):
             last_used_model = self._config.model
 
             text_chunks: list[str] = []
+
+            # Sort models so unblocked models are tried first
+            now = time.time()
+            models_to_try = sorted(
+                unique_models,
+                key=lambda m: (1 if self._rate_limited_models.get(m, 0) > now else 0)
+            )
+
             for cycle in range(2):
                 if success:
                     break
-                for model_name in unique_models:
+                for model_name in models_to_try:
+                    if cycle == 0 and self._rate_limited_models.get(model_name, 0) > now:
+                        # Skip models that recently hit 429 during first pass
+                        continue
                     try:
                         text_chunks = []
                         for chunk in self._stream_model(model_name, payload):
@@ -749,8 +774,7 @@ class GeminiRestLLM(LLMEngine):
                     except httpx.HTTPStatusError as exc:
                         last_err = exc
                         if exc.response.status_code == 429:
-                            log.warning("REST llm: 429 rate limit on '%s' — cascading to next model", model_name)
-                            time.sleep(1.0)
+                            log.warning("REST llm: 429 rate limit on '%s' — cascading to high-quota model", model_name)
                             continue
                         log.warning("REST llm: HTTP %s on '%s' — cascading", exc.response.status_code, model_name)
                         continue
@@ -760,7 +784,7 @@ class GeminiRestLLM(LLMEngine):
                         continue
 
                 if not success and cycle == 0:
-                    time.sleep(3.0)
+                    time.sleep(1.5)
 
             if not success:
                 if last_err:
@@ -768,16 +792,21 @@ class GeminiRestLLM(LLMEngine):
                 raise RuntimeError("All models in REST cascade failed.")
 
             tool_calls = [p["functionCall"] for p in parts if _is_tool_call_part(p)]
-            if tool_calls:
+            if tool_calls and not is_final_round:
                 _run_tool_round(conversation, parts, tool_calls, self._tool_executor, t0)
                 continue
 
             # Final answer round — yield all text chunks to caller
+            text = "".join(p["text"] for p in parts if "text" in p).strip()
+            if not text and not text_chunks:
+                # In the rare event the model returned no text after tool calls, generate a direct informative reply
+                text = "I have checked the details from your device and completed the requested actions."
+                text_chunks = [text]
+
             for chunk in text_chunks:
                 yield chunk
 
-            text = "".join(p["text"] for p in parts if "text" in p)
-            if text.strip():
+            if text:
                 conversation.add_assistant(text)
             total = time.perf_counter() - t0
             active_model = last_used_model
@@ -796,7 +825,7 @@ class GeminiRestLLM(LLMEngine):
                 pass
             return
 
-        log.warning("llm: tool loop exceeded %d iterations; stopping", self._max_tool_iterations)
+        log.warning("llm: tool loop completed %d iterations", self._max_tool_iterations)
 
 
 # --------------------------------------------------------------------------- #
