@@ -215,9 +215,9 @@ class DeepResearchEngine:
 
     def _synthesize_with_fallback_cascade(self, topic: str, sources: list[dict[str, str]]) -> tuple[str, str]:
         """Synthesize the academic research paper using a multi-model fallback cascade:
-        1. gemini-3.7-flash-lite / gemini-2.5-flash / gemini-2.0-flash-lite (via Google GenAI)
-        2. gemini-2.5-flash / gemini-1.5-flash (on rate limit / 429)
-        3. gemini-1.5-pro / gemini-2.5-pro
+        1. gemini-3.5-flash / gemini-2.5-flash / gemini-3.5-flash-lite (via Google GenAI)
+        2. gemini-3.1-flash-lite / gemini-flash-lite-latest (on rate limit / 429)
+        3. gemma-4-31b-it / gemma-4-26b-a4b-it / gemini-3.7-flash
         4. Ollama local gemma4:26b / gemma4:e4b
         5. High-density local Markdown synthesis fallback generator
         """
@@ -321,12 +321,16 @@ Document Structure to Follow:
 
         # Model cascade candidates for Google GenAI
         gemini_cascade = [
-            "gemini-3.7-flash-lite",
+            "gemini-3.5-flash",
             "gemini-2.5-flash",
-            "gemini-2.0-flash-lite",
-            "gemini-1.5-flash",
-            "gemini-2.5-pro",
-            "gemini-1.5-pro",
+            "gemini-3.5-flash-lite",
+            "gemini-3.1-flash-lite",
+            "gemini-flash-lite-latest",
+            "gemini-flash-latest",
+            "gemma-4-31b-it",
+            "gemma-4-26b-a4b-it",
+            "gemini-3.6-flash",
+            "gemini-3.7-flash",
         ]
 
         # ------------------------------------------------------------- #

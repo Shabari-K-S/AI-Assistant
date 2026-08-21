@@ -284,10 +284,15 @@ class GeminiGemmaLLM(LLMEngine):
         models_to_try = [self._config.model]
         cascade_models = [
             "gemma-4-31b-it",
+            "gemma-4-26b-a4b-it",
             "gemini-2.5-flash",
-            "gemini-1.5-flash",
-            "gemini-2.5-pro",
-            "gemini-1.5-pro",
+            "gemini-3.5-flash",
+            "gemini-3.5-flash-lite",
+            "gemini-3.1-flash-lite",
+            "gemini-flash-lite-latest",
+            "gemini-flash-latest",
+            "gemini-3.6-flash",
+            "gemini-3.7-flash",
         ]
         for m in cascade_models:
             if m not in models_to_try:
@@ -303,6 +308,7 @@ class GeminiGemmaLLM(LLMEngine):
                         contents=contents,
                         config=self._config_dict(tools, system_prompt),
                     )
+                    self._last_active_model = model_name
                     for chunk in stream:
                         yield chunk
                     return
@@ -395,16 +401,17 @@ class GeminiGemmaLLM(LLMEngine):
             if text.strip():
                 conversation.add_assistant(text)
             total = time.perf_counter() - t0
+            active_model = getattr(self, "_last_active_model", self._config.model)
             log.info(
                 "llm: ttft=%.3fs total=%.3fs chars=%d model=%s stop=%s",
-                ttft or total, total, len(text), self._config.model, finish_reason,
+                ttft or total, total, len(text), active_model, finish_reason,
             )
             try:
                 import evbridge
                 bus = evbridge.get_bus()
                 if bus is not None:
                     bus.emit_llm_metrics(
-                        model=self._config.model,
+                        model=active_model,
                         ttft_ms=(ttft or total) * 1000.0,
                         total_ms=total * 1000.0,
                         char_count=len(text),
@@ -660,12 +667,16 @@ class GeminiRestLLM(LLMEngine):
 
         cascade_models = [
             self._config.model,
-            "gemini-3.7-flash",
-            "gemini-3.6-flash",
+            "gemini-2.5-flash",
             "gemini-3.5-flash",
             "gemini-3.5-flash-lite",
             "gemini-3.1-flash-lite",
-            "gemma-4-31b"
+            "gemini-flash-lite-latest",
+            "gemini-flash-latest",
+            "gemma-4-31b-it",
+            "gemma-4-26b-a4b-it",
+            "gemini-3.6-flash",
+            "gemini-3.7-flash",
         ]
         unique_models: list[str] = []
         for m in cascade_models:
@@ -680,6 +691,7 @@ class GeminiRestLLM(LLMEngine):
             seen_calls: dict[str, dict] = {}
             success = False
             last_err = None
+            last_used_model = self._config.model
 
             for cycle in range(2):
                 if success:
@@ -716,6 +728,7 @@ class GeminiRestLLM(LLMEngine):
                                         }
                                         seen_calls[key] = entry
                                         parts.append(entry)
+                        last_used_model = model_name
                         success = True
                         break
                     except httpx.HTTPStatusError as exc:
@@ -748,7 +761,7 @@ class GeminiRestLLM(LLMEngine):
             if text.strip():
                 conversation.add_assistant(text)
             total = time.perf_counter() - t0
-            active_model = model_name if 'model_name' in locals() else self._config.model
+            active_model = last_used_model
             log.info("REST llm: ttft=%.3fs total=%.3fs chars=%d model=%s", ttft or total, total, len(text), active_model)
             try:
                 import evbridge
