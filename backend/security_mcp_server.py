@@ -250,6 +250,89 @@ TOOLS = [
             "required": ["target_url"],
         },
     },
+    {
+        "name": "lab_decode_payload",
+        "description": "Multi-format payload decoder and auto-detector for CTF and cybersecurity labs. Decodes Base64, Hex/ASCII, URL, JWT tokens (header & payload claims), HTML entities, Rot13, and binary strings. (Risk: Low / Safe Auto-Run)",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "payload": {
+                    "type": "string",
+                    "description": "The encoded string, hash, or token to inspect and decode.",
+                },
+            },
+            "required": ["payload"],
+        },
+    },
+    {
+        "name": "lab_identify_hash",
+        "description": "Intelligent cryptographic hash identifier with Hashcat modes and John the Ripper formats for CTF challenges and authorized lab password audits. (Risk: Low / Safe Auto-Run)",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "hash_str": {
+                    "type": "string",
+                    "description": "The hash digest to identify (e.g. MD5, SHA-256, NTLM, bcrypt, Argon2, Unix shadow).",
+                },
+            },
+            "required": ["hash_str"],
+        },
+    },
+    {
+        "name": "lab_cve_explainer",
+        "description": "Educational cybersecurity vulnerability and CVE mentor. Explains root causes, underlying mechanics, and defensive remediations without spoiling lab challenge flags. (Risk: Low / Safe Auto-Run)",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "CVE ID or vulnerability class (e.g. 'CVE-2021-44228', 'SSRF', 'Insecure Deserialization', 'LFI').",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "lab_dossier_manager",
+        "description": "Automated CTF & Cybersecurity Lab Dossier manager. Start sessions, log findings, and export comprehensive Markdown walkthrough reports to Notes Vault. (Risk: Low / Safe Auto-Run)",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["start", "log", "export", "status"],
+                    "description": "Action to perform ('start', 'log', 'export', 'status').",
+                },
+                "machine_name": {
+                    "type": "string",
+                    "description": "Lab target name (e.g. 'HTB-Sau', 'THM-RootMe').",
+                },
+                "target_ip": {
+                    "type": "string",
+                    "description": "Target IP address of the machine.",
+                },
+                "milestone": {
+                    "type": "string",
+                    "enum": ["recon", "enumeration", "foothold", "privesc", "notes"],
+                    "description": "Lab phase/milestone for this entry.",
+                    "default": "enumeration",
+                },
+                "note": {
+                    "type": "string",
+                    "description": "Finding, observation, or technique description.",
+                },
+                "command_used": {
+                    "type": "string",
+                    "description": "Terminal command executed in lab.",
+                },
+                "output_snippet": {
+                    "type": "string",
+                    "description": "Key terminal output or response snippet.",
+                },
+            },
+            "required": ["action"],
+        },
+    },
 ]
 
 
@@ -1101,6 +1184,36 @@ def handle_call_tool(params: dict[str, Any]) -> dict[str, Any]:
     elif name == "security_vulnerability_scan":
         from web_security_scanner import run_full_vulnerability_scan
         out = run_full_vulnerability_scan(str(args.get("target_url", "")))
+    elif name == "lab_decode_payload":
+        from lab_copilot import decode_payload
+        out = decode_payload(str(args.get("payload", "")))
+    elif name == "lab_identify_hash":
+        from lab_copilot import identify_hash
+        out = identify_hash(str(args.get("hash_str", "")))
+    elif name == "lab_cve_explainer":
+        from lab_copilot import explain_cve_mechanics
+        out = explain_cve_mechanics(str(args.get("query", "")))
+    elif name == "lab_dossier_manager":
+        from lab_copilot import get_dossier_manager
+        mgr = get_dossier_manager()
+        act = str(args.get("action", "status")).lower()
+        if act == "start":
+            out = mgr.start_session(
+                machine_name=str(args.get("machine_name", "Unknown-Target")),
+                target_ip=str(args.get("target_ip", "127.0.0.1")),
+                platform=str(args.get("platform", "Hack The Box")),
+            )
+        elif act == "log":
+            out = mgr.log_finding(
+                note=str(args.get("note", "")),
+                milestone=str(args.get("milestone", "enumeration")),
+                command_used=str(args.get("command_used", "")),
+                output_snippet=str(args.get("output_snippet", "")),
+            )
+        elif act == "export":
+            out = mgr.export_dossier()
+        else:
+            out = mgr.get_status()
     else:
         out = f"error: unknown tool '{name}'"
 

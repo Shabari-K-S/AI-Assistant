@@ -1017,6 +1017,153 @@ class ToolRegistry:
             )
         )
 
+        # 22. CTF & Lab Co-Pilot Payload Decoder
+        def _handle_lab_decode(args: dict) -> str:
+            from lab_copilot import decode_payload
+            return decode_payload(str(args.get("payload", "")))
+
+        self._register(
+            Tool(
+                name="lab_decode_payload",
+                description=(
+                    "Multi-format payload decoder for CTF challenges and cybersecurity labs. "
+                    "Decodes Base64, Hex/ASCII, URL/Double-URL, JWT tokens, HTML entities, Rot13, and binary strings."
+                ),
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "payload": {
+                            "type": "string",
+                            "description": "The encoded string or token to inspect and decode.",
+                        },
+                    },
+                    "required": ["payload"],
+                },
+                handler=_handle_lab_decode,
+            )
+        )
+
+        # 23. CTF & Lab Hash Identifier
+        def _handle_lab_hash_id(args: dict) -> str:
+            from lab_copilot import identify_hash
+            return identify_hash(str(args.get("hash_str", "")))
+
+        self._register(
+            Tool(
+                name="lab_identify_hash",
+                description=(
+                    "Cryptographic hash identifier for CTF challenges and authorized lab audits. "
+                    "Identifies MD5, SHA-256, NTLM, bcrypt, Argon2, Unix hashes with Hashcat mode and John format recommendations."
+                ),
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "hash_str": {
+                            "type": "string",
+                            "description": "The hash digest to identify.",
+                        },
+                    },
+                    "required": ["hash_str"],
+                },
+                handler=_handle_lab_hash_id,
+            )
+        )
+
+        # 24. Lab CVE Explainer & Mentor
+        def _handle_lab_cve_explain(args: dict) -> str:
+            from lab_copilot import explain_cve_mechanics
+            return explain_cve_mechanics(str(args.get("query", "")))
+
+        self._register(
+            Tool(
+                name="lab_cve_explainer",
+                description=(
+                    "Educational vulnerability and CVE mentor. Explains root cause mechanics, data flow patterns, "
+                    "and defensive remediations without spoiling lab challenge flags."
+                ),
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "CVE ID or vulnerability class (e.g. 'CVE-2021-44228', 'SSRF', 'Insecure Deserialization').",
+                        },
+                    },
+                    "required": ["query"],
+                },
+                handler=_handle_lab_cve_explain,
+            )
+        )
+
+        # 25. Lab Dossier Manager
+        def _handle_lab_dossier(args: dict) -> str:
+            from lab_copilot import get_dossier_manager
+            mgr = get_dossier_manager()
+            act = str(args.get("action", "status")).lower()
+            if act == "start":
+                return mgr.start_session(
+                    machine_name=str(args.get("machine_name", "Unknown-Target")),
+                    target_ip=str(args.get("target_ip", "127.0.0.1")),
+                    platform=str(args.get("platform", "Hack The Box")),
+                )
+            elif act == "log":
+                return mgr.log_finding(
+                    note=str(args.get("note", "")),
+                    milestone=str(args.get("milestone", "enumeration")),
+                    command_used=str(args.get("command_used", "")),
+                    output_snippet=str(args.get("output_snippet", "")),
+                )
+            elif act == "export":
+                return mgr.export_dossier()
+            return mgr.get_status()
+
+        self._register(
+            Tool(
+                name="lab_dossier_manager",
+                description=(
+                    "Automated CTF & Cybersecurity Lab Dossier manager. Start tracking a lab target, log milestones/commands, "
+                    "and export a publication-grade Markdown walkthrough report."
+                ),
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "action": {
+                            "type": "string",
+                            "enum": ["start", "log", "export", "status"],
+                            "description": "Action to perform ('start', 'log', 'export', 'status').",
+                        },
+                        "machine_name": {
+                            "type": "string",
+                            "description": "Lab target name (e.g. 'HTB-Sau').",
+                        },
+                        "target_ip": {
+                            "type": "string",
+                            "description": "Target IP address of the machine.",
+                        },
+                        "milestone": {
+                            "type": "string",
+                            "enum": ["recon", "enumeration", "foothold", "privesc", "notes"],
+                            "description": "Milestone phase for the log entry.",
+                        },
+                        "note": {
+                            "type": "string",
+                            "description": "Observation or finding text.",
+                        },
+                        "command_used": {
+                            "type": "string",
+                            "description": "Terminal command used in the lab.",
+                        },
+                        "output_snippet": {
+                            "type": "string",
+                            "description": "Output snippet from the lab command.",
+                        },
+                    },
+                    "required": ["action"],
+                },
+                handler=_handle_lab_dossier,
+            )
+        )
+
     def register(self, tool: Tool) -> None:
         """Register a dynamic tool (e.g. from an MCP server or plugin)."""
         self._tools[tool.name] = tool
@@ -1138,8 +1285,11 @@ class ToolRegistry:
         "android_audio_record": "Recording voice memo.",
         "dispatch_subagent_task": "Dispatching background agent.",
         "query_agent_tasks": "Checking background agents.",
-        "cancel_agent_task": "Cancelling agent task.",
         "security_vulnerability_scan": "Running web vulnerability and DAST security scan.",
+        "lab_decode_payload": "Decoding payload data.",
+        "lab_identify_hash": "Identifying cryptographic hash.",
+        "lab_cve_explainer": "Analyzing vulnerability mechanics.",
+        "lab_dossier_manager": "Updating lab dossier notes.",
         "timer_create": "Setting timer.",
         "timer_list": "Checking active timers.",
     }
