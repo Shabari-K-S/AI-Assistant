@@ -165,6 +165,77 @@ TOOLS = [
             "required": ["title", "target", "findings"],
         },
     },
+    {
+        "name": "security_ssl_inspect",
+        "description": "Inspect SSL/TLS certificate validity, expiration date countdown, Subject Alternative Names (SANs), cipher suites, and protocol version for an HTTPS/TLS service. (Risk: Low / Safe Auto-Run)",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "host": {
+                    "type": "string",
+                    "description": "Target hostname or domain to inspect (e.g. 'google.com' or 'localhost').",
+                },
+                "port": {
+                    "type": "integer",
+                    "description": "Target TLS port (default: 443).",
+                    "default": 443,
+                },
+            },
+            "required": ["host"],
+        },
+    },
+    {
+        "name": "security_dns_recon",
+        "description": "Enumerate DNS records (A, AAAA, MX, TXT, NS, CNAME) and audit email security posture (SPF, DMARC, DKIM policies) for a target domain. (Risk: Low / Safe Auto-Run)",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "domain": {
+                    "type": "string",
+                    "description": "Target domain to inspect (e.g. 'example.com').",
+                },
+            },
+            "required": ["domain"],
+        },
+    },
+    {
+        "name": "security_whois_lookup",
+        "description": "Query domain registrar, creation/expiration dates, ASN, and organization ownership via standard RDAP / WHOIS directory. (Risk: Low / Safe Auto-Run)",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "target": {
+                    "type": "string",
+                    "description": "Target domain or IP address (e.g. 'github.com' or '8.8.8.8').",
+                },
+            },
+            "required": ["target"],
+        },
+    },
+    {
+        "name": "security_network_diagnostic",
+        "description": "Run network latency, round-trip TCP ping, and connectivity diagnostics against target host or service. (Risk: Low / Safe Auto-Run)",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "host": {
+                    "type": "string",
+                    "description": "Target hostname or IP address.",
+                },
+                "port": {
+                    "type": "integer",
+                    "description": "Target port (default: 443).",
+                    "default": 443,
+                },
+                "count": {
+                    "type": "integer",
+                    "description": "Number of latency probe rounds to measure (default: 4).",
+                    "default": 4,
+                },
+            },
+            "required": ["host"],
+        },
+    },
 ]
 
 
@@ -717,6 +788,278 @@ This document summarizes the technical findings, vulnerabilities, and hardening 
     return f"✅ Security report successfully generated and saved into Notes Vault: `{report_file.relative_to(DATA_DIR)}`"
 
 
+def handle_ssl_inspect(args: dict[str, Any]) -> str:
+    """Inspect SSL/TLS certificate validity, expiry, SANs, cipher suites, and protocol version."""
+    raw_host = str(args.get("host", "")).strip()
+    port = int(args.get("port", 443))
+
+    if not raw_host:
+        return "Error: host parameter is required."
+
+    # Clean domain
+    host = raw_host
+    if "://" in host:
+        host = urllib.parse.urlparse(host).netloc.split(":")[0]
+    elif ":" in host and not host.startswith("["):
+        host = host.split(":")[0]
+
+    try:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = True
+        ctx.verify_mode = ssl.CERT_REQUIRED
+
+        with socket.create_connection((host, port), timeout=6.0) as sock:
+            with ctx.wrap_socket(sock, server_hostname=host) as ssock:
+                cert = ssock.getpeercert()
+                cipher = ssock.cipher()
+                tls_version = ssock.version()
+
+                # Extract Subject & Issuer
+                subject_dict = dict(x[0] for x in cert.get("subject", ()))
+                issuer_dict = dict(x[0] for x in cert.get("issuer", ()))
+
+                cn = subject_dict.get("commonName", host)
+                issuer_o = issuer_dict.get("organizationName", issuer_dict.get("commonName", "Unknown Issuer"))
+
+                # Extract SANs
+                sans = [v for k, v in cert.get("subjectAltName", ()) if k == "DNS"]
+                sans_preview = ", ".join(sans[:6]) + (f" (+{len(sans)-6} more)" if len(sans) > 6 else "")
+
+                # Expiry Calculation
+                not_after_str = cert.get("notAfter", "")
+                not_before_str = cert.get("notBefore", "")
+
+                try:
+                    expiry_time = time.mktime(time.strptime(not_after_str, "%b %d %H:%M:%S %Y %Z"))
+                    now = time.time()
+                    days_remaining = int((expiry_time - now) / 86400)
+                except Exception:
+                    days_remaining = 999
+
+                # Status Badge
+                if days_remaining < 0:
+                    status_badge = "🔴 **EXPIRED**"
+                elif days_remaining <= 30:
+                    status_badge = f"🟡 **EXPIRING SOON ({days_remaining} days)**"
+                else:
+                    status_badge = f"🟢 **VALID ({days_remaining} days remaining)**"
+
+                lines = [
+                    f"🔒 **SSL/TLS Certificate Inspection: `{host}:{port}`**",
+                    f"- **Status:** {status_badge}",
+                    f"- **Common Name (CN):** `{cn}`",
+                    f"- **Certificate Authority (Issuer):** `{issuer_o}`",
+                    f"- **Valid From:** `{not_before_str}`",
+                    f"- **Expires On:** `{not_after_str}`",
+                    f"- **SAN Domains ({len(sans)}):** `{sans_preview or 'None'}`",
+                    f"- **Negotiated Protocol:** `{tls_version}` ({'Modern' if tls_version in ('TLSv1.3', 'TLSv1.2') else 'Legacy/Insecure'})",
+                    f"- **Active Cipher Suite:** `{cipher[0] if cipher else 'Unknown'}` ({cipher[2] if cipher else 0} bits)",
+                ]
+
+                # Security Assessment
+                if days_remaining <= 14:
+                    lines.append("\n⚠️ **Security Warning:** Certificate expires in less than 2 weeks. Immediate renewal recommended.")
+                if tls_version not in ("TLSv1.2", "TLSv1.3"):
+                    lines.append("\n🚨 **Critical Security Risk:** Obsolete TLS protocol detected. Upgrade server to TLS 1.3.")
+
+                return "\n".join(lines)
+
+    except ssl.SSLCertVerificationError as exc:
+        return (
+            f"🚨 **SSL Certificate Verification FAILED for `{host}:{port}`:**\n"
+            f"- **Error:** `{exc.verify_message or exc}`\n"
+            f"- **Risk:** Potential Self-Signed Certificate, Expired Chain, or Man-in-the-Middle (MitM) condition."
+        )
+    except Exception as exc:
+        return f"Error connecting to `{host}:{port}` over TLS: {exc}"
+
+
+def handle_dns_recon(args: dict[str, Any]) -> str:
+    """Enumerate DNS records (A, AAAA, MX, TXT, NS) and audit SPF/DMARC email security."""
+    raw_domain = str(args.get("domain", "")).strip().lower()
+    if not raw_domain:
+        return "Error: domain parameter is required."
+
+    domain = raw_domain
+    if "://" in domain:
+        domain = urllib.parse.urlparse(domain).netloc.split(":")[0]
+
+    lines = [f"🌐 **DNS & Email Security Reconnaissance: `{domain}`**"]
+
+    # 1. Standard A / AAAA resolution
+    try:
+        addr_info = socket.getaddrinfo(domain, None)
+        ips = sorted(list(set(item[4][0] for item in addr_info if item[4])))
+        ipv4 = [ip for ip in ips if ":" not in ip]
+        ipv6 = [ip for ip in ips if ":" in ip]
+
+        lines.append(f"- **IPv4 Addresses (A):** `{', '.join(ipv4) if ipv4 else 'None'}`")
+        if ipv6:
+            lines.append(f"- **IPv6 Addresses (AAAA):** `{', '.join(ipv6)}`")
+    except Exception as exc:
+        lines.append(f"- **IP Resolution:** Error ({exc})")
+
+    # 2. DNS-over-HTTPS (DoH) for MX, TXT, NS records (Zero 3rd-party dependencies)
+    def _query_doh(name: str, record_type: str) -> list[str]:
+        url = f"https://cloudflare-dns.com/dns-query?name={name}&type={record_type}"
+        req = urllib.request.Request(url, headers={"Accept": "application/dns-json", "User-Agent": USER_AGENT})
+        try:
+            with urllib.request.urlopen(req, timeout=4.0) as resp:
+                data = json.loads(resp.read().decode())
+                answers = data.get("Answer", [])
+                return [a.get("data", "").strip('"') for a in answers if "data" in a]
+        except Exception:
+            return []
+
+    mx_records = _query_doh(domain, "MX")
+    if mx_records:
+        lines.append(f"- **Mail Exchanges (MX):** `{', '.join(mx_records[:4])}`")
+
+    ns_records = _query_doh(domain, "NS")
+    if ns_records:
+        lines.append(f"- **Name Servers (NS):** `{', '.join(ns_records[:4])}`")
+
+    txt_records = _query_doh(domain, "TXT")
+    spf_record = next((r for r in txt_records if r.lower().startswith("v=spf1")), None)
+    dmarc_records = _query_doh(f"_dmarc.{domain}", "TXT")
+    dmarc_record = next((r for r in dmarc_records if r.lower().startswith("v=dmarc1")), None)
+
+    # 3. Email Security Audit
+    lines.append("\n📧 **Email Spoofing & Phishing Defense Audit:**")
+    if spf_record:
+        spf_status = "🟢 Enforced" if "-all" in spf_record else ("🟡 SoftFail (~all)" if "~all" in spf_record else "🔴 Permissive (+all)")
+        lines.append(f"- **SPF Record:** `{spf_record}` ({spf_status})")
+    else:
+        lines.append("- **SPF Record:** 🔴 **MISSING** (Vulnerable to email forgery)")
+
+    if dmarc_record:
+        policy = "reject" if "p=reject" in dmarc_record else ("quarantine" if "p=quarantine" in dmarc_record else "none (reporting only)")
+        dmarc_status = "🟢 Strict Rejection" if policy == "reject" else ("🟡 Quarantine" if policy == "quarantine" else "🟠 Monitoring Only (No active drop)")
+        lines.append(f"- **DMARC Policy:** `{dmarc_record}` ({dmarc_status})")
+    else:
+        lines.append("- **DMARC Policy:** 🔴 **MISSING** (Critical: Domain can be spoofed in executive phishing attacks)")
+
+    return "\n".join(lines)
+
+
+def handle_whois_lookup(args: dict[str, Any]) -> str:
+    """Query domain registrar, ASN, and ownership via standard RDAP directory."""
+    raw_target = str(args.get("target", "")).strip().lower()
+    if not raw_target:
+        return "Error: target parameter is required."
+
+    target = raw_target
+    if "://" in target:
+        target = urllib.parse.urlparse(target).netloc.split(":")[0]
+
+    # Check if target is IPv4
+    is_ip = re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", target)
+    endpoint = f"https://rdap.org/ip/{target}" if is_ip else f"https://rdap.org/domain/{target}"
+
+    req = urllib.request.Request(endpoint, headers={"Accept": "application/json", "User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(req, timeout=5.0) as resp:
+            data = json.loads(resp.read().decode())
+
+            handle = data.get("handle", "Unknown")
+            name = data.get("name", target)
+            status_list = data.get("status", [])
+
+            # Extract events (Registration, Expiration)
+            events = {e.get("eventAction"): e.get("eventDate", "")[:10] for e in data.get("events", [])}
+            created = events.get("registration") or events.get("last changed") or "Unknown"
+            expires = events.get("expiration") or "Unknown"
+
+            # Extract registrar / entities
+            entities = data.get("entities", [])
+            registrar_name = "Unknown Registrar"
+            for ent in entities:
+                roles = ent.get("roles", [])
+                if "registrar" in roles or "registrant" in roles:
+                    vcard = ent.get("vcardArray", [])
+                    if len(vcard) > 1 and isinstance(vcard[1], list):
+                        for prop in vcard[1]:
+                            if prop[0] == "fn" and len(prop) > 3:
+                                registrar_name = prop[3]
+                                break
+
+            # Nameservers
+            ns_list = [ns.get("ldhName", "") for ns in data.get("nameservers", []) if "ldhName" in ns]
+
+            lines = [
+                f"📋 **WHOIS / RDAP Intelligence: `{target}`**",
+                f"- **Entity Handle:** `{handle}`",
+                f"- **Organization / Domain Name:** `{name}`",
+                f"- **Registrar:** `{registrar_name}`",
+                f"- **Registered On:** `{created}`",
+                f"- **Expires On:** `{expires}`",
+                f"- **Status Flags:** `{', '.join(status_list[:3]) if status_list else 'active'}`",
+                f"- **Authoritative Nameservers:** `{', '.join(ns_list[:4]) if ns_list else 'N/A'}`",
+            ]
+            return "\n".join(lines)
+    except urllib.error.HTTPError as exc:
+        return f"WHOIS/RDAP query for `{target}` returned HTTP {exc.code} (Record may be private or unassigned)."
+    except Exception as exc:
+        return f"Error executing WHOIS/RDAP lookup for `{target}`: {exc}"
+
+
+def handle_network_diagnostic(args: dict[str, Any]) -> str:
+    """Run low-latency round-trip TCP ping and connectivity metrics."""
+    raw_host = str(args.get("host", "")).strip()
+    port = int(args.get("port", 443))
+    count = max(1, min(10, int(args.get("count", 4))))
+
+    if not raw_host:
+        return "Error: host parameter is required."
+
+    host = raw_host
+    if "://" in host:
+        host = urllib.parse.urlparse(host).netloc.split(":")[0]
+
+    latencies: list[float] = []
+    successes = 0
+
+    for _ in range(count):
+        t_start = time.perf_counter()
+        try:
+            with socket.create_connection((host, port), timeout=3.0):
+                elapsed_ms = (time.perf_counter() - t_start) * 1000.0
+                latencies.append(elapsed_ms)
+                successes += 1
+        except Exception:
+            pass
+        time.sleep(0.15)
+
+    if not latencies:
+        return f"🔴 **Network Diagnostic Failed:** Unable to establish TCP connection to `{host}:{port}` (Host unreachable or port closed)."
+
+    min_l = min(latencies)
+    avg_l = sum(latencies) / len(latencies)
+    max_l = max(latencies)
+    jitter = max_l - min_l
+
+    loss_pct = int(((count - successes) / count) * 100)
+
+    # Health Rating
+    if avg_l < 50:
+        health = "🟢 Excellent (Ultra-low latency)"
+    elif avg_l < 150:
+        health = "🟢 Good"
+    elif avg_l < 300:
+        health = "🟡 Moderate Latency"
+    else:
+        health = "🔴 High Latency / Network Jitter"
+
+    lines = [
+        f"⚡ **Network Connectivity Diagnostic: `{host}:{port}`**",
+        f"- **Packets Probed:** `{count}` | **Success:** `{successes}/{count}` (`{100 - loss_pct}% reachable`)",
+        f"- **Latency (Min / Avg / Max):** `{min_l:.1f}ms` / `{avg_l:.1f}ms` / `{max_l:.1f}ms`",
+        f"- **Jitter Variance:** `{jitter:.1f}ms`",
+        f"- **Network Health Rating:** {health}",
+    ]
+    return "\n".join(lines)
+
+
 def handle_call_tool(params: dict[str, Any]) -> dict[str, Any]:
     name = params.get("name", "")
     args = params.get("arguments", {})
@@ -733,6 +1076,14 @@ def handle_call_tool(params: dict[str, Any]) -> dict[str, Any]:
         out = handle_port_scan(args)
     elif name == "security_report_export":
         out = handle_report_export(args)
+    elif name == "security_ssl_inspect":
+        out = handle_ssl_inspect(args)
+    elif name == "security_dns_recon":
+        out = handle_dns_recon(args)
+    elif name == "security_whois_lookup":
+        out = handle_whois_lookup(args)
+    elif name == "security_network_diagnostic":
+        out = handle_network_diagnostic(args)
     else:
         out = f"error: unknown tool '{name}'"
 

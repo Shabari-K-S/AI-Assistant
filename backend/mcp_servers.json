@@ -69,6 +69,16 @@
         "WORKSPACE_ROOT": "/home/shabari/projects/AI assistant"
       },
       "enabled": true
+    },
+    "git-copilot": {
+      "command": ".venv/bin/python3",
+      "args": [
+        "git_mcp_server.py"
+      ],
+      "env": {
+        "WORKSPACE_ROOT": "/home/shabari/projects/AI assistant"
+      },
+      "enabled": true
     }
   }
 }

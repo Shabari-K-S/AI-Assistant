@@ -1,6 +1,6 @@
 import { memo, useState, useEffect, useCallback, useRef } from 'react'
 import { soundFx } from '../lib/soundFx'
-import { Send, Terminal, Activity, CloudSun, GitBranch, ExternalLink, Mic, Radio, BookOpen, Sparkles } from 'lucide-react'
+import { Send, Terminal, Activity, CloudSun, GitBranch, Mic, Radio, BookOpen, Sparkles, ShieldCheck, Wifi, Flashlight, Volume2 } from 'lucide-react'
 
 interface Props {
   onSend: (text: string) => Promise<boolean>
@@ -14,13 +14,14 @@ interface Props {
 const QUICK_ACTIONS = [
   { label: 'Morning Briefing', query: 'Athena, give me my morning briefing with weather, tasks, and headlines.', icon: Sparkles },
   { label: 'Pomodoro 25m', query: 'Athena, set a Pomodoro focus timer for 25 minutes.', icon: Activity },
-  { label: 'Evening Debrief', query: 'Athena, give me my evening debrief and recap.', icon: Sparkles },
+  { label: 'SSL Security Audit', query: 'Athena, inspect the SSL certificate, expiration date, and TLS security for google.com.', icon: ShieldCheck },
+  { label: 'Wi-Fi Telemetry', query: 'Athena, check my Wi-Fi connection info, signal strength, and IP address.', icon: Wifi },
+  { label: 'Torch Flashlight', query: 'Athena, toggle my flashlight on or off.', icon: Flashlight },
+  { label: 'Device Volume', query: 'Athena, check and set the audio volume.', icon: Volume2 },
   { label: 'Deep Research', query: 'Athena, run deep research on solid-state battery technology and breakthroughs.', icon: Sparkles },
-  { label: 'System Status', query: 'What is the current system status, memory, and active window?', icon: Activity },
-  { label: 'MCP Weather', query: 'Athena, what is the weather in Chennai, Tamil Nadu, India according to the MCP weather tool?', icon: CloudSun },
-  { label: 'MCP Notes', query: 'Athena, list my saved notes and active tasks from memory.', icon: BookOpen },
   { label: 'Code Git Status', query: 'Athena, what is the git status and active branch in our project workspace?', icon: GitBranch },
-  { label: 'Open in VS Code', query: 'Athena, open the application project in VS Code.', icon: ExternalLink },
+  { label: 'MCP Notes', query: 'Athena, list my saved notes and active tasks from memory.', icon: BookOpen },
+  { label: 'MCP Weather', query: 'Athena, what is the weather in Chennai, Tamil Nadu, India according to the MCP weather tool?', icon: CloudSun },
 ]
 
 export const CommandDeck = memo(function CommandDeck({

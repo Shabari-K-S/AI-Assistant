@@ -332,6 +332,50 @@ TOOLS = [
         "description": "Fetch cellular network carrier, SIM state, network type (5G/LTE/4G), signal strength, and telephony status.",
         "inputSchema": {"type": "object", "properties": {}},
     },
+    {
+        "name": "android_volume_control",
+        "description": "Get or adjust device audio volume across media, call, notification, ring, alarm, and system audio streams via Termux:API.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "stream": {
+                    "type": "string",
+                    "enum": ["music", "media", "call", "notification", "ring", "alarm", "system"],
+                    "description": "Target audio stream (default: 'music').",
+                    "default": "music",
+                },
+                "volume": {
+                    "type": "integer",
+                    "description": "Optional target volume level integer (e.g. 0 to 15). If omitted, returns current volume levels.",
+                },
+                "show_ui": {
+                    "type": "boolean",
+                    "description": "Whether to display the Android volume slider overlay on screen (default: true).",
+                    "default": True,
+                },
+            },
+        },
+    },
+    {
+        "name": "android_wifi_info",
+        "description": "Inspect current Wi-Fi network connection details (SSID, BSSID, RSSI signal strength dBm, link speed, local IP, frequency).",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "android_sensor_telemetry",
+        "description": "Read live hardware sensor telemetry from Android device (ambient light in lux, accelerometer X/Y/Z, proximity distance).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "sensor_type": {
+                    "type": "string",
+                    "enum": ["all", "light", "accelerometer", "proximity"],
+                    "description": "Specific sensor to query (default: 'all').",
+                    "default": "all",
+                },
+            },
+        },
+    },
 ]
 
 
@@ -901,6 +945,138 @@ def handle_telephony_info(_args: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def handle_volume_control(args: dict[str, Any]) -> str:
+    """Get or adjust audio volume across media, call, notification, ring, alarm, system streams."""
+    stream = str(args.get("stream", "music")).strip().lower()
+    if stream == "media":
+        stream = "music"
+    vol = args.get("volume")
+    show_ui = bool(args.get("show_ui", True))
+
+    if not is_android_termux():
+        if vol is not None:
+            return f"🔊 [Desktop Simulation]: Set **{stream}** volume to `{vol}`."
+        return (
+            "🔊 [Desktop Simulation]: Device Audio Volume Telemetry:\n"
+            "- **Media / Music:** 10/15 (66%)\n"
+            "- **Call:** 4/5 (80%)\n"
+            "- **Notification:** 7/7 (100%)\n"
+            "- **Ring:** 6/7 (85%)\n"
+            "- **Alarm:** 7/7 (100%)\n"
+            "- **System:** 5/7 (71%)"
+        )
+
+    if vol is not None:
+        cmd = ["termux-volume", stream, str(vol)]
+        if show_ui:
+            cmd.append("--show")
+        code, stdout, stderr = _run_termux_cmd(cmd)
+        if code != 0:
+            return f"Error setting volume for '{stream}': {stderr}"
+        return f"🔊 Adjusted **{stream}** volume level to `{vol}`."
+
+    code, stdout, stderr = _run_termux_cmd(["termux-volume"])
+    if code != 0 or not stdout:
+        return f"Error querying volume: {stderr}"
+    try:
+        data = json.loads(stdout)
+        lines = ["🔊 **Android Audio Volume Levels:**"]
+        for item in data:
+            s_name = item.get("stream", "unknown").capitalize()
+            cur = item.get("volume", 0)
+            max_v = item.get("max_volume", 15)
+            pct = int((cur / max_v) * 100) if max_v > 0 else 0
+            lines.append(f"- **{s_name}:** `{cur}/{max_v}` ({pct}%)")
+        return "\n".join(lines)
+    except Exception as exc:
+        return f"Error parsing volume data: {exc}\nRaw: {stdout}"
+
+
+def handle_wifi_info(_args: dict[str, Any]) -> str:
+    """Inspect Wi-Fi connection info and network signal telemetry."""
+    if not is_android_termux():
+        return (
+            "📶 [Desktop Simulation]: Wi-Fi Connection Telemetry:\n"
+            "- **SSID:** `Home_5G_Network`\n"
+            "- **BSSID:** `34:2C:C4:8A:1F:90`\n"
+            "- **Local IP:** `192.168.1.145`\n"
+            "- **Signal Strength (RSSI):** `-52 dBm` (Strong)\n"
+            "- **Link Speed:** `866 Mbps`\n"
+            "- **Frequency:** `5180 MHz` (5 GHz Wi-Fi 6)\n"
+            "- **Supplicant State:** `COMPLETED`"
+        )
+
+    code, stdout, stderr = _run_termux_cmd(["termux-wifi-connectioninfo"])
+    if code != 0 or not stdout:
+        return f"Error querying Wi-Fi status: {stderr or 'Ensure Wi-Fi is enabled and Location permission is granted to Termux:API'}"
+
+    try:
+        data = json.loads(stdout)
+        ssid = data.get("ssid", "<Unknown>").replace('"', '')
+        bssid = data.get("bssid", "Unknown")
+        ip = data.get("ip", "Unknown")
+        rssi = data.get("rssi", -100)
+        speed = data.get("link_speed_mbps", 0)
+        freq = data.get("frequency_mhz", 0)
+        state = data.get("supplicant_state", "UNKNOWN")
+
+        # Human-readable signal quality
+        if rssi >= -60:
+            quality = "Excellent"
+        elif rssi >= -75:
+            quality = "Good"
+        elif rssi >= -85:
+            quality = "Fair"
+        else:
+            quality = "Weak"
+
+        return (
+            f"📶 **Android Wi-Fi Connection Telemetry:**\n"
+            f"- **SSID (Network Name):** `{ssid}`\n"
+            f"- **BSSID (Router MAC):** `{bssid}`\n"
+            f"- **Device Local IP:** `{ip}`\n"
+            f"- **Signal Strength:** `{rssi} dBm` ({quality})\n"
+            f"- **Link Speed:** `{speed} Mbps`\n"
+            f"- **Frequency:** `{freq} MHz` ({'5 GHz' if freq > 4000 else '2.4 GHz'})\n"
+            f"- **Status:** `{state}`"
+        )
+    except Exception as exc:
+        return f"Error parsing Wi-Fi data: {exc}\nRaw: {stdout}"
+
+
+def handle_sensor_telemetry(args: dict[str, Any]) -> str:
+    """Read live hardware sensor telemetry (ambient light, accelerometer, proximity)."""
+    sensor_type = str(args.get("sensor_type", "all")).strip().lower()
+
+    if not is_android_termux():
+        return (
+            "🔬 [Desktop Simulation]: Live Hardware Sensor Telemetry:\n"
+            "- **Ambient Light Sensor:** `340.0 lux` (Comfortable indoor lighting)\n"
+            "- **Proximity Sensor:** `5.0 cm` (Far / Open)\n"
+            "- **Accelerometer (X, Y, Z):** `[0.02, 9.81, 0.15] m/s²` (Resting flat on surface)\n"
+            "- **Device Orientation:** Flat table / Desk posture"
+        )
+
+    cmd = ["termux-sensor", "-n", "1"]
+    if sensor_type != "all":
+        cmd.extend(["-s", sensor_type])
+
+    code, stdout, stderr = _run_termux_cmd(cmd, timeout=4.0)
+    if code != 0 or not stdout:
+        return f"Error reading sensors: {stderr or 'No response from hardware sensors. Ensure Termux:API app is installed.'}"
+
+    try:
+        data = json.loads(stdout)
+        lines = ["🔬 **Android Hardware Sensor Telemetry:**"]
+        for sensor_name, val in data.items():
+            clean_name = sensor_name.replace("_", " ").title()
+            values = val.get("values", [])
+            lines.append(f"- **{clean_name}:** `{values}`")
+        return "\n".join(lines)
+    except Exception as exc:
+        return f"Live Sensor Reading:\n```text\n{stdout[:400]}\n```"
+
+
 def handle_call_tool(params: dict[str, Any]) -> dict[str, Any]:
     name = params.get("name", "")
     args = params.get("arguments", {})
@@ -933,6 +1109,12 @@ def handle_call_tool(params: dict[str, Any]) -> dict[str, Any]:
         out = handle_contact_search(args)
     elif name == "android_telephony_info":
         out = handle_telephony_info(args)
+    elif name == "android_volume_control":
+        out = handle_volume_control(args)
+    elif name == "android_wifi_info":
+        out = handle_wifi_info(args)
+    elif name == "android_sensor_telemetry":
+        out = handle_sensor_telemetry(args)
     else:
         out = f"error: unknown tool '{name}'"
 
