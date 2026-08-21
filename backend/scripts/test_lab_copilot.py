@@ -132,31 +132,68 @@ def test_lab_copilot() -> None:
     print("  ✅ Lab Dossier export passed.")
 
     print("\n" + "=" * 65)
-    print("⚙️ 5. TESTING SECURITY MCP & TOOLREGISTRY DISPATCHERS")
+    print("🌐 5. TESTING TERMUX & ROOTLESS HTB LAB HELPERS")
+    print("=" * 65)
+
+    from lab_copilot import check_lab_vpn_status, audit_termux_toolchain, generate_rootless_command
+
+    # 1. VPN Status
+    vpn_res = check_lab_vpn_status()
+    print(f"\n- VPN Telemetry Status:\n{vpn_res}")
+    assert "VPN Telemetry" in vpn_res
+    print("  ✅ VPN status inspection passed.")
+
+    # 2. Toolchain Audit
+    toolchain_res = audit_termux_toolchain()
+    print(f"\n- Toolchain Audit:\n{toolchain_res}")
+    assert "Toolchain Audit" in toolchain_res
+    print("  ✅ Termux toolchain audit passed.")
+
+    # 3. Rootless Command Helper
+    nmap_cmd = generate_rootless_command("nmap", "10.10.11.224")
+    print(f"\n- Rootless Nmap Command:\n{nmap_cmd}")
+    assert "-sT" in nmap_cmd and "-Pn" in nmap_cmd
+    print("  ✅ Rootless Nmap command generation passed.")
+
+    gobuster_cmd = generate_rootless_command("gobuster", "10.10.11.224")
+    print(f"\n- Rootless Gobuster Command:\n{gobuster_cmd}")
+    assert "gobuster dir" in gobuster_cmd
+    print("  ✅ Rootless Gobuster command generation passed.")
+
+    print("\n" + "=" * 65)
+    print("⚙️ 6. TESTING SECURITY MCP & TOOLREGISTRY DISPATCHERS")
     print("=" * 65)
 
     from security_mcp_server import handle_call_tool as security_dispatcher
     from tools import ToolRegistry, ToolsConfig
 
-    # 1. MCP Call
+    # 1. MCP Calls
     mcp_call = security_dispatcher({
         "name": "lab_decode_payload",
         "arguments": {"payload": "YWRtaW46cGFzc3dvcmQ="},
     })
     print(f"\n- MCP Call lab_decode_payload: {mcp_call['content'][0]['text']}")
     assert "admin:password" in mcp_call["content"][0]["text"]
-    print("  ✅ Security MCP Lab tool dispatcher passed.")
 
-    # 2. ToolRegistry Call
+    mcp_vpn = security_dispatcher({
+        "name": "lab_vpn_status",
+        "arguments": {},
+    })
+    assert "VPN" in mcp_vpn["content"][0]["text"]
+    print("  ✅ Security MCP Lab VPN status passed.")
+
+    # 2. ToolRegistry Calls
     cfg = ToolsConfig()
     registry = ToolRegistry(cfg)
     reg_out = registry.execute("lab_identify_hash", {"hash_str": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"})
-    print(f"\n- Registry execute lab_identify_hash: {reg_out[:200]}...")
     assert "SHA-256" in reg_out
-    print("  ✅ ToolRegistry Lab tool execution passed.")
+
+    reg_cmd = registry.execute("lab_command_helper", {"tool": "nmap", "target": "10.10.11.224"})
+    assert "-sT" in reg_cmd
+    print("  ✅ ToolRegistry lab_command_helper passed.")
 
     print("\n" + "=" * 65)
-    print("🎉 ALL CTF & LAB CO-PILOT TESTS COMPLETED SUCCESSFULLY!")
+    print("🎉 ALL CTF & LAB CO-PILOT TESTS (INCLUDING TERMUX HTB HELPERS) PASSED 100%!")
     print("=" * 65)
 
 if __name__ == "__main__":

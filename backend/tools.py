@@ -1164,6 +1164,74 @@ class ToolRegistry:
             )
         )
 
+        # 26. Lab VPN Status
+        def _handle_lab_vpn(args: dict) -> str:
+            from lab_copilot import check_lab_vpn_status
+            return check_lab_vpn_status()
+
+        self._register(
+            Tool(
+                name="lab_vpn_status",
+                description="Check whether an active OpenVPN tunnel (tun0 interface) is connected to Hack The Box / TryHackMe labs.",
+                parameters={"type": "object", "properties": {}},
+                handler=_handle_lab_vpn,
+            )
+        )
+
+        # 27. Termux Toolchain Auditor
+        def _handle_lab_env_check(args: dict) -> str:
+            from lab_copilot import audit_termux_toolchain
+            return audit_termux_toolchain()
+
+        self._register(
+            Tool(
+                name="lab_env_check",
+                description="Audit installed security tools (nmap, gobuster, hydra, sqlmap, openvpn, proot-distro) and SecLists wordlists in the Termux environment.",
+                parameters={"type": "object", "properties": {}},
+                handler=_handle_lab_env_check,
+            )
+        )
+
+        # 28. Rootless Command Helper
+        def _handle_lab_cmd_helper(args: dict) -> str:
+            from lab_copilot import generate_rootless_command
+            return generate_rootless_command(
+                tool=str(args.get("tool", "nmap")),
+                target=str(args.get("target", "127.0.0.1")),
+                wordlist=str(args.get("wordlist", "")),
+                extra_args=str(args.get("extra_args", "")),
+            )
+
+        self._register(
+            Tool(
+                name="lab_command_helper",
+                description="Synthesize compliant non-root commands tailored for Android Termux (forcing TCP connect scan '-sT' and local SecLists paths).",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "tool": {
+                            "type": "string",
+                            "description": "Tool to generate command for (e.g. 'nmap', 'gobuster', 'whatweb', 'hydra').",
+                        },
+                        "target": {
+                            "type": "string",
+                            "description": "Target hostname or IP address.",
+                        },
+                        "wordlist": {
+                            "type": "string",
+                            "description": "Optional custom wordlist path.",
+                        },
+                        "extra_args": {
+                            "type": "string",
+                            "description": "Optional additional command flags.",
+                        },
+                    },
+                    "required": ["tool", "target"],
+                },
+                handler=_handle_lab_cmd_helper,
+            )
+        )
+
     def register(self, tool: Tool) -> None:
         """Register a dynamic tool (e.g. from an MCP server or plugin)."""
         self._tools[tool.name] = tool
@@ -1290,6 +1358,9 @@ class ToolRegistry:
         "lab_identify_hash": "Identifying cryptographic hash.",
         "lab_cve_explainer": "Analyzing vulnerability mechanics.",
         "lab_dossier_manager": "Updating lab dossier notes.",
+        "lab_vpn_status": "Checking lab VPN connection.",
+        "lab_env_check": "Auditing Termux security tools.",
+        "lab_command_helper": "Synthesizing rootless command.",
         "timer_create": "Setting timer.",
         "timer_list": "Checking active timers.",
     }

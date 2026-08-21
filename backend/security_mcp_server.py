@@ -333,6 +333,48 @@ TOOLS = [
             "required": ["action"],
         },
     },
+    {
+        "name": "lab_vpn_status",
+        "description": "Check whether an active OpenVPN tunnel (tun0 interface) is connected to Hack The Box or TryHackMe labs. (Risk: Low / Safe Auto-Run)",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "lab_env_check",
+        "description": "Audit installed security tools (nmap, gobuster, hydra, sqlmap, openvpn, proot-distro) and SecLists wordlists in the Termux environment. (Risk: Low / Safe Auto-Run)",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "lab_command_helper",
+        "description": "Synthesize compliant non-root commands tailored for Android Termux (e.g. forcing TCP connect scan '-sT' and local SecLists paths). (Risk: Low / Safe Auto-Run)",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "tool": {
+                    "type": "string",
+                    "description": "Tool to generate command for (e.g. 'nmap', 'gobuster', 'whatweb', 'hydra').",
+                },
+                "target": {
+                    "type": "string",
+                    "description": "Target hostname or IP address.",
+                },
+                "wordlist": {
+                    "type": "string",
+                    "description": "Optional custom wordlist path.",
+                },
+                "extra_args": {
+                    "type": "string",
+                    "description": "Optional additional command flags.",
+                },
+            },
+            "required": ["tool", "target"],
+        },
+    },
 ]
 
 
@@ -1214,6 +1256,20 @@ def handle_call_tool(params: dict[str, Any]) -> dict[str, Any]:
             out = mgr.export_dossier()
         else:
             out = mgr.get_status()
+    elif name == "lab_vpn_status":
+        from lab_copilot import check_lab_vpn_status
+        out = check_lab_vpn_status()
+    elif name == "lab_env_check":
+        from lab_copilot import audit_termux_toolchain
+        out = audit_termux_toolchain()
+    elif name == "lab_command_helper":
+        from lab_copilot import generate_rootless_command
+        out = generate_rootless_command(
+            tool=str(args.get("tool", "nmap")),
+            target=str(args.get("target", "127.0.0.1")),
+            wordlist=str(args.get("wordlist", "")),
+            extra_args=str(args.get("extra_args", "")),
+        )
     else:
         out = f"error: unknown tool '{name}'"
 

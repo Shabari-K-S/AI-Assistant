@@ -259,6 +259,32 @@ export const CyberReconPanel = memo(function CyberReconPanel({ onSend, disabled 
               <div className="text-xs font-bold text-emerald-200">CVE & Exploit-DB</div>
               <div className="text-[10px] text-gray-400">Advisories & mitigations</div>
             </button>
+
+            <button
+              onClick={() => handleLabTrigger('vpn_status', `Athena, check the active lab VPN tunnel interface and IP status.`)}
+              disabled={disabled}
+              className="p-2.5 bg-gradient-to-br from-blue-950/30 to-blue-950/10 hover:from-blue-950/50 border border-blue-500/30 rounded-xl text-left transition-all group space-y-1"
+            >
+              <div className="flex items-center justify-between">
+                <Globe size={14} className="text-blue-400" />
+                <span className="text-[9px] font-mono text-blue-400 px-1 py-0.5 rounded bg-blue-500/15">VPN TUNNEL</span>
+              </div>
+              <div className="text-xs font-bold text-blue-200">Lab VPN Telemetry</div>
+              <div className="text-[10px] text-gray-400">Inspect tun0 & assigned IP</div>
+            </button>
+
+            <button
+              onClick={() => handleLabTrigger('env_check', `Athena, audit installed security tools and SecLists wordlists in the Termux environment.`)}
+              disabled={disabled}
+              className="p-2.5 bg-gradient-to-br from-amber-950/30 to-amber-950/10 hover:from-amber-950/50 border border-amber-500/30 rounded-xl text-left transition-all group space-y-1"
+            >
+              <div className="flex items-center justify-between">
+                <Activity size={14} className="text-amber-400" />
+                <span className="text-[9px] font-mono text-amber-400 px-1 py-0.5 rounded bg-amber-500/15">TOOLCHAIN</span>
+              </div>
+              <div className="text-xs font-bold text-amber-200">Termux Toolchain</div>
+              <div className="text-[10px] text-gray-400">Audit Nmap, Gobuster, Wordlists</div>
+            </button>
           </div>
         </div>
       )}

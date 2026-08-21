@@ -508,3 +508,174 @@ def get_dossier_manager() -> LabDossierManager:
     if _global_dossier_manager is None:
         _global_dossier_manager = LabDossierManager()
     return _global_dossier_manager
+
+
+# --------------------------------------------------------------------------- #
+# 5. Termux & Rootless Android HTB Lab Helpers
+# --------------------------------------------------------------------------- #
+
+def check_lab_vpn_status() -> str:
+    """Inspect local network interfaces to detect active Hack The Box / TryHackMe OpenVPN tunnels."""
+    import shutil
+    import socket
+    import subprocess
+
+    interfaces_found: dict[str, str] = {}
+    is_vpn_active = False
+    vpn_ip = ""
+    vpn_interface = ""
+
+    # Check via ip addr or ifconfig
+    ip_tool = shutil.which("ip") or shutil.which("ifconfig")
+    if ip_tool:
+        try:
+            cmd = ["ip", "-br", "addr"] if "ip" in ip_tool else ["ifconfig"]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
+            out = res.stdout
+
+            # Parse tun / tap / wlan interfaces
+            for line in out.splitlines():
+                if "tun" in line.lower() or "tap" in line.lower() or "10." in line or "172.16." in line:
+                    match_ip = re.search(r"\b(10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})\b", line)
+                    match_iface = re.search(r"^(tun\d+|tap\d+|\w+)", line.strip())
+                    if match_ip:
+                        if_name = match_iface.group(1) if match_iface else "tun0"
+                        interfaces_found[if_name] = match_ip.group(1)
+                        if "tun" in if_name:
+                            is_vpn_active = True
+                            vpn_ip = match_ip.group(1)
+                            vpn_interface = if_name
+        except Exception:
+            pass
+
+    # Fallback to socket interface check
+    if not interfaces_found:
+        try:
+            # Test connection to HTB internal gateway
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("10.10.10.2", 80))
+            local_ip = s.getsockname()[0]
+            s.close()
+            if local_ip.startswith("10."):
+                is_vpn_active = True
+                vpn_ip = local_ip
+                vpn_interface = "tun0"
+                interfaces_found["tun0"] = local_ip
+        except Exception:
+            pass
+
+    lines = ["🌐 **Athena Lab Network & VPN Telemetry:**\n"]
+
+    if is_vpn_active:
+        lines.extend([
+            f"- **VPN Status:** 🟢 **CONNECTED (Active HTB/THM Tunnel)**",
+            f"- **Assigned Lab IP:** `{vpn_ip}` (Interface: `{vpn_interface}`)",
+            f"- **Target Reachability:** HTB Private Subnet (`10.10.x.x` / `10.12.x.x`) accessible.",
+            f"- **Rootless Tip:** Use `-sT -Pn` with Nmap from this interface.",
+        ])
+    else:
+        lines.extend([
+            f"- **VPN Status:** 🔴 **DISCONNECTED (No `tun0` interface detected)**",
+            f"- **Notice:** Connect via OpenVPN in Termux before targeting lab machines:",
+            f"  ```bash",
+            f"  openvpn --config ~/lab-vpn-config.ovpn",
+            f"  ```",
+            f"- **Local Interfaces Detected:** {', '.join(f'`{k}: {v}`' for k, v in interfaces_found.items()) if interfaces_found else '`wlan0 / loopback only`'}",
+        ])
+
+    return "\n".join(lines)
+
+
+def audit_termux_toolchain() -> str:
+    """Audit installed security tools and wordlists in the Termux / Android environment."""
+    import shutil
+
+    tools_to_check = [
+        ("nmap", "Network mapper & port scanner", "pkg install nmap"),
+        ("gobuster", "High-speed directory & DNS brute-forcer", "pkg install gobuster || go install github.com/OJ/gobuster/v3@latest"),
+        ("hydra", "Fast network authentication cracker", "pkg install hydra"),
+        ("sqlmap", "Automated SQL injection testing tool", "pkg install sqlmap || pip install sqlmap"),
+        ("openvpn", "Virtual Private Network client for HTB/THM labs", "pkg install openvpn"),
+        ("nc", "Netcat for reverse shells & banner grabbing", "pkg install netcat-openbsd"),
+        ("whatweb", "Web technology & CMS identification scanner", "pkg install whatweb || gem install whatweb"),
+        ("proot-distro", "Full rootless Linux distribution runner (Debian/Ubuntu)", "pkg install proot-distro"),
+        ("python3", "Python interpreter for custom exploit scripts", "pkg install python"),
+        ("git", "Version control & GitHub repository cloner", "pkg install git"),
+        ("curl", "HTTP client & raw request tool", "pkg install curl"),
+    ]
+
+    installed: list[tuple[str, str]] = []
+    missing: list[tuple[str, str, str]] = []
+
+    for name, desc, install_cmd in tools_to_check:
+        path = shutil.which(name)
+        if path:
+            installed.append((name, path))
+        else:
+            missing.append((name, desc, install_cmd))
+
+    # Check wordlist paths
+    wordlist_paths = [
+        Path(os.environ.get("PREFIX", "/data/data/com.termux/files/usr")) / "share" / "wordlists",
+        Path.home() / "SecLists",
+        Path.home() / "wordlists",
+        Path("/usr/share/wordlists"),
+    ]
+    found_wordlists: list[str] = []
+    for wp in wordlist_paths:
+        if wp.exists():
+            found_wordlists.append(str(wp))
+
+    lines = [
+        "🧰 **Athena Termux Security Toolchain Audit:**\n",
+        f"- **Installed Utilities ({len(installed)}/{len(tools_to_check)}):**",
+    ]
+    for name, path in installed:
+        lines.append(f"  * ✅ `{name}` — `{path}`")
+
+    if missing:
+        lines.append(f"\n- **Missing Utilities ({len(missing)}):**")
+        for name, desc, cmd in missing:
+            lines.append(f"  * ⚠️ `{name}` ({desc}):\n    `{cmd}`")
+
+    lines.append(f"\n- **Wordlists Detected:**")
+    if found_wordlists:
+        for wp in found_wordlists:
+            lines.append(f"  * 📁 `{wp}`")
+    else:
+        lines.append("  * ⚠️ No standard SecLists directory found. Clone SecLists with:")
+        lines.append("    `git clone --depth 1 https://github.com/danielmiessler/SecLists.git ~/SecLists`")
+
+    return "\n".join(lines)
+
+
+def generate_rootless_command(tool: str, target: str, wordlist: str = "", extra_args: str = "") -> str:
+    """Synthesize non-root compliant commands tailored for Termux on Android."""
+    t_clean = tool.strip().lower()
+    tgt = target.strip()
+    wl = wordlist.strip() or "~/SecLists/Discovery/Web-Content/common.txt"
+
+    if "nmap" in t_clean:
+        cmd = f"nmap -sT -sV -Pn {extra_args} {tgt}".strip()
+        explanation = (
+            "📌 **Rootless Android Constraint:** Uses `-sT` (TCP Connect Scan) and `-Pn` (Skip ICMP Host Discovery) "
+            "because non-rooted Android kernels block raw SYN (`-sS`) and raw ICMP sockets."
+        )
+    elif "gobuster" in t_clean:
+        cmd = f"gobuster dir -u http://{tgt} -w {wl} -t 25 -b 404 {extra_args}".strip()
+        explanation = "📌 **Mobile Optimized:** Runs 25 concurrent Go goroutines with 404 filtering for high throughput on mobile ARM."
+    elif "whatweb" in t_clean:
+        cmd = f"whatweb -a 3 http://{tgt} {extra_args}".strip()
+        explanation = "📌 **Passive/Aggressive Web Fingerprinting:** Identifies web server banners, cookies, and CMS plugins."
+    elif "hydra" in t_clean:
+        cmd = f"hydra -L users.txt -P {wl} {tgt} ssh -t 4 {extra_args}".strip()
+        explanation = "📌 **Bounded Concurrency:** Uses `-t 4` to avoid overwhelming mobile network buffers or triggering lab firewalls."
+    else:
+        cmd = f"{t_clean} {tgt} {extra_args}".strip()
+        explanation = "📌 **Standard Command Execution.**"
+
+    return (
+        f"⚡ **Athena Rootless Termux Command Generator:**\n\n"
+        f"```bash\n{cmd}\n```\n\n"
+        f"{explanation}"
+    )
