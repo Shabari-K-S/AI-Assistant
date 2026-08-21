@@ -805,10 +805,10 @@ class LlamaCppLLM(LLMEngine):
         except Exception:
             return False
 
-    def _open_stream(
+    def _send_streaming_request(
         self, messages: list[dict], tools: list[dict], system_prompt: str
     ):
-        """POST /v1/chat/completions to llama-server with SSE streaming."""
+        """Prepare and build streaming request to llama-server."""
         body: dict = {
             "model": self._config.llama_cpp_model or "default",
             "messages": [{"role": "system", "content": system_prompt}, *messages],
@@ -820,28 +820,7 @@ class LlamaCppLLM(LLMEngine):
             body["tools"] = tools
 
         url = f"{self._base_url}/v1/chat/completions"
-        try:
-            response = self._client.post(url, json=body)
-        except Exception as exc:
-            raise RuntimeError(
-                f"Cannot connect to llama.cpp server at {self._base_url} ({exc}). "
-                f"Make sure llama-server is running (e.g. bash scripts/run_llama_server.sh)."
-            ) from exc
-
-        if response.status_code == 200:
-            return response
-        if response.status_code == 503:
-            raise RuntimeError(
-                f"llama.cpp server at {self._base_url} is still loading the model (HTTP 503)."
-            )
-        detail = "unknown error"
-        try:
-            detail = response.json().get("error", str(response.text))
-        except Exception:
-            detail = response.text[:200]
-        raise RuntimeError(
-            f"llama.cpp request failed (HTTP {response.status_code}): {detail}"
-        )
+        return url, body
 
     def stream_response(
         self,
@@ -854,44 +833,67 @@ class LlamaCppLLM(LLMEngine):
 
         for _ in range(self._max_tool_iterations + 1):
             messages = _serialize_openai(conversation.messages())
-            response = self._open_stream(messages, tools, system_prompt)
+            url, body = self._send_streaming_request(messages, tools, system_prompt)
 
             text_deltas: list[str] = []
             tool_calls: dict[int, dict] = {}
             finish_reason: str | None = None
 
-            for line in response.iter_lines():
-                if not line or not line.startswith("data:"):
-                    continue
-                raw_data = line[len("data:"):].strip()
-                if raw_data == "[DONE]":
-                    break
-                try:
-                    payload = json.loads(raw_data)
-                except json.JSONDecodeError:
-                    continue
-                choices = payload.get("choices") or []
-                if not choices:
-                    continue
-                choice = choices[0]
-                if choice.get("finish_reason"):
-                    finish_reason = choice["finish_reason"]
-                delta = choice.get("delta") or {}
-                if delta.get("content"):
-                    if ttft is None:
-                        ttft = time.perf_counter() - t0
-                    text_deltas.append(delta["content"])
-                    yield delta["content"]
-                for call in delta.get("tool_calls") or []:
-                    idx = call.get("index", 0)
-                    entry = tool_calls.setdefault(idx, {"id": None, "name": "", "args": ""})
-                    fn = call.get("function") or {}
-                    if call.get("id"):
-                        entry["id"] = call["id"]
-                    if fn.get("name"):
-                        entry["name"] = fn["name"]
-                    if fn.get("arguments"):
-                        entry["args"] += fn["arguments"]
+            try:
+                with self._client.stream("POST", url, json=body) as response:
+                    if response.status_code == 503:
+                        raise RuntimeError(
+                            f"llama.cpp server at {self._base_url} is still loading the model (HTTP 503)."
+                        )
+                    if response.status_code != 200:
+                        detail = "unknown error"
+                        try:
+                            detail = response.read().decode("utf-8", errors="replace")[:250]
+                        except Exception:
+                            pass
+                        raise RuntimeError(
+                            f"llama.cpp request failed (HTTP {response.status_code}): {detail}"
+                        )
+
+                    for line in response.iter_lines():
+                        if not line or not line.startswith("data:"):
+                            continue
+                        raw_data = line[len("data:"):].strip()
+                        if raw_data == "[DONE]":
+                            break
+                        try:
+                            payload = json.loads(raw_data)
+                        except json.JSONDecodeError:
+                            continue
+                        choices = payload.get("choices") or []
+                        if not choices:
+                            continue
+                        choice = choices[0]
+                        if choice.get("finish_reason"):
+                            finish_reason = choice["finish_reason"]
+                        delta = choice.get("delta") or {}
+                        if delta.get("content"):
+                            if ttft is None:
+                                ttft = time.perf_counter() - t0
+                            text_deltas.append(delta["content"])
+                            yield delta["content"]
+                        for call in delta.get("tool_calls") or []:
+                            idx = call.get("index", 0)
+                            entry = tool_calls.setdefault(idx, {"id": None, "name": "", "args": ""})
+                            fn = call.get("function") or {}
+                            if call.get("id"):
+                                entry["id"] = call["id"]
+                            if fn.get("name"):
+                                entry["name"] = fn["name"]
+                            if fn.get("arguments"):
+                                entry["args"] += fn["arguments"]
+            except Exception as exc:
+                if "Cannot connect" not in str(exc) and not isinstance(exc, RuntimeError):
+                    raise RuntimeError(
+                        f"Cannot connect to llama.cpp server at {self._base_url} ({exc}). "
+                        f"Make sure llama-server is running (e.g. bash scripts/run_llama_server.sh)."
+                    ) from exc
+                raise
 
             calls = [
                 {

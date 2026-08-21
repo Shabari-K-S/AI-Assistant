@@ -48,9 +48,9 @@ class TestLlamaCppLLM(unittest.TestCase):
             list(engine.stream_response(conv, [], "System prompt"))
         self.assertIn("Cannot connect to llama.cpp server", str(ctx.exception))
 
-    @patch("httpx.Client.post")
-    def test_mock_streaming_response(self, mock_post):
-        # Mock SSE response from llama-server
+    @patch("httpx.Client.stream")
+    def test_mock_streaming_response(self, mock_stream):
+        # Mock SSE streaming response context manager from llama-server
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.iter_lines.return_value = [
@@ -58,7 +58,7 @@ class TestLlamaCppLLM(unittest.TestCase):
             'data: {"choices":[{"delta":{"content":" world!"}}]}',
             'data: [DONE]',
         ]
-        mock_post.return_value = mock_response
+        mock_stream.return_value.__enter__.return_value = mock_response
 
         cfg = LLMConfig(
             api_key="",

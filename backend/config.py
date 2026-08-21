@@ -140,6 +140,7 @@ class ToolsConfig:
     """Tool-calling safety settings (stage 3)."""
 
     enabled: bool = True  # set false for pure ultra-fast voice chat with small models
+    dynamic: bool = True  # dynamically inject only relevant tools based on user prompt intent
     confirm_shell: str = "ask"  # ask | never | always
     shell_timeout_seconds: int = 30
     shell_allowlist: tuple[str, ...] = (
@@ -177,22 +178,24 @@ class Config:
     log_level: str = "INFO"
 
 
-def _load_persona() -> str:
-    """System prompt precedence: persona file (default persona.md) -> env var.
-
-    The personality is meant to be iterated on without touching code, so the
-    file is the primary knob; EV_PERSONA_PROMPT is an escape hatch for setups
-    where files aren't convenient.
-    """
-    path = Path(_env("EV_PERSONA_FILE", "persona.md"))
+def _load_persona(provider: str = "gemini") -> str:
+    """System prompt precedence: persona file (persona.md or persona_compact.md for local) -> env var."""
+    default_file = "persona_compact.md" if provider in ("llama_cpp", "llamacpp", "ollama") else "persona.md"
+    file_env = _env("EV_PERSONA_FILE")
+    target_name = file_env if file_env else default_file
+    path = Path(target_name)
     if not path.is_absolute():
         path = ROOT_DIR / path
     if path.is_file():
         return path.read_text(encoding="utf-8").strip()
+    # Fallback to standard persona.md if compact missing
+    fallback_path = ROOT_DIR / "persona.md"
+    if fallback_path.is_file():
+        return fallback_path.read_text(encoding="utf-8").strip()
     prompt = _env("EV_PERSONA_PROMPT")
     if prompt:
         return prompt
-    return "You are EV, a dry, witty local voice assistant."
+    return "You are A.T.H.E.N.A., an intelligent and concise voice assistant."
 
 
 def load_config() -> Config:
@@ -245,7 +248,7 @@ def load_config() -> Config:
             llama_cpp_model=_env("EV_LLAMA_CPP_MODEL", "qwen2.5-1.5b-instruct"),
             llama_cpp_ctx_size=_env_int("EV_LLAMA_CPP_CTX_SIZE", 2048, minimum=512),
             llama_cpp_threads=_env_int("EV_LLAMA_CPP_THREADS", 4, minimum=1),
-            system_prompt=_load_persona(),
+            system_prompt=_load_persona(provider=_env("EV_LLM_PROVIDER", "gemini").lower()),
         ),
         tts=TTSConfig(
             provider=_env("EV_TTS_PROVIDER", "edge").lower(),
@@ -264,6 +267,7 @@ def load_config() -> Config:
         ),
         tools=ToolsConfig(
             enabled=_env_bool("EV_TOOLS_ENABLED", True),
+            dynamic=_env_bool("EV_DYNAMIC_TOOLS", True),
             confirm_shell=_env("EV_CONFIRM_SHELL", "ask"),
             shell_timeout_seconds=_env_int("EV_SHELL_TIMEOUT_SECONDS", 30, minimum=1),
             shell_allowlist=tuple(allowlist) if allowlist else ToolsConfig.shell_allowlist,
