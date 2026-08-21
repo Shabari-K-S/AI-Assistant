@@ -485,15 +485,15 @@ export default function App() {
                   noiseFloor={snap.noise_floor}
                 />
 
-                {/* Wake Word Sensitivity Meter */}
-                <WakeMeter
-                  score={activeSnap.wake_score}
-                  threshold={snap.threshold}
-                  noiseFloor={snap.noise_floor}
-                />
-
-                {/* System Telemetry Gauges */}
-                <TelemetryGauges snap={activeSnap} connected={connected} />
+                {/* Desktop-Only: Wake Word Sensitivity Meter & Hardware Calibration Gauges */}
+                <div className="hidden md:block space-y-2.5">
+                  <WakeMeter
+                    score={activeSnap.wake_score}
+                    threshold={snap.threshold}
+                    noiseFloor={snap.noise_floor}
+                  />
+                  <TelemetryGauges snap={activeSnap} connected={connected} />
+                </div>
 
                 {/* Command & Push-to-Talk Deck */}
                 <CommandDeck

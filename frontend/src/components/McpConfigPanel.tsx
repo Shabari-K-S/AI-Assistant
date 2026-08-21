@@ -49,10 +49,7 @@ interface Props {
 export const McpConfigPanel = memo(function McpConfigPanel({ onSendPrompt, onClose }: Props) {
   const { data, loading, error, refresh, toggleServer, restartServer, saveServer, deleteServer } = useMcp()
   const [searchQuery, setSearchQuery] = useState('')
-  const [expandedServers, setExpandedServers] = useState<Record<string, boolean>>({
-    'dummy-demo': true,
-    'notes-memory': true,
-  })
+  const [expandedServers, setExpandedServers] = useState<Record<string, boolean>>({})
   const [showAddModal, setShowAddModal] = useState(false)
   const [modalMode, setModalMode] = useState<'custom' | 'catalog'>('custom')
   const [selectedCatalogItem, setSelectedCatalogItem] = useState<McpCatalogItem | null>(null)

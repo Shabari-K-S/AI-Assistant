@@ -270,7 +270,7 @@ export const CommandDeck = memo(function CommandDeck({
       </div>
 
       {/* 3. Clean Terminal Input Bay */}
-      <form onSubmit={handleSubmit} className="relative flex items-center">
+      <form onSubmit={handleSubmit} className="relative flex items-center w-full">
         <div className="absolute left-3.5 text-[#41e6ff] pointer-events-none flex items-center gap-1">
           <span className="font-mono text-xs font-bold">&gt;</span>
         </div>
@@ -281,23 +281,23 @@ export const CommandDeck = memo(function CommandDeck({
           onChange={(e) => setText(e.target.value)}
           placeholder={
             isHolding
-              ? 'Listening to speech... release to send...'
+              ? 'Listening... release to send...'
               : connected
-                ? 'Type command or hold button above to speak...'
-                : 'Assistant offline — start backend: ./run.sh'
+                ? 'Type command or message...'
+                : 'Athena offline — run ./run.sh'
           }
           disabled={!connected || transmitting}
-          className={`w-full pl-8 pr-28 py-2.5 font-mono text-xs tracking-wider bg-[rgba(6,14,21,0.85)] border ${
+          className={`w-full pl-8 pr-28 sm:pr-32 py-2.5 font-mono text-xs tracking-wider bg-[rgba(6,14,21,0.85)] border ${
             isHolding
               ? 'border-[#41e6ff] shadow-[0_0_15px_rgba(65,230,255,0.35)] text-white'
               : 'border-[rgba(65,230,255,0.25)] text-[#e8fbff]'
-          } focus:border-[#41e6ff] focus:ring-1 focus:ring-[#41e6ff] focus:outline-none rounded placeholder-[#3e5c6d] shadow-[inset_0_0_12px_rgba(0,0,0,0.5)] transition-all disabled:opacity-40`}
+          } focus:border-[#41e6ff] focus:ring-1 focus:ring-[#41e6ff] focus:outline-none rounded-lg placeholder-[#3e5c6d] shadow-[inset_0_0_12px_rgba(0,0,0,0.5)] transition-all disabled:opacity-40`}
         />
 
         <button
           type="submit"
           disabled={!connected || !text.trim() || transmitting}
-          className="absolute right-1.5 px-3 py-1.5 font-display text-[10px] tracking-[0.18em] text-[#041018] bg-[#41e6ff] hover:bg-[#7ef3ff] disabled:bg-[#1d4a5c] disabled:text-[#7da4b8] rounded font-semibold transition-all flex items-center gap-1.5 shadow-[0_0_10px_rgba(65,230,255,0.4)] disabled:shadow-none active:scale-95 touch-manipulation"
+          className="absolute right-1.5 px-3 py-1.5 font-display text-[10px] tracking-[0.18em] text-[#041018] bg-[#41e6ff] hover:bg-[#7ef3ff] disabled:bg-[#1d4a5c] disabled:text-[#7da4b8] rounded font-semibold transition-all flex items-center gap-1.5 shadow-[0_0_10px_rgba(65,230,255,0.4)] disabled:shadow-none active:scale-95 touch-manipulation shrink-0"
         >
           <span>{transmitting ? 'SENDING' : 'TRANSMIT'}</span>
           <Send size={11} />
