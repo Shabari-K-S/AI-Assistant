@@ -46,5 +46,6 @@ exec llama-server \
     -c "${CTX_SIZE}" \
     -b "${BATCH_SIZE}" \
     -t "${THREADS}" \
-    --cont-batching \
-    --mlock
+    -np 1 \
+    --jinja \
+    --cont-batching

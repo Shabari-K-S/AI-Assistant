@@ -500,13 +500,16 @@ def _build_agent(cfg, confirm_fn: Callable[[str], bool] | None = None):
     registry = ToolRegistry(cfg.tools, confirm=confirm_fn or _confirm_terminal)
     mcp_manager = MCPManager()
     mcp_manager.set_registry(registry)
-    try:
-        mcp_manager.start_servers()
-        mcp_count = mcp_manager.register_into_tool_registry(registry)
-        if mcp_count > 0:
-            log.info("MCP subsystem online: %d dynamic tools registered", mcp_count)
-    except Exception:
-        log.exception("Failed initializing MCP servers")
+    if cfg.tools.enabled:
+        try:
+            mcp_manager.start_servers()
+            mcp_count = mcp_manager.register_into_tool_registry(registry)
+            if mcp_count > 0:
+                log.info("MCP subsystem online: %d dynamic tools registered", mcp_count)
+        except Exception:
+            log.exception("Failed initializing MCP servers")
+    else:
+        log.info("Tools subsystem disabled (EV_TOOLS_ENABLED=false) — running in pure ultra-low-latency conversation mode")
 
     conversation = Conversation(max_turns=cfg.llm.max_turns)
     try:
@@ -814,8 +817,12 @@ def _run_assistant(cfg, once: bool, text: str | None) -> int:
 
             reply_parts: list[str] = []
             try:
-                tools = registry.schemas(
-                    format="gemini" if cfg.llm.provider == "gemini" else "openai"
+                tools = (
+                    registry.schemas(
+                        format="gemini" if cfg.llm.provider == "gemini" else "openai"
+                    )
+                    if cfg.tools.enabled
+                    else []
                 )
                 for token in engine.stream_response(
                     conversation, tools, active_system_prompt

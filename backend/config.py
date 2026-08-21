@@ -139,6 +139,7 @@ class TTSConfig:
 class ToolsConfig:
     """Tool-calling safety settings (stage 3)."""
 
+    enabled: bool = True  # set false for pure ultra-fast voice chat with small models
     confirm_shell: str = "ask"  # ask | never | always
     shell_timeout_seconds: int = 30
     shell_allowlist: tuple[str, ...] = (
@@ -262,6 +263,7 @@ def load_config() -> Config:
             piper_rate=_env_float("EV_PIPER_VOICE_RATE", 1.0),
         ),
         tools=ToolsConfig(
+            enabled=_env_bool("EV_TOOLS_ENABLED", True),
             confirm_shell=_env("EV_CONFIRM_SHELL", "ask"),
             shell_timeout_seconds=_env_int("EV_SHELL_TIMEOUT_SECONDS", 30, minimum=1),
             shell_allowlist=tuple(allowlist) if allowlist else ToolsConfig.shell_allowlist,
