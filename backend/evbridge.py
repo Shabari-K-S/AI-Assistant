@@ -396,6 +396,7 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json({"ok": False, "error": "empty prompt"}, 400)
                 return
             bus.inject_prompt(prompt)
+            bus.set(phase="processing", transcript=prompt)
             bus.log("INFO", f"terminal uplink: {prompt}")
             self._json({"ok": True, "prompt": prompt})
             return
@@ -409,6 +410,7 @@ class _Handler(BaseHTTPRequestHandler):
             # Subscribe to bus events to wait synchronously for assistant reply
             q = bus.subscribe()
             bus.inject_prompt(prompt)
+            bus.set(phase="processing", transcript=prompt)
             bus.log("INFO", f"android uplink: {prompt}")
 
             reply_text = ""

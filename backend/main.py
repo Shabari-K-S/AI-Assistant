@@ -296,7 +296,7 @@ _speech_state = {
 }
 
 
-def _speak(tts, text: str, bus=None, muted: bool = False, mic=None, trigger=None) -> None:
+def _speak(tts, text: str, bus=None, muted: bool = False, mic=None, trigger=None, post_phase: str = "standby") -> None:
     if not text.strip():
         return
     if bus is not None:
@@ -335,7 +335,7 @@ def _speak(tts, text: str, bus=None, muted: bool = False, mic=None, trigger=None
         if trigger is not None:
             trigger.set_enabled(True)
         if bus is not None and not _speech_state["interrupted"]:
-            bus.set(phase="standby")
+            bus.set(phase=post_phase)
 
 
 _AFFIRMATIVE_WORDS = {
@@ -610,7 +610,7 @@ def _run_assistant(cfg, once: bool, text: str | None) -> int:
         trig_inst = context_holder.get("trigger")
         if tts_inst is not None and not muted.get("on", False):
             try:
-                _speak(tts_inst, cue_text, bus=bus, muted=muted.get("on", False), mic=mic_inst, trigger=trig_inst)
+                _speak(tts_inst, cue_text, bus=bus, muted=muted.get("on", False), mic=mic_inst, trigger=trig_inst, post_phase="processing")
             except Exception:
                 pass
         if bus is not None:
@@ -659,7 +659,7 @@ def _run_assistant(cfg, once: bool, text: str | None) -> int:
         except Exception:
             pass
 
-        _speak(tts, notice_speech, bus=bus, muted=muted["on"], mic=mic, trigger=trigger)
+        _speak(tts, notice_speech, bus=bus, muted=muted["on"], mic=mic, trigger=trigger, post_phase="standby")
 
     deep_res_engine.set_on_complete(_on_research_complete)
 
@@ -699,7 +699,7 @@ def _run_assistant(cfg, once: bool, text: str | None) -> int:
             bus.log("INFO", f"⏰ Timer Alert: {spoken}")
             bus.event("timer_notified", **timer_data)
 
-        _speak(tts, spoken, bus=bus, muted=muted["on"], mic=mic, trigger=trigger)
+        _speak(tts, spoken, bus=bus, muted=muted["on"], mic=mic, trigger=trigger, post_phase="standby")
 
     timer_engine.set_on_expiry(_on_timer_expiry)
 
@@ -731,7 +731,7 @@ def _run_assistant(cfg, once: bool, text: str | None) -> int:
                 if injected:
                     user_text = injected
                     print(f"[uplink] {user_text}", flush=True)
-                    bus.set(transcript=user_text)
+                    bus.set(phase="processing", transcript=user_text)
                     bus.event("transcript", text=user_text, confidence=1.0)
                 elif mic is None:
                     # In web mode without local microphone binding, wait for web prompts (low-power sleep)
@@ -740,8 +740,9 @@ def _run_assistant(cfg, once: bool, text: str | None) -> int:
                 else:
                     activated, audio = _capture_utterance(mic, trigger, cfg, bus=bus, timeout=0.2)
                     if not activated:
-                        # Timeout on activation — keep/reset to standby
-                        if bus is not None and bus.get().get("phase") != "standby":
+                        # Timeout on activation — keep/reset to standby only if not processing
+                        current_phase = bus.get().get("phase") if bus is not None else "standby"
+                        if bus is not None and current_phase not in ("processing", "speaking"):
                             bus.set(phase="standby")
                         continue
                     if audio is None:

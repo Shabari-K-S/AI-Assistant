@@ -418,11 +418,11 @@ export default function App() {
                               : 'text-[#e8fbff] drop-shadow-[0_0_12px_rgba(65,230,255,0.5)]'
                     }`}
                   >
-                    {connected ? activePhase.toUpperCase() : 'OFFLINE'}
+                    {connected ? (snap.active_tool ? `RUNNING: ${snap.active_tool.name.toUpperCase()}` : activePhase.toUpperCase()) : 'OFFLINE'}
                     <span className="cursor-blink ml-1" aria-hidden />
                   </div>
                   <div className="mt-1 font-mono text-[9.5px] sm:text-[10.5px] md:text-xs tracking-[0.18em] sm:tracking-[0.22em] text-[#7da4b8] px-2 max-w-sm sm:max-w-none truncate">
-                    {connected ? phaseLabel : 'START ASSISTANT BACKEND: ./run.sh'}
+                    {connected ? (snap.active_tool ? `⚡ MCP Tool Executing: ${snap.active_tool.name}` : phaseLabel) : 'START ASSISTANT BACKEND: ./run.sh'}
                   </div>
                 </div>
               </div>
