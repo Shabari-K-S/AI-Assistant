@@ -392,8 +392,36 @@ Document Structure to Follow:
                 log.warning("Google GenAI client initialization failed: %s", genai_err)
 
         # ------------------------------------------------------------- #
-        # Step 2: Try Local Ollama (gemma4:26b / gemma4:e4b)
+        # Step 2: Try Local llama.cpp (llama-server) or Ollama
         # ------------------------------------------------------------- #
+        try:
+            import httpx
+            llama_url = os.environ.get("EV_LLAMA_CPP_BASE_URL", "http://127.0.0.1:8080").rstrip("/")
+            llama_model = os.environ.get("EV_LLAMA_CPP_MODEL", "default")
+            try:
+                log.info("Deep Research LLM synthesis: attempting local llama.cpp on '%s'", llama_url)
+                body = {
+                    "model": llama_model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": synthesis_prompt},
+                    ],
+                    "stream": False,
+                    "temperature": 0.5,
+                    "max_tokens": 4096,
+                }
+                resp = httpx.post(f"{llama_url}/v1/chat/completions", json=body, timeout=120.0)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    if len(content) > 800:
+                        log.info("✅ Deep Research synthesis completed via local llama.cpp (%s)", llama_model)
+                        return content.strip(), f"llama.cpp-{llama_model}"
+            except Exception as llama_err:
+                log.debug("llama.cpp synthesis check failed: %s", llama_err)
+        except Exception:
+            pass
+
         ollama_models = ["gemma4:26b", "gemma4:e4b", "gemma2:27b", "llama3.1:8b", "gemma:7b"]
         try:
             import httpx

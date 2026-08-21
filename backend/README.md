@@ -61,12 +61,18 @@ The Deep Research Engine runs autonomously in a dedicated background worker thre
 GOOGLE_API_KEY=your_google_api_key_here
 
 # --- LLM Brain Configuration ---
-EV_LLM_PROVIDER=gemini              # gemini | ollama
+EV_LLM_PROVIDER=llama_cpp           # gemini | rest | ollama | llama_cpp
 EV_LLM_MODEL=gemma-4-31b-it         # primary chat model
 EV_LLM_MAX_TOKENS=2048
 EV_LLM_TEMPERATURE=0.7
 EV_LLM_MAX_TURNS=20
 EV_GEMINI_THINKING=false
+
+# --- Local llama.cpp On-Device Engine (Android / Termux / NetHunter / Desktop) ---
+EV_LLAMA_CPP_BASE_URL=http://127.0.0.1:8080
+EV_LLAMA_CPP_MODEL=qwen2.5-1.5b-instruct
+EV_LLAMA_CPP_CTX_SIZE=2048
+EV_LLAMA_CPP_THREADS=4
 
 # --- Local Ollama Fallback ---
 EV_OLLAMA_BASE_URL=http://localhost:11434
@@ -124,5 +130,30 @@ python3 main.py --list-devices       # List all system audio input/output device
 
 ### Running Test Suites
 ```bash
+python3 scripts/test_llamacpp_llm.py            # Test llama.cpp engine & health checks
 python3 scripts/test_deep_research_sources.py   # Test 10-12+ source deep research & paper synthesis
 ```
+
+---
+
+## 🦙 On-Device LLM via `llama.cpp` (Android / Termux / Linux)
+
+Run local, offline, high-speed neural models directly on your Android phone or edge device with zero cloud API keys:
+
+1. **Setup & Download Model (Termux / Linux):**
+   ```bash
+   bash scripts/setup_llama_android.sh
+   ```
+   *Downloads Qwen 2.5 1.5B Instruct Q4_K_M (~1.1 GB, fast & full tool support).*
+
+2. **Start llama-server:**
+   ```bash
+   bash scripts/run_llama_server.sh
+   ```
+
+3. **Configure ATHENA `.env`:**
+   ```ini
+   EV_LLM_PROVIDER=llama_cpp
+   EV_LLAMA_CPP_BASE_URL=http://127.0.0.1:8080
+   EV_LLAMA_CPP_MODEL=qwen2.5-1.5b-instruct
+   ```

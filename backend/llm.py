@@ -780,10 +780,178 @@ class GeminiRestLLM(LLMEngine):
         log.warning("llm: tool loop exceeded %d iterations; stopping", self._max_tool_iterations)
 
 
+# --------------------------------------------------------------------------- #
+# Provider 4: llama.cpp (High-performance local on-device LLM engine)
+# --------------------------------------------------------------------------- #
+class LlamaCppLLM(LLMEngine):
+    """Local on-device LLM engine running via llama.cpp (llama-server) HTTP/SSE API.
+    Designed for Android / Termux / NetHunter / CPU / GPU with zero heavy dependencies.
+    """
+
+    def __init__(self, config: LLMConfig, tool_executor: ToolExecutor | None = None) -> None:
+        import httpx
+
+        self._client = httpx.Client(timeout=config.timeout_s)
+        self._base_url = config.llama_cpp_base_url.rstrip("/")
+        self._config = config
+        self._tool_executor = tool_executor
+        self._max_tool_iterations = 4
+
+    def is_healthy(self) -> bool:
+        """Check if llama-server is alive and ready."""
+        try:
+            res = self._client.get(f"{self._base_url}/health", timeout=3.0)
+            return res.status_code == 200
+        except Exception:
+            return False
+
+    def _open_stream(
+        self, messages: list[dict], tools: list[dict], system_prompt: str
+    ):
+        """POST /v1/chat/completions to llama-server with SSE streaming."""
+        body: dict = {
+            "model": self._config.llama_cpp_model or "default",
+            "messages": [{"role": "system", "content": system_prompt}, *messages],
+            "stream": True,
+            "temperature": self._config.temperature,
+            "max_tokens": self._config.max_tokens,
+        }
+        if tools:
+            body["tools"] = tools
+
+        url = f"{self._base_url}/v1/chat/completions"
+        try:
+            response = self._client.post(url, json=body)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Cannot connect to llama.cpp server at {self._base_url} ({exc}). "
+                f"Make sure llama-server is running (e.g. bash scripts/run_llama_server.sh)."
+            ) from exc
+
+        if response.status_code == 200:
+            return response
+        if response.status_code == 503:
+            raise RuntimeError(
+                f"llama.cpp server at {self._base_url} is still loading the model (HTTP 503)."
+            )
+        detail = "unknown error"
+        try:
+            detail = response.json().get("error", str(response.text))
+        except Exception:
+            detail = response.text[:200]
+        raise RuntimeError(
+            f"llama.cpp request failed (HTTP {response.status_code}): {detail}"
+        )
+
+    def stream_response(
+        self,
+        conversation: Conversation,
+        tools: list[dict],
+        system_prompt: str,
+    ) -> Iterator[str]:
+        t0 = time.perf_counter()
+        ttft: float | None = None
+
+        for _ in range(self._max_tool_iterations + 1):
+            messages = _serialize_openai(conversation.messages())
+            response = self._open_stream(messages, tools, system_prompt)
+
+            text_deltas: list[str] = []
+            tool_calls: dict[int, dict] = {}
+            finish_reason: str | None = None
+
+            for line in response.iter_lines():
+                if not line or not line.startswith("data:"):
+                    continue
+                raw_data = line[len("data:"):].strip()
+                if raw_data == "[DONE]":
+                    break
+                try:
+                    payload = json.loads(raw_data)
+                except json.JSONDecodeError:
+                    continue
+                choices = payload.get("choices") or []
+                if not choices:
+                    continue
+                choice = choices[0]
+                if choice.get("finish_reason"):
+                    finish_reason = choice["finish_reason"]
+                delta = choice.get("delta") or {}
+                if delta.get("content"):
+                    if ttft is None:
+                        ttft = time.perf_counter() - t0
+                    text_deltas.append(delta["content"])
+                    yield delta["content"]
+                for call in delta.get("tool_calls") or []:
+                    idx = call.get("index", 0)
+                    entry = tool_calls.setdefault(idx, {"id": None, "name": "", "args": ""})
+                    fn = call.get("function") or {}
+                    if call.get("id"):
+                        entry["id"] = call["id"]
+                    if fn.get("name"):
+                        entry["name"] = fn["name"]
+                    if fn.get("arguments"):
+                        entry["args"] += fn["arguments"]
+
+            calls = [
+                {
+                    "id": entry["id"],
+                    "name": entry["name"],
+                    "args": json.loads(entry["args"]) if entry["args"] else {},
+                }
+                for entry in tool_calls.values()
+            ]
+            if calls:
+                parts: list[dict] = []
+                if text_deltas:
+                    parts.append({"text": "".join(text_deltas)})
+                parts += [
+                    {
+                        "functionCall": {
+                            "id": c["id"],
+                            "name": c["name"],
+                            "args": c["args"],
+                        }
+                    }
+                    for c in calls
+                ]
+                _run_tool_round(conversation, parts, calls, self._tool_executor, t0)
+                continue
+
+            text = "".join(text_deltas)
+            if text.strip():
+                conversation.add_assistant(text)
+            total = time.perf_counter() - t0
+            model_name = self._config.llama_cpp_model or "llama.cpp"
+            log.info(
+                "llama.cpp llm: ttft=%.3fs total=%.3fs chars=%d model=%s stop=%s",
+                ttft or total, total, len(text), model_name, finish_reason,
+            )
+            try:
+                import evbridge
+                bus = evbridge.get_bus()
+                if bus is not None:
+                    bus.emit_llm_metrics(
+                        model=model_name,
+                        ttft_ms=(ttft or total) * 1000.0,
+                        total_ms=total * 1000.0,
+                        char_count=len(text),
+                    )
+            except Exception:
+                pass
+            return
+
+        log.warning(
+            "llama.cpp llm: tool loop exceeded %d iterations; stopping", self._max_tool_iterations
+        )
+
+
 def build_llm(config: LLMConfig, tool_executor: ToolExecutor | None = None) -> LLMEngine:
-    """Factory: pick the engine from EV_LLM_PROVIDER (gemini | rest | ollama).
+    """Factory: pick the engine from EV_LLM_PROVIDER (gemini | rest | ollama | llama_cpp).
     Automatically falls back to pure-Python GeminiRestLLM if google-genai or pydantic
     encounters import/dlopen issues on Android Termux."""
+    if config.provider in ("llama_cpp", "llamacpp", "llama.cpp", "llama"):
+        return LlamaCppLLM(config, tool_executor=tool_executor)
     if config.provider == "ollama":
         return OllamaGemmaLLM(config, tool_executor=tool_executor)
     if config.provider == "rest":
