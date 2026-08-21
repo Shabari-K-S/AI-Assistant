@@ -306,7 +306,7 @@ class ProactiveScheduler:
 
         if vulnerabilities_found:
             alert_msg = f"🚨 **Security Watchdog Alert ({len(vulnerabilities_found)} CVEs detected):**\n" + "\n".join(vulnerabilities_found)
-            self._notify_alert("S.A.R.A. Security Watchdog Alert", f"{len(vulnerabilities_found)} vulnerability advisories found in watched packages.", priority="high")
+            self._notify_alert("Athena Security Watchdog Alert", f"{len(vulnerabilities_found)} vulnerability advisories found in watched packages.", priority="high")
             if self.bus is not None:
                 self.bus.log("WARN", alert_msg)
             return alert_msg
@@ -334,8 +334,8 @@ class ProactiveScheduler:
 
     def _dispatch_voice_alert(self, payload: Dict[str, Any]) -> str:
         """Deliver a spoken audio prompt or push notification."""
-        text = payload.get("message", "Scheduled reminder from S.A.R.A.")
-        title = payload.get("title", "S.A.R.A. Reminder")
+        text = payload.get("message", "Scheduled reminder from Athena.")
+        title = payload.get("title", "Athena Reminder")
         self._notify_alert(title, text, priority="high")
         return f"Voice reminder dispatched: '{text}'"
 

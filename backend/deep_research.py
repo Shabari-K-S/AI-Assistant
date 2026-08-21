@@ -227,7 +227,7 @@ class DeepResearchEngine:
             for idx, s in enumerate(sources, 1)
         )
 
-        synthesis_prompt = f"""You are S.A.R.A.'s Autonomous Deep Research Intelligence Engine.
+        synthesis_prompt = f"""You are ATHENA's Autonomous Deep Research Intelligence Engine.
 Conduct an in-depth, rigorous, comprehensive synthesis on the topic: "{topic}".
 Your goal is to produce a publication-grade research paper suitable for a University / College Project submission.
 
@@ -246,7 +246,7 @@ Document Structure to Follow:
 # Research Project Report: {topic}
 
 **Autonomous Deep Research & Technical Evaluation**
-**Conducted by:** S.A.R.A. Autonomous Intelligence Engine
+**Conducted by:** ATHENA Autonomous Intelligence Engine
 **Date:** {time.strftime('%Y-%m-%d')} | **Verified Sources Ingested:** {len(sources)}
 **Keywords:** (5-7 indexed technical keywords separated by commas)
 
@@ -496,7 +496,7 @@ Document Structure to Follow:
         paper = f"""# Research Project Report: {topic}
 
 **Autonomous Deep Research & Technical Evaluation**  
-**Conducted by:** S.A.R.A. Autonomous Intelligence Engine  
+**Conducted by:** ATHENA Autonomous Intelligence Engine  
 **Date:** {date_str} | **Verified Sources Ingested:** {len(sources)}  
 **Keywords:** {keywords}  
 

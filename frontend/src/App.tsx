@@ -10,12 +10,13 @@ import { CommandDeck } from './components/CommandDeck'
 import { TelemetryGauges } from './components/TelemetryGauges'
 import { McpConfigPanel } from './components/McpConfigPanel'
 import { NotesVaultPanel } from './components/NotesVaultPanel'
+import { CyberReconPanel } from './components/CyberReconPanel'
 import { ActiveTimersBar } from './components/ActiveTimersBar'
 import { BriefingModal } from './components/BriefingModal'
 import { useAssistant } from './hooks/useAssistant'
 import { useTimers } from './hooks/useTimers'
 import { soundFx } from './lib/soundFx'
-import { Sliders, MessageSquare, Eye, EyeOff, Radio, Cpu, Sparkles, BookOpen, Sun } from 'lucide-react'
+import { Sliders, MessageSquare, Eye, EyeOff, Radio, Cpu, Sparkles, BookOpen, Sun, Shield } from 'lucide-react'
 
 const PHASE_TAG: Record<string, string> = {
   standby: 'AWAITING WAKE WORD OR COMMAND',
@@ -24,8 +25,8 @@ const PHASE_TAG: Record<string, string> = {
   speaking: 'STREAMING AUDIO TRANSMISSION',
 }
 
-type MobileTab = 'notes' | 'core' | 'mcp' | 'logs'
-type CenterView = 'core' | 'notes' | 'mcp'
+type MobileTab = 'notes' | 'core' | 'cyber' | 'mcp' | 'logs'
+type CenterView = 'core' | 'notes' | 'cyber' | 'mcp'
 
 export default function App() {
   const {
@@ -232,6 +233,11 @@ export default function App() {
               <NotesVaultPanel onSendPrompt={handlePromptFromSubviews} />
             </div>
           </main>
+        ) : (!isMobile && centerView === 'cyber') || (isMobile && mobileTab === 'cyber') ? (
+          /* Center View: Cyber Recon & DAST Matrix */
+          <main className="flex min-w-0 flex-1 flex-col overflow-y-auto p-4 md:p-6 pb-20 md:pb-6 space-y-4">
+            <CyberReconPanel onSend={handlePromptFromSubviews} disabled={!connected} />
+          </main>
         ) : (!isMobile && centerView === 'mcp') || (isMobile && mobileTab === 'mcp') ? (
           /* Center View 2: MCP Configuration Panel */
           <main className="flex min-w-0 flex-1 flex-col overflow-hidden pb-16 md:pb-0">
@@ -358,7 +364,11 @@ export default function App() {
                       soundFx.click()
                       setCenterView('notes')
                     }}
-                    className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded font-mono text-[9px] sm:text-[10px] tracking-wider text-[#7da4b8] hover:text-[#e8fbff] hover:bg-[rgba(65,230,255,0.08)] transition-all"
+                    className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded font-mono text-[9px] sm:text-[10px] tracking-wider transition-all ${
+                      centerView === 'notes'
+                        ? 'bg-[rgba(65,230,255,0.2)] text-[#41e6ff] border border-[rgba(65,230,255,0.4)] shadow-[0_0_8px_rgba(65,230,255,0.3)] font-bold'
+                        : 'text-[#7da4b8] hover:text-[#e8fbff] hover:bg-[rgba(65,230,255,0.08)]'
+                    }`}
                   >
                     <BookOpen size={11} className="text-[#41e6ff]" />
                     <span>NOTES VAULT</span>
@@ -366,9 +376,27 @@ export default function App() {
                   <button
                     onClick={() => {
                       soundFx.click()
+                      setCenterView('cyber')
+                    }}
+                    className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded font-mono text-[9px] sm:text-[10px] tracking-wider transition-all ${
+                      centerView === 'cyber'
+                        ? 'bg-[rgba(65,230,255,0.2)] text-[#41e6ff] border border-[rgba(65,230,255,0.4)] shadow-[0_0_8px_rgba(65,230,255,0.3)] font-bold'
+                        : 'text-[#7da4b8] hover:text-[#e8fbff] hover:bg-[rgba(65,230,255,0.08)]'
+                    }`}
+                  >
+                    <Shield size={11} className="text-cyan-400" />
+                    <span>CYBER RECON</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      soundFx.click()
                       setCenterView('mcp')
                     }}
-                    className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded font-mono text-[9px] sm:text-[10px] tracking-wider text-[#7da4b8] hover:text-[#e8fbff] hover:bg-[rgba(65,230,255,0.08)] transition-all"
+                    className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded font-mono text-[9px] sm:text-[10px] tracking-wider transition-all ${
+                      centerView === 'mcp'
+                        ? 'bg-[rgba(65,230,255,0.2)] text-[#41e6ff] border border-[rgba(65,230,255,0.4)] shadow-[0_0_8px_rgba(65,230,255,0.3)] font-bold'
+                        : 'text-[#7da4b8] hover:text-[#e8fbff] hover:bg-[rgba(65,230,255,0.08)]'
+                    }`}
                   >
                     <Cpu size={11} className="text-[#41e6ff]" />
                     <span>MCP MODULES</span>
@@ -522,7 +550,20 @@ export default function App() {
           <span className="font-mono text-[8.5px] tracking-wider mt-0.5 font-bold">CORE HUD</span>
         </button>
 
-        {/* 3. MCP MODULES */}
+        {/* 3. CYBER RECON */}
+        <button
+          onClick={() => switchMobileTab('cyber')}
+          className={`flex-1 flex flex-col items-center justify-center py-1 transition-all ${
+            mobileTab === 'cyber'
+              ? 'text-cyan-400 drop-shadow-[0_0_10px_rgba(65,230,255,0.8)] scale-105'
+              : 'text-[#7da4b8] opacity-70 hover:opacity-100'
+          }`}
+        >
+          <Shield size={18} className={mobileTab === 'cyber' ? 'text-cyan-400' : 'text-[#7da4b8]'} />
+          <span className="font-mono text-[8.5px] tracking-wider mt-0.5 font-bold">CYBER</span>
+        </button>
+
+        {/* 4. MCP MODULES */}
         <button
           onClick={() => switchMobileTab('mcp')}
           className={`flex-1 flex flex-col items-center justify-center py-1 transition-all ${

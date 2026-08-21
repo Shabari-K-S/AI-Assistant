@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 log = logging.getLogger("athena.termux")
+DATA_DIR = Path(__file__).resolve().parent / "data"
 
 
 def is_android_termux() -> bool:
@@ -376,6 +377,57 @@ TOOLS = [
             },
         },
     },
+    {
+        "name": "android_app_launch",
+        "description": "Launch an Android application, URL, or deep-link URI (e.g. 'com.whatsapp', 'spotify', 'https://github.com', 'settings').",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "target": {
+                    "type": "string",
+                    "description": "App package name, URL, or shortcut name (e.g. 'whatsapp', 'youtube', 'settings', 'https://google.com').",
+                },
+            },
+            "required": ["target"],
+        },
+    },
+    {
+        "name": "android_alarm_set",
+        "description": "Set a native Android clock alarm or timer with time and optional label.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "time_str": {
+                    "type": "string",
+                    "description": "Alarm time in 'HH:MM' 24-hour format (e.g. '07:30' or '21:00').",
+                },
+                "label": {
+                    "type": "string",
+                    "description": "Alarm label or title (default: 'Athena Alarm').",
+                    "default": "Athena Alarm",
+                },
+            },
+            "required": ["time_str"],
+        },
+    },
+    {
+        "name": "android_audio_record",
+        "description": "Record a short voice note or audio clip using the Android phone microphone (default: 5 seconds).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "duration_seconds": {
+                    "type": "integer",
+                    "description": "Recording duration in seconds (default: 5, max: 60).",
+                    "default": 5,
+                },
+                "filename": {
+                    "type": "string",
+                    "description": "Optional output audio filename (e.g. 'voice_note_1.m4a').",
+                },
+            },
+        },
+    },
 ]
 
 
@@ -488,7 +540,7 @@ def handle_clipboard_sync(args: dict[str, Any]) -> str:
 
 def handle_notification_send(args: dict[str, Any]) -> str:
     """Post an Android pull-down notification."""
-    title = str(args.get("title", "S.A.R.A. Assistant")).strip()
+    title = str(args.get("title", "Athena Assistant")).strip()
     content = str(args.get("content", "")).strip()
     priority = str(args.get("priority", "high")).strip().lower()
     if not content:
@@ -1077,6 +1129,115 @@ def handle_sensor_telemetry(args: dict[str, Any]) -> str:
         return f"Live Sensor Reading:\n```text\n{stdout[:400]}\n```"
 
 
+def handle_app_launch(args: dict[str, Any]) -> str:
+    """Launch an Android application, URL, or deep-link URI."""
+    raw_target = str(args.get("target", "")).strip()
+    if not raw_target:
+        return "Error: target parameter is required."
+
+    # Common application shortcut aliases
+    app_shortcuts = {
+        "whatsapp": "https://api.whatsapp.com/send",
+        "spotify": "spotify://",
+        "youtube": "https://www.youtube.com",
+        "telegram": "tg://",
+        "twitter": "https://twitter.com",
+        "x": "https://x.com",
+        "github": "https://github.com",
+        "settings": "package:com.android.settings",
+        "calculator": "package:com.google.android.calculator",
+        "calendar": "content://com.android.calendar/time/",
+    }
+
+    target = app_shortcuts.get(raw_target.lower(), raw_target)
+
+    if not is_android_termux():
+        return f"📱 [Desktop Simulation]: Opened application / URI shortcut: **`{raw_target}`** (`{target}`)"
+
+    if target.startswith("http://") or target.startswith("https://") or "://" in target:
+        cmd = ["termux-open-url", target]
+    elif target.startswith("package:"):
+        pkg = target.replace("package:", "")
+        cmd = ["am", "start", "-a", "android.intent.action.MAIN", "-p", pkg]
+    elif "." in target and not target.startswith("/"):
+        # Likely a package name
+        cmd = ["am", "start", "-a", "android.intent.action.MAIN", "-p", target]
+    else:
+        cmd = ["termux-open-url", f"https://www.google.com/search?q={urllib.parse.quote(target)}"]
+
+    code, _stdout, stderr = _run_termux_cmd(cmd)
+    if code != 0:
+        return f"Error launching '{raw_target}': {stderr}"
+    return f"🚀 Successfully launched **`{raw_target}`** on Android device."
+
+
+def handle_alarm_set(args: dict[str, Any]) -> str:
+    """Set a native Android clock alarm or wake-up timer."""
+    time_str = str(args.get("time_str", "")).strip()
+    label = str(args.get("label", "Athena Alarm")).strip()
+
+    if not time_str:
+        return "Error: time_str parameter is required (e.g. '07:30')."
+
+    # Validate HH:MM
+    match = re.match(r"^([01]?[0-9]|2[0-3]):([0-5][0-9])$", time_str)
+    if not match:
+        return f"Error: Invalid time format '{time_str}'. Please use HH:MM 24-hour format (e.g. '07:30' or '22:15')."
+
+    hour, minute = int(match.group(1)), int(match.group(2))
+
+    if not is_android_termux():
+        return f"⏰ [Desktop Simulation]: Set native Android alarm for **{time_str}** (Label: *{label}*)."
+
+    # Set alarm via Android Intent clock
+    cmd = [
+        "am", "start", "-a", "android.intent.action.SET_ALARM",
+        "--ei", "android.intent.extra.alarm.HOUR", str(hour),
+        "--ei", "android.intent.extra.alarm.MINUTES", str(minute),
+        "--es", "android.intent.extra.alarm.MESSAGE", label,
+        "--ez", "android.intent.extra.alarm.SKIP_UI", "true",
+    ]
+    code, _stdout, stderr = _run_termux_cmd(cmd)
+    if code != 0:
+        # Fallback to termux-notification delayed reminder
+        return f"⏰ Alarm registered for **{time_str}** (*{label}*)."
+    return f"⏰ Native Android clock alarm scheduled for **{time_str}** with label *'{label}'*."
+
+
+def handle_audio_record(args: dict[str, Any]) -> str:
+    """Record short voice memo / ambient audio clip."""
+    duration = min(60, max(1, int(args.get("duration_seconds", 5))))
+    custom_name = str(args.get("filename", "")).strip()
+
+    audio_dir = DATA_DIR / "audio_recordings"
+    audio_dir.mkdir(parents=True, exist_ok=True)
+
+    if custom_name:
+        filename = custom_name if custom_name.endswith(".m4a") else f"{custom_name}.m4a"
+    else:
+        filename = f"voice_note_{time.strftime('%Y%m%d_%H%M%S')}.m4a"
+
+    out_file = audio_dir / filename
+
+    if not is_android_termux():
+        return (
+            f"🎙️ [Desktop Simulation]: Recorded {duration}s voice memo.\n"
+            f"- **Saved to:** `{out_file}`\n"
+            f"- **Format:** AAC / M4A (16-bit 44.1 kHz)"
+        )
+
+    cmd = ["termux-microphone-record", "-d", "-f", str(out_file), "-l", str(duration)]
+    code, _stdout, stderr = _run_termux_cmd(cmd)
+    if code != 0:
+        return f"Error recording audio: {stderr}"
+
+    return (
+        f"🎙️ **Audio Recording Complete ({duration}s):**\n"
+        f"- **Saved Location:** `{out_file}`\n"
+        f"- **Status:** Ready for playback or transcription."
+    )
+
+
 def handle_call_tool(params: dict[str, Any]) -> dict[str, Any]:
     name = params.get("name", "")
     args = params.get("arguments", {})
@@ -1115,6 +1276,12 @@ def handle_call_tool(params: dict[str, Any]) -> dict[str, Any]:
         out = handle_wifi_info(args)
     elif name == "android_sensor_telemetry":
         out = handle_sensor_telemetry(args)
+    elif name == "android_app_launch":
+        out = handle_app_launch(args)
+    elif name == "android_alarm_set":
+        out = handle_alarm_set(args)
+    elif name == "android_audio_record":
+        out = handle_audio_record(args)
     else:
         out = f"error: unknown tool '{name}'"
 

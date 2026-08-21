@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Autonomous Git Copilot & Robot Framework QA Auto-Fix MCP Server for S.A.R.A.
+"""Autonomous Git Copilot & Robot Framework QA Auto-Fix MCP Server for Athena.
 
 Implements JSON-RPC 2.0 stdio Model Context Protocol (2024-11-05 spec) providing:
 - git_status: Inspect branch, staged/unstaged changes, and untracked files.

@@ -50,18 +50,18 @@ def _init_vault() -> None:
             welcome_path,
             {
                 "id": "note-1",
-                "title": "Welcome to S.A.R.A. Markdown Vault",
+                "title": "Welcome to Athena Markdown Vault",
                 "category": "general",
                 "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
                 "tags": ["welcome", "getting-started"],
             },
-            "# Welcome to S.A.R.A. Notes & Research Vault\n\nYou can ask S.A.R.A. to save thoughts, markdown notes, tasks, and autonomous deep research briefs.\n\nAll notes are stored as organized `.md` files.",
+            "# Welcome to Athena Notes & Research Vault\n\nYou can ask Athena to save thoughts, markdown notes, tasks, and autonomous deep research briefs.\n\nAll notes are stored as organized `.md` files.",
         )
 
     if not TODOS_FILE.exists():
         TODOS_FILE.parent.mkdir(parents=True, exist_ok=True)
         TODOS_FILE.write_text(
-            "# Active To-Do Checklist\n\n- [ ] #1 Explore S.A.R.A. voice and MCP modules (priority: normal)\n",
+            "# Active To-Do Checklist\n\n- [ ] #1 Explore Athena voice and MCP modules (priority: normal)\n",
             encoding="utf-8",
         )
 
@@ -641,10 +641,10 @@ def handle_voice_brain_dump(args: dict[str, Any]) -> str:
         extracted_notes.append({
             "title": note_title,
             "category": default_cat,
-            "content": f"# {note_title}\n\n*Captured via S.A.R.A. Voice Brain Dump on {time.strftime('%Y-%m-%d %H:%M')}*\n\n## Key Thoughts & Insights\n{note_body}",
+            "content": f"# {note_title}\n\n*Captured via Athena Voice Brain Dump on {time.strftime('%Y-%m-%d %H:%M')}*\n\n## Key Thoughts & Insights\n{note_body}",
         })
 
-    results_log = ["🧠 **S.A.R.A. Second Brain Dump Processed Successfully:**\n"]
+    results_log = ["🧠 **Athena Second Brain Dump Processed Successfully:**\n"]
 
     # 1. Store extracted tasks into active_todos.md
     if extracted_tasks:

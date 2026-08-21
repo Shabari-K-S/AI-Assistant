@@ -882,7 +882,7 @@ class ToolRegistry:
             Tool(
                 name="schedule_task",
                 description=(
-                    "Schedule a proactive background task or recurring cron job in S.A.R.A. "
+                    "Schedule a proactive background task or recurring cron job in Athena "
                     "(e.g. nightly security scan at 2 AM, periodic health check, or recurring reminder)."
                 ),
                 parameters={
@@ -939,6 +939,81 @@ class ToolRegistry:
                 description="List all currently active and configured background scheduled tasks and watchdogs.",
                 parameters={"type": "object", "properties": {}},
                 handler=_handle_list_scheduled_tasks,
+            )
+        )
+
+        # 15. Multi-Agent Task Dispatcher
+        def _handle_dispatch_agent(args: dict) -> str:
+            from multi_agent_dispatcher import get_agent_dispatcher
+            name = str(args.get("name", "Autonomous Worker Task")).strip()
+            task_type = str(args.get("task_type", "research")).strip()
+            target = str(args.get("target_or_prompt", "")).strip()
+            dispatcher = get_agent_dispatcher(bus=getattr(self, "_bus", None))
+            return dispatcher.dispatch_task(name=name, task_type=task_type, target_or_prompt=target)
+
+        self._register(
+            Tool(
+                name="dispatch_subagent_task",
+                description="Spawn an autonomous background worker agent to perform parallel research, security audits, or long-running tasks without blocking voice interaction.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Descriptive task name (e.g. 'Audit Competitor Security Posture' or 'Deep Synthesis on Solid-State Batteries').",
+                        },
+                        "task_type": {
+                            "type": "string",
+                            "enum": ["research", "security_scan", "qa_regression", "custom"],
+                            "description": "Category of work to execute in background.",
+                            "default": "research",
+                        },
+                        "target_or_prompt": {
+                            "type": "string",
+                            "description": "Target URL, domain, or research prompt for the subagent.",
+                        },
+                    },
+                    "required": ["name", "target_or_prompt"],
+                },
+                handler=_handle_dispatch_agent,
+            )
+        )
+
+        def _handle_query_agents(_args: dict) -> str:
+            from multi_agent_dispatcher import get_agent_dispatcher
+            dispatcher = get_agent_dispatcher(bus=getattr(self, "_bus", None))
+            return dispatcher.query_tasks()
+
+        self._register(
+            Tool(
+                name="query_agent_tasks",
+                description="Inspect real-time progress, status, and intermediate outputs of all active and recent background subagent jobs.",
+                parameters={"type": "object", "properties": {}},
+                handler=_handle_query_agents,
+            )
+        )
+
+        def _handle_cancel_agent(args: dict) -> str:
+            from multi_agent_dispatcher import get_agent_dispatcher
+            task_id = str(args.get("task_id", "")).strip()
+            dispatcher = get_agent_dispatcher(bus=getattr(self, "_bus", None))
+            return dispatcher.cancel_task(task_id)
+
+        self._register(
+            Tool(
+                name="cancel_agent_task",
+                description="Terminate a running background subagent job by task ID.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "task_id": {
+                            "type": "string",
+                            "description": "Task ID of the subagent job to cancel (e.g. 'agent-49210').",
+                        },
+                    },
+                    "required": ["task_id"],
+                },
+                handler=_handle_cancel_agent,
             )
         )
 
@@ -1058,6 +1133,13 @@ class ToolRegistry:
         "opencode_write_code": "Writing code to workspace.",
         "opencode_search_code": "Searching workspace codebase.",
         "opencode_git_summary": "Checking Git repository status.",
+        "android_app_launch": "Opening application.",
+        "android_alarm_set": "Setting clock alarm.",
+        "android_audio_record": "Recording voice memo.",
+        "dispatch_subagent_task": "Dispatching background agent.",
+        "query_agent_tasks": "Checking background agents.",
+        "cancel_agent_task": "Cancelling agent task.",
+        "security_vulnerability_scan": "Running web vulnerability and DAST security scan.",
         "timer_create": "Setting timer.",
         "timer_list": "Checking active timers.",
     }

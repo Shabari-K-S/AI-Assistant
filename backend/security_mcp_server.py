@@ -30,7 +30,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 (S.A.R.A. Security Auditor)"
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 (Athena Security Auditor)"
 
 # Allowed target network scopes (defaults to localhost & private subnets)
 DEFAULT_ALLOWLIST = "localhost,127.0.0.1,::1,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12"
@@ -234,6 +234,20 @@ TOOLS = [
                 },
             },
             "required": ["host"],
+        },
+    },
+    {
+        "name": "security_vulnerability_scan",
+        "description": "Perform comprehensive DAST web vulnerability audit (sensitive file exposure, SQL injection error reflection, reflected XSS, open redirects). (Risk: Low / Safe Auto-Run on allowlisted targets)",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "target_url": {
+                    "type": "string",
+                    "description": "Target base URL or endpoint to scan (e.g. 'http://localhost:2026' or 'https://example.com').",
+                },
+            },
+            "required": ["target_url"],
         },
     },
 ]
@@ -1084,6 +1098,9 @@ def handle_call_tool(params: dict[str, Any]) -> dict[str, Any]:
         out = handle_whois_lookup(args)
     elif name == "security_network_diagnostic":
         out = handle_network_diagnostic(args)
+    elif name == "security_vulnerability_scan":
+        from web_security_scanner import run_full_vulnerability_scan
+        out = run_full_vulnerability_scan(str(args.get("target_url", "")))
     else:
         out = f"error: unknown tool '{name}'"
 

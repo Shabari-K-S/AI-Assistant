@@ -354,7 +354,7 @@ def handle_analyze_failures(args: dict[str, Any]) -> str:
     result.visit(DeepFailureAnalyzer())
 
     report = [
-        f"🔬 **S.A.R.A. Robot Framework Failure Diagnosis Report**",
+        f"🔬 **Athena Robot Framework Failure Diagnosis Report**",
         f"Target Report: `{xml_path}`\n",
     ]
 
