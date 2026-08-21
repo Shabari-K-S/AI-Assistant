@@ -594,12 +594,19 @@ class GeminiRestLLM(LLMEngine):
                     parts.append({"text": str(p["text"])})
                 elif "functionCall" in p:
                     fc = p["functionCall"]
-                    parts.append({
+                    entry = {
                         "functionCall": {
                             "name": fc.get("name"),
                             "args": fc.get("args", {})
                         }
-                    })
+                    }
+                    if "thoughtSignature" in p:
+                        entry["thoughtSignature"] = p["thoughtSignature"]
+                    elif "thought_signature" in p:
+                        entry["thoughtSignature"] = p["thought_signature"]
+                    if "thought" in p:
+                        entry["thought"] = p["thought"]
+                    parts.append(entry)
                 elif "functionResponse" in p:
                     fr = p["functionResponse"]
                     parts.append({
@@ -680,8 +687,8 @@ class GeminiRestLLM(LLMEngine):
         ]
         unique_models: list[str] = []
         for m in cascade_models:
-            if m not in unique_models:
-                unique_models.append(m)
+            if m and isinstance(m, str) and m.strip() and m.strip() not in unique_models:
+                unique_models.append(m.strip())
 
         for _ in range(self._max_tool_iterations + 1):
             contents = conversation.messages()
@@ -707,9 +714,9 @@ class GeminiRestLLM(LLMEngine):
                             cand = candidates[0]
                             content = cand.get("content", {})
                             for part in content.get("parts", []):
-                                if part.get("thought") or part.get("executableCode") or part.get("codeExecutionResult"):
-                                    continue
                                 if "text" in part and part["text"]:
+                                    if part.get("thought"):
+                                        continue
                                     text_val = part["text"]
                                     if ttft is None:
                                         ttft = time.perf_counter() - t0
@@ -728,6 +735,12 @@ class GeminiRestLLM(LLMEngine):
                                                 "args": fc.get("args") or {},
                                             }
                                         }
+                                        if "thoughtSignature" in part:
+                                            entry["thoughtSignature"] = part["thoughtSignature"]
+                                        elif "thought_signature" in part:
+                                            entry["thoughtSignature"] = part["thought_signature"]
+                                        if "thought" in part:
+                                            entry["thought"] = part["thought"]
                                         seen_calls[key] = entry
                                         parts.append(entry)
                         last_used_model = model_name

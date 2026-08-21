@@ -196,6 +196,8 @@ def clean_for_speech(text: str) -> str:
     if not text:
         return ""
 
+    t = text
+
     # 1. Remove reasoning / thought tags and internal tool calling artifacts
     t = re.sub(r"<think>.*?</think>", " ", t, flags=re.S | re.IGNORECASE)
     t = re.sub(r"<thought>.*?</thought>", " ", t, flags=re.S | re.IGNORECASE)
