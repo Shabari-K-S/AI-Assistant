@@ -855,6 +855,93 @@ class ToolRegistry:
             )
         )
 
+        # 14. Proactive Task Scheduler & Security Watchdog
+        def _handle_schedule_task(args: dict) -> str:
+            name = str(args.get("name", "Scheduled Task")).strip()
+            task_type = str(args.get("schedule_type", "interval")).strip().lower()
+            schedule_value = str(args.get("schedule_value", "3600")).strip()
+            action_type = str(args.get("action_type", "voice_alert")).strip().lower()
+            payload = args.get("payload") or {}
+
+            import uuid
+            from scheduler_engine import get_scheduler
+            scheduler = get_scheduler()
+            task_id = f"task_{uuid.uuid4().hex[:8]}"
+            task = scheduler.add_task(
+                task_id=task_id,
+                name=name,
+                schedule_type=task_type,
+                schedule_value=schedule_value,
+                action_type=action_type,
+                payload=payload,
+                enabled=True,
+            )
+            return f"⏰ Task '{name}' [{task.task_id}] scheduled ({task_type}: {schedule_value}, action: {action_type}). Next run: {task.next_run}"
+
+        self._register(
+            Tool(
+                name="schedule_task",
+                description=(
+                    "Schedule a proactive background task or recurring cron job in S.A.R.A. "
+                    "(e.g. nightly security scan at 2 AM, periodic health check, or recurring reminder)."
+                ),
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Descriptive name for the scheduled task",
+                        },
+                        "schedule_type": {
+                            "type": "string",
+                            "enum": ["cron", "interval", "countdown"],
+                            "description": "'cron' for cron expression (e.g. '0 2 * * *'), 'interval' for recurring seconds (e.g. '3600'), 'countdown' for one-shot timer seconds.",
+                        },
+                        "schedule_value": {
+                            "type": "string",
+                            "description": "Cron expression ('0 2 * * *') or interval in seconds ('7200').",
+                        },
+                        "action_type": {
+                            "type": "string",
+                            "enum": ["security_scan", "robot_suite", "voice_alert", "shell_command", "custom"],
+                            "description": "Action to perform when triggered.",
+                        },
+                        "payload": {
+                            "type": "object",
+                            "description": "Arguments for the action (e.g. {'message': 'Stand up and stretch!'} or {'suite_path': 'tests/login.robot'}).",
+                        },
+                    },
+                    "required": ["name", "schedule_type", "schedule_value", "action_type"],
+                },
+                handler=_handle_schedule_task,
+            )
+        )
+
+        def _handle_list_scheduled_tasks(_args: dict) -> str:
+            from scheduler_engine import get_scheduler
+            scheduler = get_scheduler()
+            tasks = scheduler.list_tasks()
+            if not tasks:
+                return "No scheduled tasks currently active."
+            out = [f"⏰ **Active Scheduled Tasks ({len(tasks)} total):**\n"]
+            for idx, t in enumerate(tasks, 1):
+                status_icon = "🟢" if t.get("enabled") else "⚪"
+                out.append(
+                    f"{idx}. {status_icon} **{t.get('name')}** (`{t.get('task_id')}`)\n"
+                    f"   - Type: `{t.get('schedule_type')}` (`{t.get('schedule_value')}`) | Action: `{t.get('action_type')}`\n"
+                    f"   - Next Run: `{t.get('next_run') or 'None'}` | Last Status: `{t.get('last_status') or 'Never Run'}`\n"
+                )
+            return "\n".join(out)
+
+        self._register(
+            Tool(
+                name="list_scheduled_tasks",
+                description="List all currently active and configured background scheduled tasks and watchdogs.",
+                parameters={"type": "object", "properties": {}},
+                handler=_handle_list_scheduled_tasks,
+            )
+        )
+
     def register(self, tool: Tool) -> None:
         """Register a dynamic tool (e.g. from an MCP server or plugin)."""
         self._tools[tool.name] = tool
@@ -925,6 +1012,16 @@ class ToolRegistry:
         "android_notification_send": "Sending push notification.",
         "android_notification_list": "Checking active notifications.",
         "android_system_diagnostics": "Running system diagnostics.",
+        "android_sms_list": "Checking your text messages.",
+        "android_sms_send": "Sending SMS.",
+        "android_contact_search": "Searching your contacts.",
+        "android_telephony_info": "Checking cellular network status.",
+        "robot_list_suites": "Scanning Robot Framework test suites.",
+        "robot_run_suite": "Running Robot Framework tests.",
+        "robot_parse_results": "Parsing test execution report.",
+        "robot_analyze_failures": "Diagnosing test failure tracebacks.",
+        "schedule_task": "Scheduling background task.",
+        "list_scheduled_tasks": "Checking scheduled tasks.",
         "scrape_web_page": "Reading that web page for you.",
         "extract_page_links": "Extracting hyperlinks from the page.",
         "duckduckgo_web_search": "Searching the web.",

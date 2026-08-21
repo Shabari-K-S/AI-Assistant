@@ -257,6 +257,81 @@ TOOLS = [
             "required": ["host"],
         },
     },
+    {
+        "name": "android_sms_list",
+        "description": "Read recent SMS messages (inbox, sent, or draft) with sender/content filtering via Termux:API.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of SMS messages to retrieve (default: 10).",
+                    "default": 10,
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": "Offset from newest message (default: 0).",
+                    "default": 0,
+                },
+                "type": {
+                    "type": "string",
+                    "enum": ["inbox", "sent", "draft", "all"],
+                    "description": "SMS folder to query (default: 'inbox').",
+                    "default": "inbox",
+                },
+                "filter_sender": {
+                    "type": "string",
+                    "description": "Optional phone number or sender name filter.",
+                },
+            },
+        },
+    },
+    {
+        "name": "android_sms_send",
+        "description": "Send an SMS text message to a phone number using the Android device's cellular SIM.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "phone_number": {
+                    "type": "string",
+                    "description": "Recipient phone number with country code (e.g. '+919876543210' or '9876543210').",
+                },
+                "message": {
+                    "type": "string",
+                    "description": "Text message body to send.",
+                },
+                "sim_slot": {
+                    "type": "integer",
+                    "description": "SIM slot index for dual-SIM devices (0 or 1).",
+                },
+            },
+            "required": ["phone_number", "message"],
+        },
+    },
+    {
+        "name": "android_contact_search",
+        "description": "Search the Android device's contact address book by name or phone number.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Contact name, partial name, or phone number to look up.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of matching contacts to return (default: 10).",
+                    "default": 10,
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "android_telephony_info",
+        "description": "Fetch cellular network carrier, SIM state, network type (5G/LTE/4G), signal strength, and telephony status.",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
 ]
 
 
@@ -658,8 +733,172 @@ def handle_server_check(args: dict[str, Any]) -> str:
         return f"🔴 **Pocket DevOps:** `{host}:{port}` is **OFFLINE or UNREACHABLE** (Error code: {res}, Latency: `{latency:.1f}ms`)."
     except Exception as exc:
         return f"🔴 **Pocket DevOps:** Connection to `{host}:{port}` failed: {exc}"
-    finally:
-        s.close()
+def handle_sms_list(args: dict[str, Any]) -> str:
+    """Read SMS messages from Android device."""
+    limit = max(1, min(50, int(args.get("limit", 10))))
+    offset = max(0, int(args.get("offset", 0)))
+    box_type = str(args.get("type", "inbox")).strip().lower()
+    sender_filter = str(args.get("filter_sender", "")).strip()
+
+    if not is_android_termux():
+        return (
+            f"📱 [Desktop Simulation]: Android SMS Inbox ({box_type.upper()}):\n"
+            f"1. **+919876543210** (Alex, 10 mins ago): 'Hey, let's sync up on the project code later.'\n"
+            f"2. **HDFCBK** (Bank Alert, 1 hour ago): 'Your OTP is 482910 for transaction authentication.'\n"
+            f"3. **GITHUB** (Security, 3 hours ago): 'New sign-in detected from Linux Termux environment.'\n"
+            f"(On Android Termux, this queries live SMS messages via termux-sms-list)."
+        )
+
+    cmd = ["termux-sms-list", "-l", str(limit), "-o", str(offset)]
+    if box_type in ("inbox", "sent", "draft"):
+        cmd.extend(["-t", box_type])
+    if sender_filter:
+        cmd.extend(["-f", sender_filter])
+
+    code, stdout, stderr = _run_termux_cmd(cmd, timeout=8.0)
+    if code != 0 or not stdout:
+        return (
+            f"Error reading SMS messages: {stderr or 'No output'}\n"
+            f"💡 **Permission Setup:** Ensure **Termux:API** has **SMS** permission granted in Android Settings -> Apps -> Termux:API -> Permissions."
+        )
+
+    try:
+        messages = json.loads(stdout)
+        if not messages:
+            return f"📱 No SMS messages found in '{box_type}' folder."
+
+        out = [f"📱 **Android SMS Messages ({len(messages)} retrieved, {box_type.upper()}):**\n"]
+        for idx, msg in enumerate(messages[:limit], 1):
+            sender = msg.get("number") or msg.get("sender") or "Unknown"
+            body = msg.get("body", "").strip()
+            received = msg.get("received", "")
+            read_flag = " (Unread)" if not msg.get("read", True) else ""
+            out.append(f"{idx}. **From:** `{sender}`{read_flag} | *{received}*\n   > {body}\n")
+
+        return "\n".join(out)
+    except Exception as exc:
+        return f"Error parsing SMS JSON: {exc}\nRaw: {stdout[:300]}"
+
+
+def handle_sms_send(args: dict[str, Any]) -> str:
+    """Send an SMS message to a phone number via cellular carrier."""
+    phone_number = str(args.get("phone_number", "")).strip()
+    message = str(args.get("message", "")).strip()
+    sim_slot = args.get("sim_slot")
+
+    if not phone_number or not message:
+        return "Error: Both 'phone_number' and 'message' parameters are required."
+
+    if not is_android_termux():
+        slot_info = f" via SIM {sim_slot}" if sim_slot is not None else ""
+        return (
+            f"📱 [Desktop Simulation]: Sent SMS to `{phone_number}`{slot_info}:\n"
+            f"Message: \"{message}\""
+        )
+
+    cmd = ["termux-sms-send", "-n", phone_number]
+    if sim_slot is not None:
+        cmd.extend(["-s", str(int(sim_slot))])
+    cmd.append(message)
+
+    code, _stdout, stderr = _run_termux_cmd(cmd, timeout=10.0)
+    if code != 0:
+        return (
+            f"Error sending SMS: {stderr}\n"
+            f"💡 Ensure Termux:API has SMS permission and cellular SIM is active."
+        )
+    return f"✉️ Successfully dispatched SMS to `{phone_number}`."
+
+
+def handle_contact_search(args: dict[str, Any]) -> str:
+    """Search Android contacts address book."""
+    query = str(args.get("query", "")).strip().lower()
+    limit = max(1, min(50, int(args.get("limit", 10))))
+
+    if not query:
+        return "Error: 'query' parameter is required to search contacts."
+
+    if not is_android_termux():
+        return (
+            f"📱 [Desktop Simulation]: Contact search results for '{query}':\n"
+            f"1. **Alex Rivera** — `+91 98765 43210`\n"
+            f"2. **Alexander Graham** — `+1 (555) 234-5678`\n"
+            f"(On Android Termux, queries live contacts via termux-contact-list)."
+        )
+
+    code, stdout, stderr = _run_termux_cmd(["termux-contact-list"], timeout=8.0)
+    if code != 0 or not stdout:
+        return (
+            f"Error retrieving contacts: {stderr or 'No output'}\n"
+            f"💡 Ensure **Termux:API** has **Contacts** permission in Android Settings -> Apps -> Termux:API -> Permissions."
+        )
+
+    try:
+        contacts = json.loads(stdout)
+        matches = []
+        for c in contacts:
+            name = str(c.get("name", "")).strip()
+            number = str(c.get("number", "")).strip()
+            if query in name.lower() or query in number.replace(" ", "").replace("-", ""):
+                matches.append((name, number))
+
+        if not matches:
+            return f"🔍 No contacts matching '{query}' found."
+
+        out = [f"📇 **Contacts matching '{query}' ({len(matches)} found, showing top {min(limit, len(matches))}):**\n"]
+        for idx, (name, number) in enumerate(matches[:limit], 1):
+            out.append(f"{idx}. **{name or 'Unnamed'}** — `{number or 'No number'}`")
+        return "\n".join(out)
+    except Exception as exc:
+        return f"Error parsing contacts JSON: {exc}\nRaw: {stdout[:300]}"
+
+
+def handle_telephony_info(_args: dict[str, Any]) -> str:
+    """Fetch cellular network carrier and SIM telephony details."""
+    if not is_android_termux():
+        return (
+            "📶 [Desktop Simulation]: Telephony Telemetry:\n"
+            "- **Carrier Operator:** Jio 5G / Airtel\n"
+            "- **Network Type:** 5G SA (NR)\n"
+            "- **SIM State:** Ready (Slot 1 Active)\n"
+            "- **Data State:** Connected\n"
+            "- **Roaming:** Disabled\n"
+            "- **Signal Strength:** -85 dBm (Excellent)"
+        )
+
+    lines = ["📶 **Android Telephony & Cellular Telemetry:**"]
+
+    # 1. Device info
+    c, out, err = _run_termux_cmd(["termux-telephony-deviceinfo"], timeout=5.0)
+    if c == 0 and out:
+        try:
+            data = json.loads(out)
+            lines.append(f"- **Network Operator:** {data.get('network_operator_name', 'Unknown')}")
+            lines.append(f"- **SIM Operator:** {data.get('sim_operator_name', 'Unknown')}")
+            lines.append(f"- **Network Type:** {data.get('network_type', 'Unknown').upper()}")
+            lines.append(f"- **Data State:** {data.get('data_state', 'Unknown')}")
+            lines.append(f"- **Data Activity:** {data.get('data_activity', 'Unknown')}")
+            lines.append(f"- **Phone Type:** {data.get('phone_type', 'Unknown')}")
+            lines.append(f"- **Roaming:** {'Yes' if data.get('is_network_roaming') else 'No'}")
+        except Exception:
+            lines.append(f"- Raw device info: {out[:200]}")
+    else:
+        lines.append(f"- Device info: {err or 'Unavailable'}")
+
+    # 2. Cell info
+    c2, out2, _ = _run_termux_cmd(["termux-telephony-cellinfo"], timeout=5.0)
+    if c2 == 0 and out2:
+        try:
+            cells = json.loads(out2)
+            if cells:
+                primary = cells[0]
+                lines.append(f"- **Primary Cell Type:** {primary.get('type', 'LTE/5G')}")
+                if "registered" in primary:
+                    lines.append(f"- **Cell Registered:** {primary.get('registered')}")
+        except Exception:
+            pass
+
+    return "\n".join(lines)
 
 
 def handle_call_tool(params: dict[str, Any]) -> dict[str, Any]:
@@ -686,6 +925,14 @@ def handle_call_tool(params: dict[str, Any]) -> dict[str, Any]:
         out = handle_system_diagnostics(args)
     elif name == "pocket_devops_server_check":
         out = handle_server_check(args)
+    elif name == "android_sms_list":
+        out = handle_sms_list(args)
+    elif name == "android_sms_send":
+        out = handle_sms_send(args)
+    elif name == "android_contact_search":
+        out = handle_contact_search(args)
+    elif name == "android_telephony_info":
+        out = handle_telephony_info(args)
     else:
         out = f"error: unknown tool '{name}'"
 

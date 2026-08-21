@@ -33,3 +33,7 @@ piper-tts==1.6.1
 # MCP (Model Context Protocol)
 mcp>=2.0.0
 
+# Phase 1: Automation, QA & Background Scheduler
+robotframework>=6.1.0
+croniter>=2.0.0
+

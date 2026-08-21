@@ -59,6 +59,16 @@
       ],
       "env": {},
       "enabled": true
+    },
+    "robot-qa": {
+      "command": ".venv/bin/python3",
+      "args": [
+        "robot_mcp_server.py"
+      ],
+      "env": {
+        "WORKSPACE_ROOT": "/home/shabari/projects/AI assistant"
+      },
+      "enabled": true
     }
   }
 }

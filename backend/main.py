@@ -664,9 +664,21 @@ def _run_assistant(cfg, once: bool, text: str | None) -> int:
     # Configure Smart Timers & Reminders Engine
     from timer_engine import get_timer_engine
     from briefing_engine import get_briefing_engine
+    from scheduler_engine import get_scheduler
 
     timer_engine = get_timer_engine(bus)
     briefing_engine = get_briefing_engine(bus)
+    scheduler_engine = get_scheduler(bus)
+
+    def _on_scheduler_alert(title: str, body: str, priority: str) -> None:
+        alert_text = f"Security Notice: {body}" if "security" in title.lower() else body
+        print(f"\n[🚨 {title}] {alert_text}", flush=True)
+        if bus is not None:
+            bus.log("WARN" if priority == "high" else "INFO", f"🔔 {title}: {body}")
+            bus.event("scheduler_alert", title=title, body=body, priority=priority)
+
+    scheduler_engine.set_notification_callback(_on_scheduler_alert)
+    scheduler_engine.start()
 
     def _on_timer_expiry(timer_data: dict) -> None:
         import sounddevice as sd
@@ -853,6 +865,8 @@ def _run_assistant(cfg, once: bool, text: str | None) -> int:
         print("\nbye", flush=True)
         return 0
     finally:
+        if scheduler_engine is not None:
+            scheduler_engine.stop()
         if mcp_manager is not None:
             mcp_manager.close()
         if mic is not None:
