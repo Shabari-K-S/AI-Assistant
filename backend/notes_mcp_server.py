@@ -433,6 +433,104 @@ def handle_complete_todo(args: dict[str, Any]) -> str:
     return f"Marked Task #{task_id} as completed in active_todos.md."
 
 
+def handle_delete_todo(args: dict[str, Any]) -> str:
+    """Delete a specific to-do item from active_todos.md by task ID or keyword."""
+    _init_vault()
+    if not TODOS_FILE.exists():
+        return "Error: active_todos.md does not exist."
+
+    task_id = args.get("task_id")
+    keyword = str(args.get("keyword", "")).strip().lower()
+
+    raw = TODOS_FILE.read_text(encoding="utf-8")
+    lines = raw.splitlines()
+    remaining = []
+    deleted_count = 0
+
+    for line in lines:
+        if not line.startswith("- ["):
+            remaining.append(line)
+            continue
+        should_delete = False
+        if task_id is not None:
+            try:
+                tid = int(task_id)
+                if re.search(rf"- \[[ xX]\] #{tid}\b", line):
+                    should_delete = True
+            except (ValueError, TypeError):
+                pass
+        if not should_delete and keyword:
+            if keyword in line.lower():
+                should_delete = True
+
+        if should_delete:
+            deleted_count += 1
+        else:
+            remaining.append(line)
+
+    if deleted_count == 0:
+        return f"No matching task found to delete in active_todos.md (searched task_id={task_id}, keyword='{keyword}')."
+
+    TODOS_FILE.write_text("\n".join(remaining).strip() + "\n", encoding="utf-8")
+    return f"Successfully deleted {deleted_count} task(s) from active_todos.md."
+
+
+def handle_clear_completed_todos(args: dict[str, Any] | None = None) -> str:
+    """Remove all completed [x] tasks from active_todos.md to keep checklist clean."""
+    del args
+    _init_vault()
+    if not TODOS_FILE.exists():
+        return "Error: active_todos.md does not exist."
+
+    raw = TODOS_FILE.read_text(encoding="utf-8")
+    lines = raw.splitlines()
+    remaining = []
+    removed_count = 0
+
+    for line in lines:
+        if line.startswith("- [x]") or line.startswith("- [X]"):
+            removed_count += 1
+        else:
+            remaining.append(line)
+
+    if removed_count == 0:
+        return "No completed tasks found to clear in active_todos.md (all tasks are still pending)."
+
+    TODOS_FILE.write_text("\n".join(remaining).strip() + "\n", encoding="utf-8")
+    return f"Cleaned up to-do checklist: removed {removed_count} completed task(s) from active_todos.md."
+
+
+def handle_deduplicate_todos(args: dict[str, Any] | None = None) -> str:
+    """Remove duplicate task items from active_todos.md while preserving unique tasks."""
+    del args
+    _init_vault()
+    if not TODOS_FILE.exists():
+        return "Error: active_todos.md does not exist."
+
+    raw = TODOS_FILE.read_text(encoding="utf-8")
+    lines = raw.splitlines()
+    seen_texts: set[str] = set()
+    cleaned_lines = []
+    dup_count = 0
+
+    for line in lines:
+        if not line.startswith("- ["):
+            cleaned_lines.append(line)
+            continue
+        normalized = re.sub(r"-\s*\[[ xX]\]\s*(?:#\d+\s*)?", "", line).strip().lower()
+        if normalized in seen_texts:
+            dup_count += 1
+        else:
+            seen_texts.add(normalized)
+            cleaned_lines.append(line)
+
+    if dup_count == 0:
+        return "No duplicate tasks found in active_todos.md."
+
+    TODOS_FILE.write_text("\n".join(cleaned_lines).strip() + "\n", encoding="utf-8")
+    return f"Deduplicated to-do checklist: removed {dup_count} duplicate task(s)."
+
+
 def handle_notes_summary(args: dict[str, Any]) -> str:
     del args
     index_data = _load_index()
@@ -714,6 +812,33 @@ TOOLS = [
         },
     },
     {
+        "name": "notes_delete_todo",
+        "description": "Delete a specific to-do task by task ID number or keyword from active_todos.md.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "integer", "description": "Optional numeric task ID to delete"},
+                "keyword": {"type": "string", "description": "Optional text keyword to match and delete"},
+            },
+        },
+    },
+    {
+        "name": "notes_clear_completed_todos",
+        "description": "Remove/delete all completed [x] tasks from active_todos.md to keep the checklist clean.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "notes_deduplicate_todos",
+        "description": "Scan active_todos.md and remove all duplicate tasks.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
         "name": "notes_summary",
         "description": "Get high-level statistics on total Markdown notes, categories, and tasks.",
         "inputSchema": {
@@ -735,6 +860,9 @@ TOOL_HANDLERS = {
     "notes_add_todo": handle_add_todo,
     "notes_list_todos": handle_list_todos,
     "notes_complete_todo": handle_complete_todo,
+    "notes_delete_todo": handle_delete_todo,
+    "notes_clear_completed_todos": handle_clear_completed_todos,
+    "notes_deduplicate_todos": handle_deduplicate_todos,
     "notes_summary": handle_notes_summary,
 }
 

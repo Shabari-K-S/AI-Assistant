@@ -65,6 +65,24 @@ export function useAssistant() {
       }
     })
 
+    es.addEventListener('phase', (e) => {
+      try {
+        const data = JSON.parse((e as MessageEvent).data) as { phase?: string }
+        if (data.phase) {
+          const phaseVal = data.phase as Snapshot['phase']
+          setSnap((prev) => ({ ...prev, phase: phaseVal }))
+          if (prevPhaseRef.current !== phaseVal) {
+            if (phaseVal === 'speaking') {
+              soundFx.responseReady()
+            }
+            prevPhaseRef.current = phaseVal
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    })
+
     es.addEventListener('log', (e) => {
       try {
         pushLog('log', JSON.parse((e as MessageEvent).data))

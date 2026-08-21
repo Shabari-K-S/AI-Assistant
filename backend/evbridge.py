@@ -108,6 +108,9 @@ class Bus:
                 except Exception:
                     pass
 
+        if phase_val:
+            self.publish({"type": "phase", "phase": str(phase_val), "t": time.time()})
+
     def get(self) -> dict[str, object]:
         with self._lock:
             return dict(self._snapshot)
@@ -680,17 +683,19 @@ class _Handler(BaseHTTPRequestHandler):
         last_rev = -1
         last_beat = time.monotonic()
         # Immediately write initial snapshot on connect
+        last_rev = bus.get_rev()
         self._write_event("snapshot", bus.get())
         try:
             while True:
+                rev = bus.get_rev()
+                if rev != last_rev:
+                    last_rev = rev
+                    self._write_event("snapshot", bus.get())
+
                 try:
-                    line = q.get(timeout=0.25)
+                    line = q.get(timeout=0.1)
                 except queue.Empty:
-                    rev = bus.get_rev()
-                    if rev != last_rev:
-                        last_rev = rev
-                        self._write_event("snapshot", bus.get())
-                    elif time.monotonic() - last_beat > 12:
+                    if time.monotonic() - last_beat > 12:
                         last_beat = time.monotonic()
                         self._write_event("ping", {})
                     continue
