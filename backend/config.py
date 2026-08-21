@@ -115,7 +115,7 @@ class LLMConfig:
     ollama_model: str = "gemma4:e4b"
     llama_cpp_base_url: str = "http://127.0.0.1:8080"
     llama_cpp_model: str = "qwen2.5-1.5b-instruct"
-    llama_cpp_ctx_size: int = 2048
+    llama_cpp_ctx_size: int = 16384
     llama_cpp_threads: int = 4
     system_prompt: str = "You are EV, a dry, witty local voice assistant."
 
@@ -246,7 +246,7 @@ def load_config() -> Config:
             ollama_model=_env("EV_OLLAMA_MODEL", "gemma4:e4b"),
             llama_cpp_base_url=_env("EV_LLAMA_CPP_BASE_URL", "http://127.0.0.1:8080"),
             llama_cpp_model=_env("EV_LLAMA_CPP_MODEL", "qwen2.5-1.5b-instruct"),
-            llama_cpp_ctx_size=_env_int("EV_LLAMA_CPP_CTX_SIZE", 2048, minimum=512),
+            llama_cpp_ctx_size=_env_int("EV_LLAMA_CPP_CTX_SIZE", 16384, minimum=512),
             llama_cpp_threads=_env_int("EV_LLAMA_CPP_THREADS", 4, minimum=1),
             system_prompt=_load_persona(provider=_env("EV_LLM_PROVIDER", "gemini").lower()),
         ),

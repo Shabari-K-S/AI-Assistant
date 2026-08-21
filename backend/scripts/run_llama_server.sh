@@ -26,7 +26,7 @@ fi
 HOST="${EV_LLAMA_HOST:-127.0.0.1}"
 PORT="${EV_LLAMA_PORT:-8080}"
 THREADS="${EV_LLAMA_THREADS:-$(nproc 2>/dev/null || echo 4)}"
-CTX_SIZE="${EV_LLAMA_CTX:-2048}"
+CTX_SIZE="${EV_LLAMA_CTX:-16384}"
 BATCH_SIZE="${EV_LLAMA_BATCH:-512}"
 
 echo "=============================================================================="

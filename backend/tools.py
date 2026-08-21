@@ -881,100 +881,12 @@ class ToolRegistry:
             log.info("Unregistered %d tools for MCP server %r: %s", len(to_remove), server_name, to_remove)
         return len(to_remove)
 
-    INTENT_KEYWORDS: dict[str, list[str]] = {
-        "android": [
-            "battery", "charging", "torch", "flashlight", "light on", "light off",
-            "vibrate", "vibration", "haptic", "clipboard", "copied", "paste", "location", "gps",
-            "coordinates", "notification", "notify", "camera", "photo", "picture", "snapshot",
-            "diagnostics", "device", "phone", "wifi", "storage", "devops", "server check",
-        ],
-        "notes": [
-            "note", "notes", "todo", "todos", "task", "tasks", "remember", "remind me to",
-            "checklist", "brain dump", "list my", "add to list", "complete task", "done with",
-            "write note", "save note", "read note",
-        ],
-        "web": [
-            "search", "lookup", "google", "duckduckgo", "who is", "what is the price", "weather",
-            "forecast", "temperature", "rain", "news", "headlines", "latest", "scrape", "url", "http",
-            "calculate", "calculator", "math", "convert", "roll dice", "dice", "arxiv", "wikipedia",
-        ],
-        "dev": [
-            "terminal", "command", "shell", "bash", "run ", "exec", "uptime", "cpu", "ram",
-            "memory usage", "disk", "file", "files", "folder", "git", "commit", "branch",
-            "code", "script", "workspace", "edit file", "ls", "cat", "directory",
-        ],
-        "timer": [
-            "timer", "alarm", "stopwatch", "countdown", "seconds", "minute", "minutes", "hour", "hours",
-        ],
-        "security": [
-            "security", "cve", "vulnerability", "port scan", "recon", "audit", "exploit", "nmap",
-        ],
-        "rgb": [
-            "rgb", "ambient light", "leds", "lighting phase",
-        ],
-    }
-
-    def filter_tools_by_intent(self, user_query: str) -> list[str]:
-        """Detect which tools are relevant to user_query based on intent keywords.
-        Returns a list of tool names. If pure conversation or greeting, returns empty list [].
-        """
-        query = (user_query or "").strip().lower()
-        if not query:
-            return []
-
-        # Instant skip for simple conversational greetings and chit-chat
-        if len(query.split()) <= 2 and query in {
-            "hi", "hello", "hey", "sup", "yo", "good morning", "good evening",
-            "how are you", "what's up", "who are you", "thank you", "thanks", "bye", "goodbye"
-        }:
-            return []
-
-        matched_groups: set[str] = set()
-        for group, keywords in self.INTENT_KEYWORDS.items():
-            for kw in keywords:
-                if re.search(r"\b" + re.escape(kw) + r"\b", query):
-                    matched_groups.add(group)
-                    break
-
-        if not matched_groups:
-            return []
-
-        matched_tool_names: list[str] = []
-        for name in self._tools:
-            if "android" in matched_groups and name.startswith("android_"):
-                matched_tool_names.append(name)
-            elif "notes" in matched_groups and (name.startswith("notes_") or "brain_dump" in name or name == "recall_memory"):
-                matched_tool_names.append(name)
-            elif "web" in matched_groups and (name.startswith("duckduckgo_") or name.startswith("mcp_") or name.startswith("scrape_") or name.startswith("extract_") or name == "web_search"):
-                matched_tool_names.append(name)
-            elif "dev" in matched_groups and (name.startswith("opencode_") or name in ("run_shell_command", "get_system_telemetry", "get_system_status")):
-                matched_tool_names.append(name)
-            elif "timer" in matched_groups and ("timer" in name or name in ("set_timer", "cancel_timer", "list_timers", "get_timer_status")):
-                matched_tool_names.append(name)
-            elif "security" in matched_groups and name.startswith("security_"):
-                matched_tool_names.append(name)
-            elif "rgb" in matched_groups and name == "set_ambient_rgb_lighting":
-                matched_tool_names.append(name)
-
-        return matched_tool_names
-
-    def schemas(self, format: str = "anthropic", query: str | None = None) -> list[dict]:
+    def schemas(self, format: str = "anthropic") -> list[dict]:
         """Tool declarations in the requested provider format:
-        'gemini' (function_declarations), 'openai' (function wrapper), 'anthropic'.
-        If query is provided, dynamically filters schemas to only those relevant to user query.
-        """
-        if query is not None:
-            relevant_names = set(self.filter_tools_by_intent(query))
-            if not relevant_names:
-                return []
-            tools_to_include = [t for t in self._tools.values() if t.name in relevant_names]
-            log.info("Dynamic tool routing: activated %d tools for query %r", len(tools_to_include), query[:40])
-        else:
-            tools_to_include = list(self._tools.values())
-
+        'gemini' (function_declarations), 'openai' (function wrapper), 'anthropic'."""
         base = [
             {"name": t.name, "description": t.description, "parameters": t.parameters}
-            for t in tools_to_include
+            for t in self._tools.values()
         ]
         if format == "gemini":
             return [
