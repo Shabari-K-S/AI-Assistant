@@ -553,6 +553,12 @@ class MemoryEngine:
 
     def get_relevant_context_prompt(self, user_prompt: str, limit: int = 4) -> str:
         """Search memory and return formatted context block for LLM prompt injection."""
+        text_clean = user_prompt.strip().lower()
+        if len(text_clean.split()) <= 2 and text_clean in {
+            "hi", "hello", "hey", "sup", "yo", "good morning", "good evening", "how are you", "what's up", "who are you"
+        }:
+            return ""
+
         memories = self.recall(user_prompt, limit=limit)
         vault_hits = self.search_vault(user_prompt, top_k=2)
 
