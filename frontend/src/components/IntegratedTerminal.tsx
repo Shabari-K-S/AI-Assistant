@@ -11,7 +11,6 @@ import {
   Trash2,
   Keyboard,
   Cpu,
-  Send,
   ArrowDown,
   Sparkles,
 } from 'lucide-react'
@@ -51,7 +50,6 @@ export function IntegratedTerminal({ isOpen, onClose }: Props) {
   const xtermRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
-  const mobileInputRef = useRef<HTMLInputElement>(null)
 
   const [connected, setConnected] = useState(false)
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768)
@@ -61,7 +59,6 @@ export function IntegratedTerminal({ isOpen, onClose }: Props) {
   const [altActive, setAltActive] = useState(false)
   const [showMobileKeys, setShowMobileKeys] = useState(true)
   const [showQuickChips, setShowQuickChips] = useState(true)
-  const [commandInput, setCommandInput] = useState('')
   const [viewportHeight, setViewportHeight] = useState<number | null>(null)
 
   // Track window resize & mobile state
@@ -76,6 +73,19 @@ export function IntegratedTerminal({ isOpen, onClose }: Props) {
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [])
+
+  // Keyboard shortcut listener (Esc key to close terminal)
+  useEffect(() => {
+    if (!isOpen) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        soundFx.click()
+        onClose()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, onClose])
 
   // Visual Viewport tracking for mobile virtual soft keyboards
   useEffect(() => {
@@ -134,9 +144,10 @@ export function IntegratedTerminal({ isOpen, onClose }: Props) {
 
     ws.onopen = () => {
       setConnected(true)
-      term.writeln('\x1b[1;32m[A.T.H.E.N.A. TELEMETRY]\x1b[0m Terminal bridge online. Auto-scroll active.\r\n')
+      term.writeln('\x1b[1;32m[A.T.H.E.N.A. TELEMETRY]\x1b[0m Terminal bridge online. Type directly in the terminal below.\r\n')
       fitAddon.fit()
       term.scrollToBottom()
+      term.focus()
       ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }))
     }
 
@@ -233,6 +244,7 @@ export function IntegratedTerminal({ isOpen, onClose }: Props) {
     term.open(containerRef.current)
     fitAddon.fit()
     term.scrollToBottom()
+    term.focus()
 
     xtermRef.current = term
     fitAddonRef.current = fitAddon
@@ -323,6 +335,14 @@ export function IntegratedTerminal({ isOpen, onClose }: Props) {
     const term = xtermRef.current
     if (!ws || ws.readyState !== WebSocket.OPEN || !cmdText.trim()) return
 
+    if (cmdText.trim() === 'exit') {
+      ws.send('exit\r')
+      setTimeout(() => {
+        onClose()
+      }, 200)
+      return
+    }
+
     ws.send(cmdText.trim() + '\r')
     if (term) {
       term.scrollToBottom()
@@ -330,18 +350,12 @@ export function IntegratedTerminal({ isOpen, onClose }: Props) {
     }
   }
 
-  const handleInputSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!commandInput.trim()) return
-    executeCommand(commandInput)
-    setCommandInput('')
-  }
-
   const clearTerminal = () => {
     soundFx.click()
     if (xtermRef.current) {
       xtermRef.current.clear()
       xtermRef.current.scrollToBottom()
+      xtermRef.current.focus()
     }
   }
 
@@ -365,6 +379,7 @@ export function IntegratedTerminal({ isOpen, onClose }: Props) {
   const scrollToBottom = () => {
     soundFx.click()
     xtermRef.current?.scrollToBottom()
+    xtermRef.current?.focus()
   }
 
   if (!isOpen) return null
@@ -403,8 +418,8 @@ export function IntegratedTerminal({ isOpen, onClose }: Props) {
           </div>
         </div>
 
-        {/* Right: Controls & Status */}
-        <div className="flex items-center gap-1 sm:gap-2">
+        {/* Right: Controls & Prominent Close Button */}
+        <div className="flex items-center gap-1.5 sm:gap-2">
           {/* Connection status badge */}
           <div className="flex items-center gap-1 px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-mono tracking-wider bg-[rgba(6,14,21,0.8)] border border-[rgba(65,230,255,0.15)]">
             <span
@@ -477,16 +492,17 @@ export function IntegratedTerminal({ isOpen, onClose }: Props) {
             </button>
           )}
 
-          {/* Close */}
+          {/* PROMINENT CLOSE BUTTON */}
           <button
             onClick={() => {
               soundFx.click()
               onClose()
             }}
-            title="Close Integrated Terminal"
-            className="p-1.5 text-[#7da4b8] hover:text-[#ff5d5d] hover:bg-[rgba(255,93,93,0.15)] rounded transition-colors"
+            title="Close Terminal (Esc)"
+            className="flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded bg-[rgba(255,93,93,0.15)] hover:bg-[rgba(255,93,93,0.3)] border border-[rgba(255,93,93,0.4)] text-[#ff7e7e] hover:text-white font-mono text-xs font-bold transition-all shadow-[0_0_8px_rgba(255,93,93,0.25)] ml-1"
           >
-            <X size={16} />
+            <X size={14} className="stroke-[2.5]" />
+            <span className="tracking-wider">CLOSE</span>
           </button>
         </div>
       </div>
@@ -510,57 +526,27 @@ export function IntegratedTerminal({ isOpen, onClose }: Props) {
         </div>
       )}
 
-      {/* Terminal Viewport */}
+      {/* Terminal Viewport: Type directly into the terminal prompt */}
       <div className="flex-1 w-full bg-[#04090f] overflow-hidden select-text relative focus:outline-none min-h-0">
         <div
           ref={containerRef}
-          className="w-full h-full p-2"
+          className="w-full h-full p-2 cursor-text"
           onClick={() => xtermRef.current?.focus()}
         />
 
         {/* Floating Auto-Scroll Button */}
         <button
           onClick={scrollToBottom}
-          title="Scroll to bottom"
+          title="Scroll to bottom & focus"
           className="absolute bottom-3 right-4 p-2 rounded-full bg-[#09141d]/90 hover:bg-[#41e6ff]/20 border border-[rgba(65,230,255,0.3)] text-[#41e6ff] shadow-lg backdrop-blur-md transition-all active:scale-90"
         >
           <ArrowDown size={14} />
         </button>
       </div>
 
-      {/* Direct Mobile Command Prompt Input Bar */}
-      <form
-        onSubmit={handleInputSubmit}
-        className="flex items-center gap-1.5 px-2 py-1.5 bg-[rgba(6,14,21,0.98)] border-t border-[rgba(65,230,255,0.15)] shrink-0"
-      >
-        <div className="flex items-center gap-1 font-mono text-[#41e6ff] text-xs pl-1">
-          <span>&gt;</span>
-        </div>
-        <input
-          ref={mobileInputRef}
-          type="text"
-          value={commandInput}
-          onChange={(e) => setCommandInput(e.target.value)}
-          placeholder="Type terminal command (e.g. ls, top, pkg install)..."
-          className="flex-1 bg-[rgba(3,7,11,0.8)] border border-[rgba(65,230,255,0.2)] focus:border-[#41e6ff] rounded px-2.5 py-1.5 text-xs font-mono text-[#e8fbff] placeholder-[#3e5c6d] outline-none transition-colors"
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck="false"
-        />
-        <button
-          type="submit"
-          disabled={!commandInput.trim()}
-          title="Send Command"
-          className="px-3 py-1.5 rounded bg-[rgba(65,230,255,0.15)] hover:bg-[rgba(65,230,255,0.3)] active:scale-95 disabled:opacity-30 border border-[rgba(65,230,255,0.3)] text-[#41e6ff] font-mono text-xs flex items-center gap-1 transition-all"
-        >
-          <Send size={12} />
-          <span className="hidden xs:inline">RUN</span>
-        </button>
-      </form>
-
-      {/* Mobile / Touch Quick Key Toolbar (Large comfortable targets) */}
+      {/* Mobile / Touch Quick Key Toolbar */}
       {showMobileKeys && (
-        <div className="flex items-center justify-between px-2 py-1.5 bg-[rgba(4,9,15,0.98)] border-t border-[rgba(65,230,255,0.12)] text-xs font-mono overflow-x-auto no-scrollbar gap-1 shrink-0 select-none pb-safe">
+        <div className="flex items-center justify-between px-2 py-1.5 bg-[rgba(4,9,15,0.98)] border-t border-[rgba(65,230,255,0.15)] text-xs font-mono overflow-x-auto no-scrollbar gap-1.5 shrink-0 select-none pb-safe">
           <div className="flex items-center gap-1 shrink-0">
             <button
               onClick={() => sendKey('\x1b')}
@@ -672,6 +658,17 @@ export function IntegratedTerminal({ isOpen, onClose }: Props) {
               className="px-2.5 py-1.5 min-h-[34px] rounded bg-[#41e6ff]/20 active:bg-[#41e6ff]/40 border border-[#41e6ff] text-[#41e6ff] text-[11px] font-bold"
             >
               ⏎
+            </button>
+            <button
+              onClick={() => {
+                soundFx.click()
+                onClose()
+              }}
+              title="Close Terminal"
+              className="px-3 py-1.5 min-h-[34px] rounded bg-[rgba(255,93,93,0.2)] active:bg-[rgba(255,93,93,0.4)] border border-[rgba(255,93,93,0.5)] text-[#ff7e7e] text-[11px] font-bold flex items-center gap-1"
+            >
+              <X size={13} />
+              <span>CLOSE</span>
             </button>
           </div>
         </div>
