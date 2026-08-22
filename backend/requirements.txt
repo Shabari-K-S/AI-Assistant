@@ -37,3 +37,5 @@ mcp>=2.0.0
 robotframework>=6.1.0
 croniter>=2.0.0
 
+# WebSocket Terminal Bridge
+websockets>=12.0.0

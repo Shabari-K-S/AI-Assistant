@@ -2,12 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 import { animate, stagger } from 'animejs'
 import type { Phase } from '../types'
 import { soundFx } from '../lib/soundFx'
-import { Volume2, VolumeX, Maximize2, Minimize2, Radio, Sparkles } from 'lucide-react'
+import { Volume2, VolumeX, Maximize2, Minimize2, Radio, Sparkles, Terminal as TerminalIcon } from 'lucide-react'
 
 interface Props {
   phase: Phase
   online: boolean
   wakeWord: string
+  isTerminalOpen?: boolean
+  onToggleTerminal?: () => void
 }
 
 function useClock(): string {
@@ -27,7 +29,7 @@ const PHASE_LABEL: Record<Phase, string> = {
 }
 
 /** Top HUD bar: identity, phase, live state lights, audio controls. */
-export function StatusBar({ phase, online, wakeWord }: Props) {
+export function StatusBar({ phase, online, wakeWord, isTerminalOpen, onToggleTerminal }: Props) {
   const clock = useClock()
   const barRef = useRef<HTMLDivElement>(null)
   const [soundEnabled, setSoundEnabled] = useState(true)
@@ -119,6 +121,27 @@ export function StatusBar({ phase, online, wakeWord }: Props) {
 
       {/* Right telemetry & controls */}
       <div className="flex items-center gap-2 sm:gap-3">
+        {/* Terminal Toggle Button */}
+        {onToggleTerminal && (
+          <button
+            onClick={() => {
+              soundFx.click()
+              onToggleTerminal()
+            }}
+            title={isTerminalOpen ? 'Close Integrated Terminal (Ctrl+`)' : 'Open Integrated Terminal (Ctrl+`)'}
+            className={`flex items-center gap-1.5 px-2 py-1 rounded transition-all text-xs font-mono border ${
+              isTerminalOpen
+                ? 'bg-[rgba(65,230,255,0.2)] border-[#41e6ff] text-[#41e6ff] shadow-[0_0_10px_rgba(65,230,255,0.4)]'
+                : 'bg-[rgba(65,230,255,0.05)] hover:bg-[rgba(65,230,255,0.12)] border-[rgba(65,230,255,0.18)] text-[#7da4b8] hover:text-[#41e6ff]'
+            }`}
+          >
+            <TerminalIcon size={13} className={isTerminalOpen ? 'animate-pulse' : ''} />
+            <span className="hidden sm:inline font-display text-[9px] tracking-wider uppercase font-semibold">
+              TERMINAL
+            </span>
+          </button>
+        )}
+
         <button
           onClick={toggleSound}
           title={soundEnabled ? 'Mute HUD Audio Effects' : 'Unmute HUD Audio Effects'}

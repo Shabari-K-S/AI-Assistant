@@ -13,6 +13,7 @@ import { NotesVaultPanel } from './components/NotesVaultPanel'
 import { CyberReconPanel } from './components/CyberReconPanel'
 import { ActiveTimersBar } from './components/ActiveTimersBar'
 import { BriefingModal } from './components/BriefingModal'
+import { IntegratedTerminal } from './components/IntegratedTerminal'
 import { useAssistant } from './hooks/useAssistant'
 import { useTimers } from './hooks/useTimers'
 import { soundFx } from './lib/soundFx'
@@ -53,6 +54,7 @@ export default function App() {
   const [showLeftSidebar, setShowLeftSidebar] = useState(true)
   const [showRightSidebar, setShowRightSidebar] = useState(true)
   const [scanlinesActive, setScanlinesActive] = useState(true)
+  const [isTerminalOpen, setIsTerminalOpen] = useState(false)
   const [webListening, setWebListeningState] = useState(false)
   const webListeningTimerRef = useRef<any>(null)
 
@@ -73,6 +75,23 @@ export default function App() {
   const [centerView, setCenterView] = useState<CenterView>('core')
   const [mobileTab, setMobileTab] = useState<MobileTab>('core')
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768)
+
+  const toggleTerminal = useCallback(() => {
+    soundFx.click()
+    setIsTerminalOpen((prev) => !prev)
+  }, [])
+
+  // Global keyboard shortcut: Ctrl+` (backtick) or Ctrl+~
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && (e.key === '`' || e.key === '~')) {
+        e.preventDefault()
+        toggleTerminal()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [toggleTerminal])
 
   useEffect(() => {
     const handleResize = () => {
@@ -128,7 +147,13 @@ export default function App() {
       )}
 
       {/* Top telemetry bar */}
-      <StatusBar phase={activePhase} online={connected} wakeWord={snap.wake_word} />
+      <StatusBar
+        phase={activePhase}
+        online={connected}
+        wakeWord={snap.wake_word}
+        isTerminalOpen={isTerminalOpen}
+        onToggleTerminal={toggleTerminal}
+      />
 
       {/* Active Timers & Pomodoro Bar */}
       <ActiveTimersBar
@@ -596,6 +621,12 @@ export default function App() {
           <span className="font-mono text-[8.5px] tracking-wider mt-1 font-bold">LOGS</span>
         </button>
       </nav>
+
+      {/* VS Code-style Integrated Terminal Bottom Drawer */}
+      <IntegratedTerminal
+        isOpen={isTerminalOpen}
+        onClose={() => setIsTerminalOpen(false)}
+      />
     </div>
   )
 }

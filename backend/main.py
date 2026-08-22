@@ -46,6 +46,7 @@ from stt import STTEngine  # noqa: E402
 from tts import TTSEngine, build_tts_engine  # noqa: E402
 
 import evbridge  # noqa: E402  (web HUD — optional, never blocks the loop)
+import terminal_bridge  # noqa: E402  (PTY WebSocket terminal bridge)
 
 log = logging.getLogger("ev.main")
 
@@ -554,6 +555,8 @@ def _run_assistant(cfg, once: bool, text: str | None) -> int:
     bus.on_control("ptt_release", lambda _: trigger.release() if trigger else None)
     if cfg.webui.enabled:
         evbridge.start(cfg.webui.port)
+    if cfg.terminal.enabled:
+        terminal_bridge.start(cfg.terminal.port, custom_shell=cfg.terminal.shell)
     bus.set(
         online=True,
         phase="standby",

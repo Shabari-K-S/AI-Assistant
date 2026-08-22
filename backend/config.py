@@ -158,6 +158,15 @@ class WebUIConfig:
 
 
 @dataclass(frozen=True)
+class TerminalConfig:
+    """Integrated PTY WebSocket Terminal Bridge (terminal_bridge.py)."""
+
+    enabled: bool = True
+    port: int = 2028
+    shell: str = ""  # auto-detected if blank
+
+
+@dataclass(frozen=True)
 class RGBConfig:
     """Ambient Smart RGB lighting synchronization."""
     enabled: bool = True
@@ -174,6 +183,7 @@ class Config:
     tts: TTSConfig
     tools: ToolsConfig
     webui: WebUIConfig = WebUIConfig()
+    terminal: TerminalConfig = TerminalConfig()
     rgb: RGBConfig = RGBConfig()
     log_level: str = "INFO"
 
@@ -275,6 +285,11 @@ def load_config() -> Config:
         webui=WebUIConfig(
             enabled=_env_bool("EV_WEBUI_ENABLED", True),
             port=_env_int("EV_WEBUI_PORT", 2027, minimum=1024),
+        ),
+        terminal=TerminalConfig(
+            enabled=_env_bool("EV_TERMINAL_ENABLED", True),
+            port=_env_int("EV_TERMINAL_PORT", 2028, minimum=1024),
+            shell=_env("EV_TERMINAL_SHELL", ""),
         ),
         rgb=RGBConfig(
             enabled=_env_bool("EV_RGB_ENABLED", True),
