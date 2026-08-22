@@ -23,6 +23,7 @@ function useClock(): string {
 
 const PHASE_LABEL: Record<Phase, string> = {
   standby: 'STAND BY',
+  idle: 'STAND BY',
   listening: 'LISTENING',
   processing: 'REASONING',
   speaking: 'REPLYING',

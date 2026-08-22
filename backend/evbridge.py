@@ -441,7 +441,7 @@ class _Handler(BaseHTTPRequestHandler):
                 from skills_engine import get_skills_engine
                 engine = get_skills_engine()
                 res = engine.learn_skill(input_query=args)
-                bus.set(phase="idle", reply=res)
+                bus.set(phase="standby", reply=res)
                 bus.event("reply", text=res)
             threading.Thread(target=_learn_thread, daemon=True).start()
             return True, f"⚡ **Skill Synthesis Initiated:** '{args}' — Ingesting knowledge into `~/.athena/skills/`..."
@@ -498,7 +498,7 @@ class _Handler(BaseHTTPRequestHandler):
             bus.set(phase="processing", transcript=f"/recon {args}")
             def _scan_thread():
                 out = run_full_vulnerability_scan(args)
-                bus.set(phase="idle", reply=out)
+                bus.set(phase="standby", reply=out)
                 bus.event("reply", text=out)
             threading.Thread(target=_scan_thread, daemon=True).start()
             return True, f"🛡️ **DAST Reconnaissance Initiated for `{args}`** — Running multi-vector probe..."
@@ -546,7 +546,7 @@ class _Handler(BaseHTTPRequestHandler):
             if handled:
                 bus.log("INFO", f"slash command executed: {prompt}")
                 if cmd_reply:
-                    bus.set(phase="idle", reply=cmd_reply)
+                    bus.set(phase="standby", reply=cmd_reply)
                     bus.event("reply", text=cmd_reply)
                 self._json({"ok": True, "prompt": prompt, "handled_slash": True, "reply": cmd_reply})
                 return

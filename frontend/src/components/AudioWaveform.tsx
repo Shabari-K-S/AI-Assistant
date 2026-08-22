@@ -10,6 +10,7 @@ interface Props {
 
 const PHASE_COLORS: Record<Phase, { primary: string; secondary: string; speed: number; amplitude: number }> = {
   standby: { primary: 'rgba(65, 230, 255, 0.75)', secondary: 'rgba(65, 230, 255, 0.15)', speed: 0.02, amplitude: 8 },
+  idle: { primary: 'rgba(65, 230, 255, 0.75)', secondary: 'rgba(65, 230, 255, 0.15)', speed: 0.02, amplitude: 8 },
   listening: { primary: 'rgba(78, 205, 255, 0.95)', secondary: 'rgba(65, 230, 255, 0.35)', speed: 0.07, amplitude: 22 },
   processing: { primary: 'rgba(186, 104, 255, 0.9)', secondary: 'rgba(186, 104, 255, 0.3)', speed: 0.05, amplitude: 16 },
   speaking: { primary: 'rgba(255, 194, 75, 0.95)', secondary: 'rgba(255, 194, 75, 0.35)', speed: 0.09, amplitude: 26 },
@@ -31,7 +32,7 @@ export const AudioWaveform = memo(function AudioWaveform({
     if (!ctx) return
 
     const isMobile = window.innerWidth < 768 || (navigator.maxTouchPoints && navigator.maxTouchPoints > 0)
-    const targetFps = isMobile ? (phase === 'standby' ? 18 : 30) : (phase === 'standby' ? 30 : 60)
+    const targetFps = isMobile ? (phase === 'standby' || phase === 'idle' ? 18 : 30) : (phase === 'standby' || phase === 'idle' ? 30 : 60)
     const frameInterval = 1000 / targetFps
 
     let animId = 0
@@ -67,7 +68,7 @@ export const AudioWaveform = memo(function AudioWaveform({
       ctx.clearRect(0, 0, w, h)
 
       const cfg = online
-        ? PHASE_COLORS[phase]
+        ? (PHASE_COLORS[phase] || PHASE_COLORS.standby)
         : { primary: 'rgba(80, 92, 100, 0.4)', secondary: 'rgba(80, 92, 100, 0.1)', speed: 0.005, amplitude: 3 }
 
       offset += cfg.speed

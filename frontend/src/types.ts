@@ -1,4 +1,4 @@
-export type Phase = 'standby' | 'listening' | 'processing' | 'speaking'
+export type Phase = 'standby' | 'listening' | 'processing' | 'speaking' | 'idle'
 
 export interface Snapshot {
   online: boolean

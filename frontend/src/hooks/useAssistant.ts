@@ -51,6 +51,9 @@ export function useAssistant() {
     es.addEventListener('snapshot', (e) => {
       try {
         const newSnap = JSON.parse((e as MessageEvent).data) as Snapshot
+        if (newSnap.phase === 'idle') {
+          newSnap.phase = 'standby'
+        }
         setSnap(newSnap)
 
         // Trigger sound cues on phase changes
@@ -69,7 +72,8 @@ export function useAssistant() {
       try {
         const data = JSON.parse((e as MessageEvent).data) as { phase?: string }
         if (data.phase) {
-          const phaseVal = data.phase as Snapshot['phase']
+          const raw = data.phase
+          const phaseVal = (raw === 'idle' ? 'standby' : raw) as Snapshot['phase']
           setSnap((prev) => ({ ...prev, phase: phaseVal }))
           if (prevPhaseRef.current !== phaseVal) {
             if (phaseVal === 'speaking') {

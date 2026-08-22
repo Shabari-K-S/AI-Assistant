@@ -72,6 +72,18 @@ const SPECS: Record<string, OrbSpec> = {
     glowBlur: 48,
     label: 'VOCAL RESONANCE // SYNTHESIS',
   },
+  idle: {
+    rgba: '65, 230, 255',
+    hex: '#41e6ff',
+    pulseMin: 0.95,
+    pulseMax: 1.05,
+    pulseDur: 3.2,
+    spin1Dur: 28,
+    spin2Dur: 18,
+    spin3Dur: 12,
+    glowBlur: 28,
+    label: 'STANDBY // READY',
+  },
   offline: {
     rgba: '255, 93, 93',
     hex: '#ff5d5d',
@@ -97,7 +109,8 @@ export const CoreOrb = memo(function CoreOrb({
   online = true,
   onClick,
 }: Props) {
-  const spec = SPECS[online ? phase : 'offline']
+  const normalizedPhase = phase && SPECS[phase] ? phase : 'standby'
+  const spec = SPECS[online ? normalizedPhase : 'offline'] || SPECS.standby
 
   // 36 Degree Ticks for the outer HUD Reticle Ring
   const hudTicks = useMemo(() => {
