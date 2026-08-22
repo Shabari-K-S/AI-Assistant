@@ -298,6 +298,21 @@ class _Handler(BaseHTTPRequestHandler):
             res = discover_mcp(q)
             self._json(res, 200 if res.get("ok") else 400)
             return
+        if path == "/skills":
+            from dataclasses import asdict
+            from skills_engine import get_skills_engine
+            engine = get_skills_engine()
+            skills_list = [asdict(s) for s in engine.discover_skills()]
+            self._json({"ok": True, "skills": skills_list}, 200)
+            return
+        if path == "/agents":
+            from dataclasses import asdict
+            from multi_agent_dispatcher import get_agent_dispatcher
+            dispatcher = get_agent_dispatcher()
+            dispatcher.set_bus(bus)
+            agents_list = [asdict(p) for p in dispatcher.discover_agents()]
+            self._json({"ok": True, "agents": agents_list}, 200)
+            return
         if path == "/notes":
             from notes_mcp_server import _load_index
             index_data = _load_index()
@@ -392,9 +407,117 @@ class _Handler(BaseHTTPRequestHandler):
                 except Exception:
                     pass
 
-        self.send_response(404)
-        self._cors()
-        self.end_headers()
+    def _execute_slash_command(self, cmd_text: str, bus: Any) -> tuple[bool, str]:
+        """Execute leading slash commands directly."""
+        raw = cmd_text.strip()
+        if not raw.startswith("/"):
+            return False, ""
+
+        parts = raw.split(maxsplit=1)
+        command = parts[0].lower()
+        args = parts[1].strip() if len(parts) > 1 else ""
+
+        if command == "/help":
+            help_text = (
+                "⚡ **ATHENA SLASH COMMANDS & SKILLS REFERENCE**\n\n"
+                "• `/learn <url | topic | text>`: Learn a new skill from a URL, web search, or rule into `.athena/skills/`.\n"
+                "• `/skill [list | show <name> | run <name>]`: Inspect and trigger skills from `.athena/skills/`.\n"
+                "• `/agent [list | dispatch <name> <task> | status | cancel <id>]`: Dispatch background sub-agents.\n"
+                "• `/research <topic>`: Autonomous multi-vector deep research with paper generation.\n"
+                "• `/recon <target>`: Run automated DAST security scan and sensitive file audit.\n"
+                "• `/goal <objective>`: Launch autonomous execution loop toward a goal.\n"
+                "• `/schedule <time/cron> <task>`: Schedule one-shot reminders or recurring tasks.\n"
+                "• `/briefing`: Generate daily morning intelligence report.\n"
+                "• `/clear`: Clear terminal transcript feed.\n"
+            )
+            return True, help_text
+
+        if command == "/learn":
+            if not args:
+                return True, "❌ Usage: `/learn <documentation_url | topic_name | instructions>`\nExample: `/learn https://docs.pwntools.com` or `/learn \"GraphQL security testing\"`"
+            from skills_engine import get_skills_engine
+            engine = get_skills_engine()
+            res = engine.learn_skill(input_query=args)
+            return True, res
+
+        if command == "/skill":
+            from skills_engine import get_skills_engine
+            engine = get_skills_engine()
+            sub_parts = args.split(maxsplit=1)
+            action = sub_parts[0].lower() if sub_parts else "list"
+            param = sub_parts[1].strip() if len(sub_parts) > 1 else ""
+
+            if action in ("list", ""):
+                return True, engine.list_skills_summary()
+            elif action == "show":
+                skill = engine.get_skill(param)
+                if not skill:
+                    return True, f"❌ Skill `{param}` not found in `.athena/skills/`."
+                return True, f"📖 **Skill `{skill.name}` Instructions:**\n\n{skill.instructions}"
+            elif action == "run":
+                if not param:
+                    return True, "❌ Usage: `/skill run <skill_name> [parameters]`"
+                skill = engine.get_skill(param.split()[0])
+                skill_ctx = f"\n[Active Skill Instructions for {skill.name}]:\n{skill.instructions}\n" if skill else ""
+                bus.inject_prompt(f"Athena, execute skill {param}.{skill_ctx}")
+                bus.set(phase="processing", transcript=f"/skill run {param}")
+                return True, f"⚡ Executing skill **`{param}`** with Athena..."
+
+        if command == "/agent":
+            from multi_agent_dispatcher import get_agent_dispatcher
+            dispatcher = get_agent_dispatcher()
+            dispatcher.set_bus(bus)
+            sub_parts = args.split(maxsplit=2)
+            action = sub_parts[0].lower() if sub_parts else "list"
+
+            if action in ("list", ""):
+                return True, dispatcher.list_agents_summary()
+            elif action == "status":
+                return True, dispatcher.query_tasks()
+            elif action == "cancel":
+                tid = sub_parts[1].strip() if len(sub_parts) > 1 else ""
+                return True, dispatcher.cancel_task(tid)
+            elif action == "dispatch":
+                if len(sub_parts) < 3:
+                    return True, "❌ Usage: `/agent dispatch <agent_name> <task_prompt>`\nExample: `/agent dispatch recon_specialist 10.10.11.224`"
+                ag_name = sub_parts[1].strip()
+                task_prompt = sub_parts[2].strip()
+                res = dispatcher.dispatch_agent_by_name(agent_name=ag_name, task_prompt=task_prompt)
+                return True, res
+
+        if command == "/recon":
+            if not args:
+                return True, "❌ Usage: `/recon <target_ip_or_url>`\nExample: `/recon 127.0.0.1` or `/recon https://target-app.com`"
+            from web_security_scanner import run_full_vulnerability_scan
+            bus.set(phase="processing", transcript=f"/recon {args}")
+            def _scan_thread():
+                out = run_full_vulnerability_scan(args)
+                bus.set(phase="idle", reply=out)
+                bus.event("reply", text=out)
+            threading.Thread(target=_scan_thread, daemon=True).start()
+            return True, f"🛡️ **DAST Reconnaissance Initiated for `{args}`** — Running multi-vector probe..."
+
+        if command == "/research":
+            if not args:
+                return True, "❌ Usage: `/research <topic_name>`\nExample: `/research \"Solid State Batteries 2026 breakthroughs\"`"
+            from deep_research import get_deep_research_engine
+            engine = get_deep_research_engine()
+            res = engine.start_research(args)
+            bus.set(phase="processing", transcript=f"/research {args}")
+            return True, f"🔬 **Deep Research Initiated:** Topic: *'{args}'*. Harvesting multi-vector sources..."
+
+        if command == "/goal":
+            if not args:
+                return True, "❌ Usage: `/goal <objective_statement>`"
+            bus.inject_prompt(f"Athena, autonomous goal mode: Execute and verify until fully completed: {args}")
+            bus.set(phase="processing", transcript=f"/goal {args}")
+            return True, f"🎯 **Goal Mode Initiated:** *'{args}'*"
+
+        if command == "/clear":
+            bus.publish({"type": "clear_transcript"})
+            return True, "🧹 Transcript and feed cleared."
+
+        return False, ""
 
     def do_POST(self) -> None:  # noqa: N802 - http.server API
         bus = self._bus
@@ -411,6 +534,17 @@ class _Handler(BaseHTTPRequestHandler):
             if not prompt:
                 self._json({"ok": False, "error": "empty prompt"}, 400)
                 return
+
+            # Check for direct slash command execution
+            handled, cmd_reply = self._execute_slash_command(prompt, bus)
+            if handled:
+                bus.log("INFO", f"slash command executed: {prompt}")
+                if cmd_reply:
+                    bus.set(phase="idle", reply=cmd_reply)
+                    bus.event("reply", text=cmd_reply)
+                self._json({"ok": True, "prompt": prompt, "handled_slash": True, "reply": cmd_reply})
+                return
+
             bus.inject_prompt(prompt)
             bus.set(phase="processing", transcript=prompt)
             bus.log("INFO", f"terminal uplink: {prompt}")

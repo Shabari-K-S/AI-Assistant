@@ -945,35 +945,43 @@ class ToolRegistry:
         # 15. Multi-Agent Task Dispatcher
         def _handle_dispatch_agent(args: dict) -> str:
             from multi_agent_dispatcher import get_agent_dispatcher
-            name = str(args.get("name", "Autonomous Worker Task")).strip()
+            agent_name = str(args.get("agent_name", "")).strip()
+            name = str(args.get("name", "")).strip() or f"Task for {agent_name or 'Agent'}"
             task_type = str(args.get("task_type", "research")).strip()
             target = str(args.get("target_or_prompt", "")).strip()
-            dispatcher = get_agent_dispatcher(bus=getattr(self, "_bus", None))
+            dispatcher = get_agent_dispatcher()
+            dispatcher.set_bus(getattr(self, "_bus", None))
+            if agent_name:
+                return dispatcher.dispatch_agent_by_name(agent_name=agent_name, task_prompt=target)
             return dispatcher.dispatch_task(name=name, task_type=task_type, target_or_prompt=target)
 
         self._register(
             Tool(
                 name="dispatch_subagent_task",
-                description="Spawn an autonomous background worker agent to perform parallel research, security audits, or long-running tasks without blocking voice interaction.",
+                description="Spawn an autonomous background worker agent (or specialized agent profile like 'recon_specialist', 'deep_researcher', 'code_architect', 'termux_sysadmin', 'ctf_copilot') to perform parallel tasks.",
                 parameters={
                     "type": "object",
                     "properties": {
+                        "agent_name": {
+                            "type": "string",
+                            "description": "Optional specialized agent name (e.g. 'recon_specialist', 'deep_researcher', 'code_architect', 'termux_sysadmin', 'ctf_copilot').",
+                        },
                         "name": {
                             "type": "string",
-                            "description": "Descriptive task name (e.g. 'Audit Competitor Security Posture' or 'Deep Synthesis on Solid-State Batteries').",
+                            "description": "Descriptive task name.",
                         },
                         "task_type": {
                             "type": "string",
-                            "enum": ["research", "security_scan", "qa_regression", "custom"],
+                            "enum": ["research", "security_scan", "coding", "sysadmin", "ctf", "custom"],
                             "description": "Category of work to execute in background.",
                             "default": "research",
                         },
                         "target_or_prompt": {
                             "type": "string",
-                            "description": "Target URL, domain, or research prompt for the subagent.",
+                            "description": "Target URL, domain, command, or research prompt for the subagent.",
                         },
                     },
-                    "required": ["name", "target_or_prompt"],
+                    "required": ["target_or_prompt"],
                 },
                 handler=_handle_dispatch_agent,
             )
@@ -981,7 +989,8 @@ class ToolRegistry:
 
         def _handle_query_agents(_args: dict) -> str:
             from multi_agent_dispatcher import get_agent_dispatcher
-            dispatcher = get_agent_dispatcher(bus=getattr(self, "_bus", None))
+            dispatcher = get_agent_dispatcher()
+            dispatcher.set_bus(getattr(self, "_bus", None))
             return dispatcher.query_tasks()
 
         self._register(
@@ -1451,9 +1460,77 @@ class ToolRegistry:
                             "description": "Whether the server should be enabled (default: true).",
                         },
                     },
+        # 28. Athena Generalized Skills Engine
+        def _handle_skills_learn(args: dict) -> str:
+            from skills_engine import get_skills_engine
+            query = str(args.get("query_or_url", "")).strip()
+            name_hint = str(args.get("name_hint", "")).strip()
+            category = str(args.get("category", "learned")).strip()
+            engine = get_skills_engine()
+            return engine.learn_skill(input_query=query, name_hint=name_hint, category=category)
+
+        self._register(
+            Tool(
+                name="skills_learn",
+                description="Teach Athena a new skill or rule from a documentation URL, web search topic, or direct instructions. Persists into .athena/skills/<skill_name>/SKILL.md.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "query_or_url": {
+                            "type": "string",
+                            "description": "URL to scrape, topic name to research on the web (e.g. 'GraphQL security testing'), or custom rule text.",
+                        },
+                        "name_hint": {
+                            "type": "string",
+                            "description": "Optional custom skill slug name (e.g. 'pwntools_exploit_guide').",
+                        },
+                        "category": {
+                            "type": "string",
+                            "description": "Skill category (e.g. 'security', 'coding', 'sysadmin', 'research').",
+                            "default": "custom",
+                        },
+                    },
+                    "required": ["query_or_url"],
+                },
+                handler=_handle_skills_learn,
+            )
+        )
+
+        def _handle_skills_manage(args: dict) -> str:
+            from skills_engine import get_skills_engine
+            action = str(args.get("action", "list")).strip().lower()
+            name = str(args.get("name", "")).strip()
+            engine = get_skills_engine()
+            if action == "read":
+                if not name:
+                    return "Error: skill name is required to read."
+                skill = engine.get_skill(name)
+                if not skill:
+                    return f"Skill '{name}' not found."
+                return f"📖 **Skill: `{skill.name}`** [Category: `{skill.category}`]\n\n{skill.instructions}"
+            return engine.list_skills_summary()
+
+        self._register(
+            Tool(
+                name="skills_manage",
+                description="List or read instructions for modular skills stored in .athena/skills/.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "action": {
+                            "type": "string",
+                            "enum": ["list", "read"],
+                            "description": "Action to perform ('list' or 'read').",
+                            "default": "list",
+                        },
+                        "name": {
+                            "type": "string",
+                            "description": "Skill name or trigger to read instructions for.",
+                        },
+                    },
                     "required": ["action"],
                 },
-                handler=_handle_manage_mcp_server,
+                handler=_handle_skills_manage,
             )
         )
 

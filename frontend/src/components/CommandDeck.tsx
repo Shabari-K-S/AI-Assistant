@@ -1,5 +1,6 @@
 import { memo, useState, useEffect, useCallback, useRef } from 'react'
 import { soundFx } from '../lib/soundFx'
+import type { SlashCommand } from '../types'
 import {
   Send,
   Terminal,
@@ -16,6 +17,14 @@ import {
   Volume2,
   X,
   AudioWaveform,
+  GraduationCap,
+  Bot,
+  Compass,
+  Clock,
+  Target,
+  Trash2,
+  HelpCircle,
+  Zap,
 } from 'lucide-react'
 
 interface Props {
@@ -27,6 +36,89 @@ interface Props {
   onVoiceStateChange?: (active: boolean) => void
   voiceToggleSignal?: number
 }
+
+const SLASH_COMMANDS: SlashCommand[] = [
+  {
+    command: '/learn',
+    syntax: '/learn <url | topic | rules>',
+    description: 'Learn new skill into .athena/skills/ from a doc URL, web search topic, or rules.',
+    category: 'skills',
+    icon: 'GraduationCap',
+    example: '/learn https://docs.pwntools.com or /learn "GraphQL security testing"',
+  },
+  {
+    command: '/skill',
+    syntax: '/skill <list | show <name> | run <name>>',
+    description: 'Inspect, list, and execute specialized skills from .athena/skills/.',
+    category: 'skills',
+    icon: 'Zap',
+    example: '/skill list or /skill run ctf_exploit_playbook',
+  },
+  {
+    command: '/agent',
+    syntax: '/agent <list | dispatch <name> <task> | status | cancel <id>>',
+    description: 'Dispatch specialized background sub-agents (recon, research, code, sysadmin, ctf).',
+    category: 'agents',
+    icon: 'Bot',
+    example: '/agent dispatch recon_specialist 10.10.11.224',
+  },
+  {
+    command: '/research',
+    syntax: '/research <topic>',
+    description: 'Autonomous multi-vector deep research across web sources with paper synthesis.',
+    category: 'research',
+    icon: 'Sparkles',
+    example: '/research "Solid State Batteries 2026 breakthroughs"',
+  },
+  {
+    command: '/recon',
+    syntax: '/recon <target_ip_or_url>',
+    description: 'Autonomous DAST security audit, sensitive file discovery, and vulnerability scan.',
+    category: 'security',
+    icon: 'ShieldCheck',
+    example: '/recon 127.0.0.1 or /recon https://example.com',
+  },
+  {
+    command: '/goal',
+    syntax: '/goal <objective_statement>',
+    description: 'Autonomous multi-step execution loop that keeps running until goal is completed.',
+    category: 'core',
+    icon: 'Target',
+    example: '/goal Audit codebase for memory leaks and fix all lints',
+  },
+  {
+    command: '/schedule',
+    syntax: '/schedule <time/cron> <task>',
+    description: 'Schedule one-shot voice reminders or recurring background tasks.',
+    category: 'core',
+    icon: 'Clock',
+    example: '/schedule in 30 minutes "Review server logs"',
+  },
+  {
+    command: '/briefing',
+    syntax: '/briefing [morning | evening]',
+    description: 'Generate daily intelligence report with live weather, tasks, and tech headlines.',
+    category: 'core',
+    icon: 'Compass',
+    example: '/briefing morning',
+  },
+  {
+    command: '/clear',
+    syntax: '/clear',
+    description: 'Clear terminal transcript history and reset HUD feed.',
+    category: 'core',
+    icon: 'Trash2',
+    example: '/clear',
+  },
+  {
+    command: '/help',
+    syntax: '/help',
+    description: 'Display interactive guide of all slash commands, skills, and agents.',
+    category: 'core',
+    icon: 'HelpCircle',
+    example: '/help',
+  },
+]
 
 const QUICK_ACTIONS = [
   { label: 'Morning Briefing', query: 'Athena, give me my morning briefing with weather, tasks, and headlines.', icon: Sparkles },
@@ -52,9 +144,28 @@ export const CommandDeck = memo(function CommandDeck({
   const [text, setText] = useState('')
   const [transmitting, setTransmitting] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
+  const [selectedSlashIndex, setSelectedSlashIndex] = useState(0)
+  const [slashMenuOpen, setSlashMenuOpen] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
   const recognitionRef = useRef<any>(null)
   const speechTextRef = useRef<string>('')
   const isRecordingRef = useRef<boolean>(false)
+
+  // Filtered slash commands list
+  const filteredCommands = text.startsWith('/') && !text.includes(' ')
+    ? SLASH_COMMANDS.filter((c) => c.command.toLowerCase().startsWith(text.trim().toLowerCase()) || text.trim() === '/')
+    : []
+
+  const showSlashMenu = slashMenuOpen && filteredCommands.length > 0
+
+  useEffect(() => {
+    if (text.startsWith('/') && !text.includes(' ')) {
+      setSlashMenuOpen(true)
+      setSelectedSlashIndex(0)
+    } else {
+      setSlashMenuOpen(false)
+    }
+  }, [text])
 
   // Clean up recognition instance on unmount
   useEffect(() => {
@@ -110,7 +221,7 @@ export const CommandDeck = memo(function CommandDeck({
             full = piece
           } else if (piece.toLowerCase().startsWith(full.toLowerCase())) {
             full = piece
-          } else if (full.toLowerCase().endsWith(piece.toLowerCase())) {
+          } else if (piece.toLowerCase().endsWith(piece.toLowerCase())) {
             // Duplicate suffix: ignore
           } else {
             full = `${full} ${piece}`
@@ -132,7 +243,6 @@ export const CommandDeck = memo(function CommandDeck({
       }
 
       rec.onend = () => {
-        // If continuous mode ended unexpectedly while still recording, restart
         if (isRecordingRef.current) {
           try {
             rec.start()
@@ -165,7 +275,6 @@ export const CommandDeck = memo(function CommandDeck({
       } catch {}
     }
 
-    // Small delay to allow any pending final onresult audio packet from browser
     await new Promise((r) => setTimeout(r, 60))
 
     const promptToSend = speechTextRef.current.trim() || text.trim()
@@ -200,7 +309,6 @@ export const CommandDeck = memo(function CommandDeck({
     speechTextRef.current = ''
   }, [onVoiceStateChange])
 
-  // Toggle Tap-to-Talk on button click
   const handleToggleTapToTalk = useCallback(() => {
     if (isRecordingRef.current) {
       stopAndSendVoice()
@@ -209,7 +317,6 @@ export const CommandDeck = memo(function CommandDeck({
     }
   }, [stopAndSendVoice, startTapVoice])
 
-  // External trigger signal (e.g. from tapping the Core Orb directly)
   const prevSignalRef = useRef(voiceToggleSignal ?? 0)
   useEffect(() => {
     if (voiceToggleSignal && voiceToggleSignal !== prevSignalRef.current) {
@@ -218,7 +325,7 @@ export const CommandDeck = memo(function CommandDeck({
     }
   }, [voiceToggleSignal, handleToggleTapToTalk])
 
-  // Spacebar Hotkey: Tap spacebar once to start, tap again to send
+  // Spacebar Hotkey (only when outside input)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const tag = (document.activeElement?.tagName || '').toLowerCase()
@@ -244,6 +351,31 @@ export const CommandDeck = memo(function CommandDeck({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [startTapVoice, stopAndSendVoice, cancelTapVoice])
 
+  const selectSlashCommand = (cmd: SlashCommand) => {
+    soundFx.click()
+    setText(`${cmd.command} `)
+    setSlashMenuOpen(false)
+    inputRef.current?.focus()
+  }
+
+  // Keyboard navigation for slash commands
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showSlashMenu) return
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setSelectedSlashIndex((prev) => (prev + 1) % filteredCommands.length)
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setSelectedSlashIndex((prev) => (prev - 1 + filteredCommands.length) % filteredCommands.length)
+    } else if (e.key === 'Tab' || (e.key === 'Enter' && filteredCommands[selectedSlashIndex])) {
+      e.preventDefault()
+      selectSlashCommand(filteredCommands[selectedSlashIndex])
+    } else if (e.key === 'Escape') {
+      setSlashMenuOpen(false)
+    }
+  }
+
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault()
     if (isRecording) {
@@ -253,6 +385,7 @@ export const CommandDeck = memo(function CommandDeck({
     const trimmed = text.trim()
     if (!trimmed || transmitting || disabled || !connected) return
 
+    setSlashMenuOpen(false)
     setTransmitting(true)
     setText('')
     speechTextRef.current = ''
@@ -273,8 +406,33 @@ export const CommandDeck = memo(function CommandDeck({
 
   const isListening = phase === 'listening' || isRecording
 
+  const renderCommandIcon = (iconName: string) => {
+    switch (iconName) {
+      case 'GraduationCap':
+        return <GraduationCap size={14} className="text-[#ba68ff]" />
+      case 'Zap':
+        return <Zap size={14} className="text-[#41e6ff]" />
+      case 'Bot':
+        return <Bot size={14} className="text-[#818cf8]" />
+      case 'Sparkles':
+        return <Sparkles size={14} className="text-[#ba68ff]" />
+      case 'ShieldCheck':
+        return <ShieldCheck size={14} className="text-[#ff9900]" />
+      case 'Target':
+        return <Target size={14} className="text-[#ff3366]" />
+      case 'Clock':
+        return <Clock size={14} className="text-[#2ee59d]" />
+      case 'Compass':
+        return <Compass size={14} className="text-[#41e6ff]" />
+      case 'Trash2':
+        return <Trash2 size={14} className="text-[#ff5d5d]" />
+      default:
+        return <HelpCircle size={14} className="text-[#7da4b8]" />
+    }
+  }
+
   return (
-    <div className="w-full space-y-2.5">
+    <div className="w-full space-y-2.5 relative">
       {/* 1. Tap-To-Talk Voice Button with Visual Feedback */}
       <div className="flex items-center gap-2">
         <button
@@ -304,7 +462,7 @@ export const CommandDeck = memo(function CommandDeck({
           )}
         </button>
 
-        {/* Cancel Recording Button (Only visible while recording) */}
+        {/* Cancel Recording Button */}
         {isRecording && (
           <button
             type="button"
@@ -339,28 +497,78 @@ export const CommandDeck = memo(function CommandDeck({
         })}
       </div>
 
-      {/* 3. Clean Terminal Input Bay */}
+      {/* 3. Floating Slash Commands Menu Popover */}
+      {showSlashMenu && (
+        <div className="absolute bottom-12 left-0 right-0 z-50 bg-[#060e15]/95 border border-[rgba(65,230,255,0.4)] rounded-xl shadow-[0_0_30px_rgba(65,230,255,0.25)] backdrop-blur-xl overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-150 max-h-72 overflow-y-auto divide-y divide-[rgba(65,230,255,0.1)]">
+          <div className="px-3 py-1.5 bg-[rgba(65,230,255,0.1)] flex items-center justify-between font-mono text-[10px] text-[#7da4b8]">
+            <span className="flex items-center gap-1.5 text-[#41e6ff] font-bold">
+              <Zap size={12} /> ATHENA SLASH COMMANDS
+            </span>
+            <span>Tab / ↵ to insert • ↑↓ navigate • Esc close</span>
+          </div>
+          <div className="p-1 space-y-0.5">
+            {filteredCommands.map((cmd, idx) => {
+              const isSelected = idx === selectedSlashIndex
+              return (
+                <div
+                  key={cmd.command}
+                  onClick={() => selectSlashCommand(cmd)}
+                  onMouseEnter={() => setSelectedSlashIndex(idx)}
+                  className={`p-2 rounded-lg cursor-pointer transition-all flex items-start gap-2.5 ${
+                    isSelected
+                      ? 'bg-[rgba(65,230,255,0.18)] border border-[rgba(65,230,255,0.5)] shadow-[0_0_10px_rgba(65,230,255,0.2)]'
+                      : 'hover:bg-[rgba(65,230,255,0.06)] border border-transparent'
+                  }`}
+                >
+                  <div className="p-1 rounded bg-[rgba(6,14,21,0.8)] border border-[rgba(65,230,255,0.2)] mt-0.5 shrink-0">
+                    {renderCommandIcon(cmd.icon)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs font-bold text-[#41e6ff] tracking-wide">
+                        {cmd.command}
+                      </span>
+                      <span className="font-mono text-[10px] text-[#ba68ff] opacity-80 truncate">
+                        {cmd.syntax}
+                      </span>
+                    </div>
+                    <p className="font-mono text-[10.5px] text-[#7da4b8] mt-0.5 leading-snug">
+                      {cmd.description}
+                    </p>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* 4. Terminal Input Bay */}
       <form onSubmit={handleSubmit} className="relative flex items-center w-full">
         <div className="absolute left-3.5 text-[#41e6ff] pointer-events-none flex items-center gap-1">
           <span className="font-mono text-xs font-bold">&gt;</span>
         </div>
 
         <input
+          ref={inputRef}
           type="text"
           value={text}
           onChange={(e) => setText(e.target.value)}
+          onKeyDown={handleInputKeyDown}
           placeholder={
             isRecording
               ? 'Listening... Speak now and tap button (or press Enter) to send...'
               : connected
-                ? 'Type command or tap voice button above...'
+                ? 'Type / for slash commands or tap voice button above...'
                 : 'Athena offline — run ./run.sh'
           }
           disabled={!connected || transmitting}
           className={`w-full pl-8 pr-28 sm:pr-32 py-2.5 font-mono text-xs tracking-wider bg-[rgba(6,14,21,0.85)] border ${
             isRecording
               ? 'border-[#41e6ff] shadow-[0_0_15px_rgba(65,230,255,0.35)] text-white'
-              : 'border-[rgba(65,230,255,0.25)] text-[#e8fbff]'
+              : showSlashMenu
+                ? 'border-[#41e6ff] shadow-[0_0_15px_rgba(65,230,255,0.3)] text-[#e8fbff]'
+                : 'border-[rgba(65,230,255,0.25)] text-[#e8fbff]'
           } focus:border-[#41e6ff] focus:ring-1 focus:ring-[#41e6ff] focus:outline-none rounded-lg placeholder-[#3e5c6d] shadow-[inset_0_0_12px_rgba(0,0,0,0.5)] transition-all disabled:opacity-40`}
         />
 
@@ -376,3 +584,5 @@ export const CommandDeck = memo(function CommandDeck({
     </div>
   )
 })
+
+

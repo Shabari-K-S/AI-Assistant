@@ -250,4 +250,37 @@ export interface DailyBriefing {
   markdown_report: string
 }
 
+export interface AthenaSkill {
+  name: string
+  description: string
+  category: string
+  triggers: string[]
+  tools: string[]
+  sources?: string[]
+  file_path?: string
+  instructions?: string
+  created_at?: string
+  is_builtin?: boolean
+}
+
+export interface AthenaAgentProfile {
+  name: string
+  role: string
+  description: string
+  system_prompt: string
+  allowed_tools: string[]
+  category: string
+  created_at?: string
+  is_builtin?: boolean
+}
+
+export interface SlashCommand {
+  command: string
+  syntax: string
+  description: string
+  category: 'skills' | 'agents' | 'research' | 'security' | 'core'
+  icon: string
+  example: string
+}
+
 
