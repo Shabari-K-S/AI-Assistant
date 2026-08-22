@@ -119,7 +119,8 @@ def _capture_utterance(mic, trigger, cfg, bus=None, timeout: float | None = None
 
     if audio.size < cfg.audio.sample_rate * 0.2:
         print(f"(too short: {audio.size / cfg.audio.sample_rate:.1f}s)", flush=True)
-        print(_SILENCE_RETRY_HINT, flush=True)
+        hint = _SILENCE_RETRY_HINT_WAKE if getattr(cfg.audio, 'trigger', '') == 'wakeword' else _SILENCE_RETRY_HINT_PTT
+        print(hint, flush=True)
         if bus is not None:
             bus.set(phase="standby")
             bus.log("INFO", "(too short — retry)")

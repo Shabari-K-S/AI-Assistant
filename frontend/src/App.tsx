@@ -56,6 +56,7 @@ export default function App() {
   const [scanlinesActive, setScanlinesActive] = useState(true)
   const [isTerminalOpen, setIsTerminalOpen] = useState(false)
   const [webListening, setWebListeningState] = useState(false)
+  const [voiceToggleSignal, setVoiceToggleSignal] = useState(0)
   const webListeningTimerRef = useRef<any>(null)
 
   const setWebListening = useCallback((active: boolean) => {
@@ -65,10 +66,10 @@ export default function App() {
     }
     setWebListeningState(active)
     if (active) {
-      // Hard fallback: never let UI stay stuck in listening for more than 4.0 seconds
+      // Safe maximum timeout (60 seconds)
       webListeningTimerRef.current = setTimeout(() => {
         setWebListeningState(false)
-      }, 4000)
+      }, 60000)
     }
   }, [])
 
@@ -453,30 +454,60 @@ export default function App() {
               </div>
 
               {/* Core Orb & Reactor Display */}
-              <div className="flex flex-col items-center justify-center my-auto py-1 sm:py-2">
-                <CoreOrb size={isMobile ? 165 : 220} phase={activePhase} online={connected} />
+              <div className="flex flex-col items-center justify-center my-auto py-2 sm:py-3">
+                <CoreOrb
+                  size={isMobile ? 155 : 205}
+                  phase={activePhase}
+                  online={connected}
+                  onClick={() => setVoiceToggleSignal((p) => p + 1)}
+                />
 
-                {/* Dynamic Phase Display */}
-                <div className="text-center mt-2 sm:mt-3">
-                  <div
-                    className={`font-display text-xl sm:text-2xl md:text-3xl font-bold tracking-[0.28em] sm:tracking-[0.35em] transition-colors duration-500 ${
-                      !connected
-                        ? 'text-[#ff5d5d]'
-                        : activePhase === 'speaking'
-                          ? 'text-[#ffc24b] drop-shadow-[0_0_12px_rgba(255,194,75,0.6)]'
-                          : activePhase === 'processing'
-                            ? 'text-[#ba68ff] drop-shadow-[0_0_12px_rgba(186,104,255,0.6)]'
-                            : activePhase === 'listening'
-                              ? 'text-[#41e6ff] drop-shadow-[0_0_15px_rgba(65,230,255,0.8)]'
-                              : 'text-[#e8fbff] drop-shadow-[0_0_12px_rgba(65,230,255,0.5)]'
-                    }`}
-                  >
-                    {connected ? (snap.active_tool ? `RUNNING: ${snap.active_tool.name.toUpperCase()}` : activePhase.toUpperCase()) : 'OFFLINE'}
-                    <span className="cursor-blink ml-1" aria-hidden />
-                  </div>
-                  <div className="mt-1 font-mono text-[9.5px] sm:text-[10.5px] md:text-xs tracking-[0.18em] sm:tracking-[0.22em] text-[#7da4b8] px-2 max-w-sm sm:max-w-none truncate">
-                    {connected ? (snap.active_tool ? `⚡ MCP Tool Executing: ${snap.active_tool.name}` : phaseLabel) : 'START ASSISTANT BACKEND: ./run.sh'}
-                  </div>
+                {/* Dynamic Phase Display & Responsive Tool Status */}
+                <div className="text-center mt-5 sm:mt-7 mb-1 flex flex-col items-center max-w-full px-2">
+                  {snap.active_tool && connected ? (
+                    <div className="flex flex-col items-center gap-1.5 animate-pulse max-w-full">
+                      <div className="font-display text-base sm:text-lg md:text-xl font-bold tracking-[0.22em] text-[#ba68ff] drop-shadow-[0_0_12px_rgba(186,104,255,0.7)] flex items-center gap-2">
+                        <span>EXECUTING TOOL</span>
+                        <span className="cursor-blink" aria-hidden />
+                      </div>
+
+                      {/* Sleek Truncated Tool Pill Badge */}
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[rgba(186,104,255,0.14)] border border-[rgba(186,104,255,0.4)] shadow-[0_0_12px_rgba(186,104,255,0.25)] max-w-[88vw] sm:max-w-md">
+                        <span className="size-1.5 rounded-full bg-[#ba68ff] shadow-[0_0_6px_#ba68ff] shrink-0" />
+                        <span className="font-mono text-[10px] sm:text-[11px] font-bold text-[#f2dcff] truncate">
+                          ⚡ {snap.active_tool.name}
+                        </span>
+                      </div>
+
+                      <div className="font-mono text-[9px] sm:text-[9.5px] text-[#7da4b8] max-w-[85vw] sm:max-w-md truncate">
+                        {snap.active_tool.args && Object.keys(snap.active_tool.args).length > 0
+                          ? JSON.stringify(snap.active_tool.args)
+                          : 'Autonomous tool payload active...'}
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div
+                        className={`font-display text-lg sm:text-xl md:text-2xl font-bold tracking-[0.25em] sm:tracking-[0.32em] transition-colors duration-500 max-w-full truncate px-2 ${
+                          !connected
+                            ? 'text-[#ff5d5d]'
+                            : activePhase === 'speaking'
+                              ? 'text-[#ffc24b] drop-shadow-[0_0_12px_rgba(255,194,75,0.6)]'
+                              : activePhase === 'processing'
+                                ? 'text-[#ba68ff] drop-shadow-[0_0_12px_rgba(186,104,255,0.6)]'
+                                : activePhase === 'listening'
+                                  ? 'text-[#41e6ff] drop-shadow-[0_0_15px_rgba(65,230,255,0.8)]'
+                                  : 'text-[#e8fbff] drop-shadow-[0_0_12px_rgba(65,230,255,0.5)]'
+                        }`}
+                      >
+                        {connected ? activePhase.toUpperCase() : 'OFFLINE'}
+                        <span className="cursor-blink ml-1" aria-hidden />
+                      </div>
+                      <div className="mt-1 font-mono text-[9px] sm:text-[10px] md:text-[10.5px] tracking-[0.16em] sm:tracking-[0.2em] text-[#7da4b8] max-w-[88vw] sm:max-w-md truncate">
+                        {connected ? phaseLabel : 'START ASSISTANT BACKEND: ./run.sh'}
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -528,6 +559,7 @@ export default function App() {
                   disabled={!connected}
                   connected={connected}
                   onVoiceStateChange={setWebListening}
+                  voiceToggleSignal={voiceToggleSignal}
                 />
               </div>
             </main>

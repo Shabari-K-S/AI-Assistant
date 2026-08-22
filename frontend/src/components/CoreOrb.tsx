@@ -92,7 +92,7 @@ const SPECS: Record<string, OrbSpec> = {
  * audio-reactive quantum ripple waves, and interactive tap-to-talk.
  */
 export const CoreOrb = memo(function CoreOrb({
-  size = 210,
+  size = 190,
   phase = 'standby',
   online = true,
   onClick,
@@ -117,7 +117,7 @@ export const CoreOrb = memo(function CoreOrb({
   }
 
   return (
-    <div className="relative flex items-center justify-center select-none py-2">
+    <div className="relative flex items-center justify-center select-none py-2 mb-2">
       {/* Outer Glow Halo Atmosphere */}
       <div
         className="orb-halo transition-all duration-700"
@@ -167,12 +167,12 @@ export const CoreOrb = memo(function CoreOrb({
         {/* Layer 1: Vector Holographic Telemetry Reticle (SVG for ultra-sharp rendering) */}
         <svg
           viewBox="0 0 300 300"
-          className="absolute inset-[-24%] size-[148%] pointer-events-none"
+          className="absolute inset-[-14%] size-[128%] pointer-events-none"
           style={{ willChange: 'transform' }}
         >
           {/* Subtle Hexagonal Background Matrix */}
           <polygon
-            points="150,15 268,83 268,217 150,285 32,217 32,83"
+            points="150,18 262,82 262,218 150,282 38,218 38,82"
             fill="none"
             stroke={`rgba(${spec.rgba}, 0.12)`}
             strokeWidth="1"
@@ -185,7 +185,7 @@ export const CoreOrb = memo(function CoreOrb({
           <circle
             cx="150"
             cy="150"
-            r="140"
+            r="132"
             fill="none"
             stroke={`rgba(${spec.rgba}, 0.18)`}
             strokeWidth="0.75"
@@ -194,7 +194,7 @@ export const CoreOrb = memo(function CoreOrb({
           <circle
             cx="150"
             cy="150"
-            r="125"
+            r="120"
             fill="none"
             stroke={`rgba(${spec.rgba}, 0.25)`}
             strokeWidth="1"
@@ -205,9 +205,9 @@ export const CoreOrb = memo(function CoreOrb({
             <line
               key={angle}
               x1="150"
-              y1={isMajor ? '8' : isSemi ? '14' : '18'}
+              y1={isMajor ? '16' : isSemi ? '20' : '23'}
               x2="150"
-              y2="25"
+              y2="30"
               stroke={`rgba(${spec.rgba}, ${isMajor ? '0.85' : isSemi ? '0.55' : '0.25'})`}
               strokeWidth={isMajor ? '2' : isSemi ? '1.2' : '0.8'}
               transform={`rotate(${angle} 150 150)`}
@@ -216,22 +216,22 @@ export const CoreOrb = memo(function CoreOrb({
 
           {/* 4 Cardinal HUD Triangle Brackets */}
           <polygon
-            points="150,2 144,12 156,12"
+            points="150,8 144,18 156,18"
             fill={spec.hex}
             className="drop-shadow-[0_0_6px_currentColor]"
           />
           <polygon
-            points="150,298 144,288 156,288"
+            points="150,292 144,282 156,282"
             fill={spec.hex}
             className="drop-shadow-[0_0_6px_currentColor]"
           />
           <polygon
-            points="2,150 12,144 12,156"
+            points="8,150 18,144 18,156"
             fill={spec.hex}
             className="drop-shadow-[0_0_6px_currentColor]"
           />
           <polygon
-            points="298,150 288,144 288,156"
+            points="292,150 282,144 282,156"
             fill={spec.hex}
             className="drop-shadow-[0_0_6px_currentColor]"
           />
@@ -242,7 +242,7 @@ export const CoreOrb = memo(function CoreOrb({
             style={{ transformOrigin: '150px 150px' }}
           >
             <path
-              d="M 150 35 A 115 115 0 0 1 231 69"
+              d="M 150 40 A 110 110 0 0 1 228 72"
               fill="none"
               stroke={spec.hex}
               strokeWidth="2.5"
@@ -250,7 +250,7 @@ export const CoreOrb = memo(function CoreOrb({
               filter="drop-shadow(0 0 6px currentColor)"
             />
             <path
-              d="M 150 265 A 115 115 0 0 1 69 231"
+              d="M 150 260 A 110 110 0 0 1 72 228"
               fill="none"
               stroke={spec.hex}
               strokeWidth="2.5"
@@ -265,14 +265,14 @@ export const CoreOrb = memo(function CoreOrb({
             style={{ transformOrigin: '150px 150px' }}
           >
             <path
-              d="M 245 150 A 95 95 0 0 1 150 245"
+              d="M 240 150 A 90 90 0 0 1 150 240"
               fill="none"
               stroke={`rgba(${spec.rgba}, 0.7)`}
               strokeWidth="1.8"
               strokeDasharray="6 12"
             />
             <path
-              d="M 55 150 A 95 95 0 0 1 150 55"
+              d="M 60 150 A 90 90 0 0 1 150 60"
               fill="none"
               stroke={`rgba(${spec.rgba}, 0.7)`}
               strokeWidth="1.8"
@@ -348,7 +348,7 @@ export const CoreOrb = memo(function CoreOrb({
       </div>
 
       {/* Floating Side Telemetry Data Gauges (J.A.R.V.I.S. HUD Aesthetic) */}
-      <div className="hidden xs:flex absolute inset-x-[-15%] sm:inset-x-[-25%] justify-between pointer-events-none font-mono text-[8.5px] sm:text-[9px] text-[#7da4b8] select-none">
+      <div className="hidden xs:flex absolute inset-x-[-12%] sm:inset-x-[-22%] justify-between pointer-events-none font-mono text-[8.5px] sm:text-[9px] text-[#7da4b8] select-none">
         {/* Left Telemetry Pod */}
         <div className="flex flex-col items-start gap-1 bg-[rgba(6,14,21,0.65)] backdrop-blur-sm px-2.5 py-1.5 rounded border border-[rgba(65,230,255,0.15)]">
           <div className="flex items-center gap-1.5 text-[#41e6ff] font-bold">

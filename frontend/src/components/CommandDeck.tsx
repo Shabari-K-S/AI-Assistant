@@ -25,6 +25,7 @@ interface Props {
   disabled?: boolean
   connected: boolean
   onVoiceStateChange?: (active: boolean) => void
+  voiceToggleSignal?: number
 }
 
 const QUICK_ACTIONS = [
@@ -46,6 +47,7 @@ export const CommandDeck = memo(function CommandDeck({
   disabled,
   connected,
   onVoiceStateChange,
+  voiceToggleSignal,
 }: Props) {
   const [text, setText] = useState('')
   const [transmitting, setTransmitting] = useState(false)
@@ -199,13 +201,22 @@ export const CommandDeck = memo(function CommandDeck({
   }, [onVoiceStateChange])
 
   // Toggle Tap-to-Talk on button click
-  const handleToggleTapToTalk = () => {
-    if (isRecording) {
+  const handleToggleTapToTalk = useCallback(() => {
+    if (isRecordingRef.current) {
       stopAndSendVoice()
     } else {
       startTapVoice()
     }
-  }
+  }, [stopAndSendVoice, startTapVoice])
+
+  // External trigger signal (e.g. from tapping the Core Orb directly)
+  const prevSignalRef = useRef(voiceToggleSignal ?? 0)
+  useEffect(() => {
+    if (voiceToggleSignal && voiceToggleSignal !== prevSignalRef.current) {
+      prevSignalRef.current = voiceToggleSignal
+      handleToggleTapToTalk()
+    }
+  }, [voiceToggleSignal, handleToggleTapToTalk])
 
   // Spacebar Hotkey: Tap spacebar once to start, tap again to send
   useEffect(() => {
