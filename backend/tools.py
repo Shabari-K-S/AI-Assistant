@@ -1460,6 +1460,12 @@ class ToolRegistry:
                             "description": "Whether the server should be enabled (default: true).",
                         },
                     },
+                    "required": ["action"],
+                },
+                handler=_handle_manage_mcp_server,
+            )
+        )
+
         # 28. Athena Generalized Skills Engine
         def _handle_skills_learn(args: dict) -> str:
             from skills_engine import get_skills_engine
