@@ -301,7 +301,7 @@ Article Structure to Follow:
 
 ## 📚 Curated Sources & Further Reading
 (List all verified sources from [1] to [{len(sources)}] formatted as:
-- **[X]** [{s['title']}]({s['url']}) — *Source: `{s['domain']}`*
+- **[X]** [Source Title](URL) — *Source: `domain.com`*
   *Key Insight: 1-sentence summary of the evidence or details cited from this source.*)
 """
 

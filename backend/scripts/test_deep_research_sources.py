@@ -81,12 +81,11 @@ def test_deep_research():
     print(f"   Synthesis finished in {time.time() - t_synth:.2f}s using model: {model_used}")
     print(f"   Generated paper length: {len(paper_markdown)} characters")
 
-    # Assertions for Academic Paper Structure
-    assert "# Research Project Report:" in paper_markdown or "# Deep Research Report:" in paper_markdown
-    assert "## 📑 Abstract" in paper_markdown or "## Abstract" in paper_markdown
-    assert "## 1." in paper_markdown or "## 📌" in paper_markdown
-    assert "## 4. 📊" in paper_markdown or "Comparative Analysis" in paper_markdown or "|" in paper_markdown
-    assert "## 🔗 References" in paper_markdown or "References & Annotated Bibliography" in paper_markdown
+    # Assertions for Research Article Structure
+    assert test_topic in paper_markdown
+    assert "## ⚡ Executive Summary" in paper_markdown or "## 🌐 The Big Picture" in paper_markdown
+    assert "## 📊 Comparative Breakdown" in paper_markdown or "|" in paper_markdown
+    assert "## 📚 Curated Sources" in paper_markdown or "References" in paper_markdown
 
     # 5. Test Note Saving & Indexing
     print(f"\n5. Testing Notes Vault Save & Indexing...")
