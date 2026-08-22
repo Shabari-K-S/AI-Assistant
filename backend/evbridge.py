@@ -291,6 +291,13 @@ class _Handler(BaseHTTPRequestHandler):
                 status_data = MCPManager().get_all_status()
             self._json(status_data, 200)
             return
+        if path == "/mcp/search":
+            query_params = urllib.parse.parse_qs(parsed_url.query)
+            q = query_params.get("q", [""])[0].strip()
+            from mcp_client import discover_mcp
+            res = discover_mcp(q)
+            self._json(res, 200 if res.get("ok") else 400)
+            return
         if path == "/notes":
             from notes_mcp_server import _load_index
             index_data = _load_index()
@@ -592,6 +599,19 @@ class _Handler(BaseHTTPRequestHandler):
             res = mgr.save_server(name, body)
             if res.get("ok"):
                 bus.log("INFO", f"MCP: server '{name}' config updated")
+                bus.publish({"type": "mcp_changed", "server": name})
+            self._json(res, 200 if res.get("ok") else 400)
+            return
+
+        if path == "/mcp/update":
+            name = str(body.get("name", "")).strip()
+            mgr = bus.get_mcp_manager()
+            if not mgr:
+                from mcp_client import MCPManager
+                mgr = MCPManager()
+            res = mgr.update_server(name, body)
+            if res.get("ok"):
+                bus.log("INFO", f"MCP: server '{name}' updated and reloaded")
                 bus.publish({"type": "mcp_changed", "server": name})
             self._json(res, 200 if res.get("ok") else 400)
             return

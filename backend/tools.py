@@ -1232,6 +1232,234 @@ class ToolRegistry:
             )
         )
 
+        # 16. Autonomous Model Context Protocol (MCP) Manager & Live Tool Updater
+        def _handle_manage_mcp_server(args: dict) -> str:
+            from mcp_client import MCPManager, discover_mcp, get_athena_mcp_config_path
+            mgr = getattr(self, "_mcp_manager", None)
+            if not mgr:
+                mgr = MCPManager()
+                mgr.set_registry(self)
+                self._mcp_manager = mgr
+
+            action = str(args.get("action", "status")).strip().lower()
+            query = str(args.get("query", "")).strip()
+            name = str(args.get("name", "")).strip()
+            command = str(args.get("command", "")).strip()
+            cmd_args = args.get("args")
+            env = args.get("env") or {}
+            enabled = bool(args.get("enabled", True))
+
+            if action == "search_and_discover":
+                q = query or name
+                if not q:
+                    return "error: please provide a query or package name to search for (e.g. 'brave search', 'sqlite', 'postgres', 'github')."
+                res = discover_mcp(q)
+                if not res.get("ok"):
+                    return f"No matching MCP server found for query {q!r}. Details: {res.get('error', 'Unknown error')}"
+
+                lines = [
+                    f"MCP Discovery Results for {q!r}:",
+                    f"- Name: {res.get('name')}",
+                    f"- Source: {res.get('source')}",
+                    f"- Package / ID: {res.get('package') or res.get('id')}",
+                    f"- Description: {res.get('description')}",
+                    f"- Suggested Command: {res.get('command')} {' '.join(res.get('args', []))}",
+                ]
+                req_env = res.get("required_env", [])
+                if req_env:
+                    lines.append(f"- Required Environment Variables: {', '.join(req_env)}")
+                req_args = res.get("required_args", [])
+                if req_args:
+                    lines.append(f"- Required Arguments: {', '.join(req_args)}")
+                if res.get("clarification_needed"):
+                    lines.append(f"\n[CLARIFICATION NEEDED FROM OPERATOR]: {res.get('clarification_prompt')}")
+                else:
+                    lines.append("\nReady to install directly! Call manage_mcp_server with action='install'.")
+                return "\n".join(lines)
+
+            elif action == "install":
+                target_name = name or (query.replace(" ", "-").lower() if query else "")
+                if not target_name:
+                    return "error: server name or query is required to install."
+                target_name = target_name.strip().lower()
+
+                cmd = command
+                arguments = cmd_args
+                environment = dict(env or {})
+
+                if not cmd or arguments is None:
+                    disc = discover_mcp(target_name)
+                    if disc.get("ok"):
+                        cmd = cmd or disc.get("command", "npx")
+                        arguments = arguments if arguments is not None else disc.get("args", ["-y", f"@modelcontextprotocol/server-{target_name}"])
+                        for k, v in disc.get("env", {}).items():
+                            if k not in environment:
+                                environment[k] = v
+                    else:
+                        cmd = cmd or "npx"
+                        arguments = arguments if arguments is not None else ["-y", f"@modelcontextprotocol/server-{target_name}"]
+
+                spec = {
+                    "command": cmd,
+                    "args": arguments or [],
+                    "env": environment,
+                    "enabled": enabled,
+                }
+
+                res = mgr.install_and_hotload(target_name, spec)
+                if not res.get("ok"):
+                    return f"Failed to install MCP server {target_name!r}: {res.get('error', 'Unknown error')}"
+
+                tools = res.get("tools", [])
+                tools_summary = ", ".join(t.get("name", "") for t in tools) if tools else "none yet"
+                return (
+                    f"✅ Successfully installed and activated MCP server {target_name!r} in ~/.athena/mcp_servers.json!\n"
+                    f"- Running: {res.get('running')}\n"
+                    f"- Unlocked Tools ({len(tools)}): {tools_summary}\n"
+                    f"- Dynamic tools are hot-registered and immediately usable in this active session."
+                )
+
+            elif action == "update":
+                if not name:
+                    return "error: server name is required to update."
+                updates = {}
+                if command:
+                    updates["command"] = command
+                if cmd_args is not None:
+                    updates["args"] = cmd_args
+                if env:
+                    updates["env"] = env
+                if "enabled" in args:
+                    updates["enabled"] = enabled
+
+                res = mgr.update_server(name, updates)
+                if not res.get("ok"):
+                    return f"Failed to update MCP server {name!r}: {res.get('error', 'Unknown error')}"
+
+                tools = res.get("tools", [])
+                tools_summary = ", ".join(t.get("name", "") for t in tools) if tools else "none"
+                return (
+                    f"🔄 Successfully updated and hot-reloaded MCP server {name!r}!\n"
+                    f"- Running: {res.get('running')}\n"
+                    f"- Active Tools ({len(tools)}): {tools_summary}"
+                )
+
+            elif action == "toggle":
+                if not name:
+                    return "error: server name is required to toggle."
+                res = mgr.toggle_server(name, enabled)
+                if not res.get("ok"):
+                    return f"Failed to toggle {name!r}: {res.get('error', 'Unknown error')}"
+                return f"MCP server {name!r} is now {'enabled and running' if res.get('running') else 'disabled'} (tools: {res.get('tools_count', 0)})."
+
+            elif action == "restart":
+                if not name:
+                    return "error: server name is required to restart."
+                res = mgr.restart_server(name)
+                if not res.get("ok"):
+                    return f"Failed to restart {name!r}: {res.get('error', 'Unknown error')}"
+                return f"MCP server {name!r} successfully restarted with {res.get('tools_count', 0)} active tools."
+
+            elif action == "delete":
+                if not name:
+                    return "error: server name is required to delete."
+                res = mgr.delete_server(name)
+                return f"MCP server {name!r} deleted and unregistered."
+
+            elif action == "list_tools":
+                tools_list = mgr.list_active_tools()
+                if not tools_list:
+                    return "No active MCP tools currently registered."
+                lines = [f"Active MCP Tools ({len(tools_list)}):"]
+                for t in tools_list:
+                    lines.append(f"- [{t.get('server')}] {t.get('name')}: {t.get('description', '')}")
+                return "\n".join(lines)
+
+            else:  # status
+                status = mgr.get_all_status()
+                lines = [
+                    f"MCP Subsystem Status (Config: {status.get('config_path')}):",
+                    f"Active Servers: {status.get('active_servers')}/{len(status.get('servers', []))}",
+                    f"Total Dynamic Tools Registered: {status.get('total_tools')}",
+                    "\nConfigured Servers:",
+                ]
+                for s in status.get("servers", []):
+                    icon = "🟢" if s.get("running") else ("⏸️" if not s.get("enabled") else "🔴")
+                    lines.append(
+                        f"- {icon} [{s.get('name')}] (enabled={s.get('enabled')}, running={s.get('running')}, tools={s.get('tools_count')}): "
+                        f"{s.get('command')} {' '.join(s.get('args', []))}"
+                    )
+                return "\n".join(lines)
+
+        self._register(
+            Tool(
+                name="manage_mcp_server",
+                description=(
+                    "Discover, install, configure, update, restart, list, and remove Model Context Protocol (MCP) servers and their dynamic tools. "
+                    "Allows searching the internet (NPM, PyPI, GitHub) for MCP packages, detecting required API keys/environment variables, "
+                    "clarifying missing parameters with the operator, and hot-loading newly discovered tools directly into Athena's active ToolRegistry without restart."
+                ),
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "action": {
+                            "type": "string",
+                            "enum": [
+                                "search_and_discover",
+                                "install",
+                                "update",
+                                "toggle",
+                                "restart",
+                                "delete",
+                                "status",
+                                "list_tools",
+                            ],
+                            "description": (
+                                "Action to perform: 'search_and_discover' (search internet/registry for MCP server specs and required keys), "
+                                "'install' (save, launch server, and hot-register tools into registry), "
+                                "'update' (update command, args, or environment variables/API keys and hot-reload), "
+                                "'toggle' (enable/disable), 'restart' (reboot server process), "
+                                "'delete' (uninstall server), 'status' (get server and tools status), 'list_tools' (list all active MCP tools)."
+                            ),
+                        },
+                        "query": {
+                            "type": "string",
+                            "description": "Search query or keyword when searching/discovering MCP servers (e.g. 'brave search', 'sqlite', 'postgres', 'slack', 'github').",
+                        },
+                        "name": {
+                            "type": "string",
+                            "description": "Server identifier name (e.g. 'brave-search', 'sqlite', 'custom-tool').",
+                        },
+                        "command": {
+                            "type": "string",
+                            "description": "Executable command (e.g. 'npx', '.venv/bin/python3', 'uvx', 'python3').",
+                        },
+                        "args": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Command line arguments list (e.g. ['-y', '@modelcontextprotocol/server-brave-search']).",
+                        },
+                        "env": {
+                            "type": "object",
+                            "description": "Environment variables and API keys dictionary (e.g. {'BRAVE_API_KEY': 'BSA-xxxx', 'GITHUB_PERSONAL_ACCESS_TOKEN': 'ghp_xxxx'}).",
+                        },
+                        "enabled": {
+                            "type": "boolean",
+                            "description": "Whether the server should be enabled (default: true).",
+                        },
+                    },
+                    "required": ["action"],
+                },
+                handler=_handle_manage_mcp_server,
+            )
+        )
+
+    def set_mcp_manager(self, mgr: Any) -> None:
+        """Attach active MCPManager instance to this registry."""
+        self._mcp_manager = mgr
+        if mgr and hasattr(mgr, "set_registry"):
+            mgr.set_registry(self)
+
     def register(self, tool: Tool) -> None:
         """Register a dynamic tool (e.g. from an MCP server or plugin)."""
         self._tools[tool.name] = tool

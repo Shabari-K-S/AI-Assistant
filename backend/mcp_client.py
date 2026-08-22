@@ -1,7 +1,9 @@
-"""Model Context Protocol (MCP) Client and Manager for S.A.R.A.
+"""Model Context Protocol (MCP) Client and Manager for A.T.H.E.N.A.
 
 Connects to standard MCP servers over JSON-RPC 2.0 stdio, discovers dynamic tools,
-and registers them directly into S.A.R.A.'s ToolRegistry for LLM function calling.
+and registers them directly into A.T.H.E.N.A.'s ToolRegistry for LLM function calling.
+Provides cross-platform storage in ~/.athena/mcp_servers.json with dynamic online discovery,
+doubt-clarification, live installation, and tool hot-reloading.
 """
 
 from __future__ import annotations
@@ -10,6 +12,7 @@ import atexit
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -21,6 +24,52 @@ from typing import Any, Callable
 log = logging.getLogger("ev.mcp")
 
 
+# --------------------------------------------------------------------------- #
+# Generic Cross-Platform Athena Home & Storage Resolution (~/.athena)
+# --------------------------------------------------------------------------- #
+def get_athena_home_dir() -> Path:
+    """Return the cross-platform Athena home directory (~/.athena or $ATHENA_HOME).
+    Works consistently across Linux, macOS, Windows, Termux/Android, and container environments.
+    """
+    custom = os.environ.get("ATHENA_HOME")
+    if custom and custom.strip():
+        p = Path(custom.strip()).expanduser().resolve()
+    else:
+        p = (Path.home() / ".athena").resolve()
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def get_athena_mcp_dir() -> Path:
+    """Return ~/.athena/mcp/ for dynamic or custom server scripts."""
+    p = get_athena_home_dir() / "mcp"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def get_athena_mcp_config_path() -> Path:
+    """Return path to ~/.athena/mcp_servers.json.
+    If not found in ~/.athena, checks for existing project backend/mcp_servers.json and
+    migrates it seamlessly so configurations are preserved across platforms.
+    """
+    athena_home = get_athena_home_dir()
+    target_config = athena_home / "mcp_servers.json"
+
+    if not target_config.exists():
+        # Check if project backend/mcp_servers.json exists to seed from
+        backend_config = Path(__file__).resolve().parent / "mcp_servers.json"
+        if backend_config.exists():
+            try:
+                shutil.copy2(backend_config, target_config)
+                log.info("Migrated seed MCP config from %s to %s", backend_config, target_config)
+            except Exception:
+                log.exception("Failed migrating seed config to %s", target_config)
+    return target_config
+
+
+# --------------------------------------------------------------------------- #
+# MCP Process Client (JSON-RPC 2.0 stdio)
+# --------------------------------------------------------------------------- #
 class MCPProcessClient:
     """Manages an active stdio connection to a single MCP server."""
 
@@ -38,7 +87,7 @@ class MCPProcessClient:
         self.server_info: dict[str, Any] = {}
         self.tools: list[dict[str, Any]] = []
 
-    def start(self, timeout: float = 5.0) -> bool:
+    def start(self, timeout: float = 6.0) -> bool:
         """Start the MCP server subprocess and perform protocol handshake."""
         full_env = os.environ.copy()
         backend_dir = Path(__file__).resolve().parent
@@ -51,7 +100,7 @@ class MCPProcessClient:
             else:
                 full_env[k] = str(v)
 
-        # Resolve command (e.g. .venv/bin/python3, python3, npx)
+        # Resolve command (e.g. .venv/bin/python3, python3, npx, uvx)
         exec_cmd = self.command
         cmd_p = Path(self.command)
         if not cmd_p.is_absolute():
@@ -127,8 +176,7 @@ class MCPProcessClient:
 
     def call_tool(self, tool_name: str, arguments: dict[str, Any], timeout: float = 45.0) -> str:
         """Execute a tool on this MCP server and return text content."""
-        # Long-running tools (Camera + Vision, Port Scan, Web Scraping) get 60s
-        if any(w in tool_name.lower() for w in ("camera", "vision", "scan", "scrape", "search", "terminal")):
+        if any(w in tool_name.lower() for w in ("camera", "vision", "scan", "scrape", "search", "terminal", "install")):
             timeout = max(timeout, 60.0)
 
         res = self._send_request(
@@ -139,7 +187,6 @@ class MCPProcessClient:
         if not res:
             return f"Error: MCP server {self.name!r} timed out or failed executing {tool_name!r}"
 
-        # Parse MCP CallToolResult format
         content = res.get("content", [])
         is_error = res.get("isError", False)
 
@@ -262,6 +309,9 @@ class MCPProcessClient:
             self._proc = None
 
 
+# --------------------------------------------------------------------------- #
+# Curated Pre-Configured MCP Catalog
+# --------------------------------------------------------------------------- #
 CURATED_MCP_CATALOG: list[dict[str, Any]] = [
     {
         "id": "dummy-demo",
@@ -343,6 +393,64 @@ CURATED_MCP_CATALOG: list[dict[str, Any]] = [
         "preinstalled": True,
     },
     {
+        "id": "robot-qa",
+        "name": "Robot Framework QA Auto-Fix",
+        "description": "Autonomous Robot Framework test suite execution, error diagnosis, and code-fixing engine.",
+        "category": "developer",
+        "icon": "Wrench",
+        "command": ".venv/bin/python3",
+        "args": ["robot_mcp_server.py"],
+        "env": {"WORKSPACE_ROOT": "/home/shabari/projects/AI assistant"},
+        "preinstalled": True,
+    },
+    {
+        "id": "git-copilot",
+        "name": "Autonomous Git Copilot",
+        "description": "Git repository intelligence, commit staging, branch management, conflict review, and smart diff analysis.",
+        "category": "developer",
+        "icon": "GitBranch",
+        "command": ".venv/bin/python3",
+        "args": ["git_mcp_server.py"],
+        "env": {"WORKSPACE_ROOT": "/home/shabari/projects/AI assistant"},
+        "preinstalled": True,
+    },
+    {
+        "id": "brave-search",
+        "name": "Brave Web & Local Search",
+        "description": "Brave Search official MCP server for web search, AI summaries, local business search, and real-time news.",
+        "category": "search",
+        "icon": "Search",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+        "env": {"BRAVE_API_KEY": "${BRAVE_API_KEY}"},
+        "required_env": ["BRAVE_API_KEY"],
+        "preinstalled": False,
+    },
+    {
+        "id": "sqlite",
+        "name": "SQLite Database Explorer",
+        "description": "Query, inspect tables, analyze schemas, and run SQL queries against local SQLite database files.",
+        "category": "developer",
+        "icon": "Terminal",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-sqlite", "--db-path", "/home/shabari/projects/data.db"],
+        "env": {},
+        "required_args": ["--db-path"],
+        "preinstalled": False,
+    },
+    {
+        "id": "filesystem",
+        "name": "Local Filesystem Bridge",
+        "description": "Secure, scoped read/write access to specific local directories and project roots.",
+        "category": "developer",
+        "icon": "Terminal",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home/shabari/projects"],
+        "env": {},
+        "required_args": ["<directory_path>"],
+        "preinstalled": False,
+    },
+    {
         "id": "puppeteer",
         "name": "Puppeteer Headless Browser",
         "description": "Automate headless Chromium browser to navigate pages, capture screenshots, and scrape dynamic JS content.",
@@ -356,23 +464,239 @@ CURATED_MCP_CATALOG: list[dict[str, Any]] = [
     {
         "id": "github",
         "name": "GitHub Assistant",
-        "description": "Browse repositories, inspect pull requests, read commits, and manage issues.",
+        "description": "Browse repositories, inspect pull requests, read commits, create issues, and search code.",
         "category": "developer",
         "icon": "GitBranch",
         "command": "npx",
         "args": ["-y", "@modelcontextprotocol/server-github"],
         "env": {"GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"},
+        "required_env": ["GITHUB_PERSONAL_ACCESS_TOKEN"],
+        "preinstalled": False,
+    },
+    {
+        "id": "postgres",
+        "name": "PostgreSQL Database Bridge",
+        "description": "Read-only inspection, schema discovery, and query execution for PostgreSQL databases.",
+        "category": "developer",
+        "icon": "Terminal",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"],
+        "env": {},
+        "required_args": ["<postgres_connection_url>"],
+        "preinstalled": False,
+    },
+    {
+        "id": "fetch",
+        "name": "Fetch & Markdown Converter",
+        "description": "Fetch web pages and convert HTML into clean, LLM-optimized Markdown text.",
+        "category": "search",
+        "icon": "Globe",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-fetch"],
+        "env": {},
+        "preinstalled": False,
+    },
+    {
+        "id": "slack",
+        "name": "Slack Integration",
+        "description": "Interact with Slack channels, post messages, and read thread history.",
+        "category": "productivity",
+        "icon": "Smartphone",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-slack"],
+        "env": {"SLACK_BOT_TOKEN": "${SLACK_BOT_TOKEN}", "SLACK_TEAM_ID": "${SLACK_TEAM_ID}"},
+        "required_env": ["SLACK_BOT_TOKEN", "SLACK_TEAM_ID"],
         "preinstalled": False,
     },
 ]
 
 
+# --------------------------------------------------------------------------- #
+# Autonomous Online Discovery Engine for MCP Ecosystem
+# --------------------------------------------------------------------------- #
+def discover_mcp(query: str) -> dict[str, Any]:
+    """Search the internet (NPM Registry, PyPI, and DuckDuckGo) for Model Context Protocol servers.
+
+    Returns structured findings including package names, default commands,
+    required/detected environment variables, and any missing clarification needed from the operator.
+    """
+    clean_q = query.strip()
+    if not clean_q:
+        return {"ok": False, "error": "Search query cannot be empty"}
+
+    q_lower = clean_q.lower()
+
+    # 1. Match against Curated Catalog first
+    for item in CURATED_MCP_CATALOG:
+        if (
+            q_lower == item["id"].lower()
+            or q_lower in item["name"].lower()
+            or q_lower in item["description"].lower()
+            or (item["id"].replace("-", " ") in q_lower)
+            or (item.get("args") and any(q_lower in str(a).lower() for a in item["args"]))
+        ):
+            required_env = item.get("required_env", [])
+            required_args = item.get("required_args", [])
+            clarification_needed = bool(required_env or required_args)
+            prompt = ""
+            if required_env:
+                prompt += f"To configure '{item['name']}', I need the environment variable(s): {', '.join(required_env)}."
+            if required_args:
+                prompt += f" It also requires argument parameter(s): {', '.join(required_args)}."
+
+            return {
+                "ok": True,
+                "source": "curated_catalog",
+                "id": item["id"],
+                "name": item["name"],
+                "description": item["description"],
+                "command": item["command"],
+                "args": item["args"],
+                "env": item.get("env", {}),
+                "required_env": required_env,
+                "required_args": required_args,
+                "clarification_needed": clarification_needed,
+                "clarification_prompt": prompt.strip(),
+                "preinstalled": item.get("preinstalled", False),
+            }
+
+    # 2. Query NPM Registry API
+    npm_results: list[dict[str, Any]] = []
+    try:
+        import httpx
+
+        search_terms = f"mcp server {clean_q}"
+        url = f"https://registry.npmjs.org/-/v1/search?text={httpx.URL('', params={'q': search_terms}).params.get('q')}&size=6"
+        res = httpx.get(url, timeout=5.0)
+        if res.status_code == 200:
+            data = res.json()
+            for obj in data.get("objects", []):
+                pkg = obj.get("package", {})
+                pkg_name = pkg.get("name", "")
+                if not pkg_name:
+                    continue
+                desc = pkg.get("description", "")
+                keywords = pkg.get("keywords", [])
+                links = pkg.get("links", {})
+
+                # Check if it's an MCP server package
+                is_mcp = (
+                    "modelcontextprotocol" in pkg_name
+                    or "mcp" in pkg_name.lower()
+                    or "mcp" in " ".join(keywords).lower()
+                    or "model context protocol" in desc.lower()
+                )
+                if is_mcp:
+                    npm_results.append({
+                        "name": pkg_name,
+                        "description": desc,
+                        "version": pkg.get("version", "latest"),
+                        "links": links,
+                    })
+    except Exception as exc:
+        log.warning("NPM search query failed: %s", exc)
+
+    # 3. Analyze best matching package
+    if npm_results:
+        best = npm_results[0]
+        pkg_name = best["name"]
+        desc = best["description"]
+
+        # Infer required environment variables via common patterns in description/name
+        detected_env: list[str] = []
+        env_pattern = re.compile(r"\b([A-Z0-9_]{3,}(?:_API_KEY|_TOKEN|_SECRET|_URL|_KEY|_PASSWORD|_AUTH))\b")
+        for match in env_pattern.finditer(desc + " " + pkg_name):
+            val = match.group(1)
+            if val not in detected_env:
+                detected_env.append(val)
+
+        # Common package-specific defaults
+        if "brave" in pkg_name.lower() and "BRAVE_API_KEY" not in detected_env:
+            detected_env.append("BRAVE_API_KEY")
+        elif "github" in pkg_name.lower() and "GITHUB_PERSONAL_ACCESS_TOKEN" not in detected_env:
+            detected_env.append("GITHUB_PERSONAL_ACCESS_TOKEN")
+        elif "slack" in pkg_name.lower() and "SLACK_BOT_TOKEN" not in detected_env:
+            detected_env.append("SLACK_BOT_TOKEN")
+        elif "sentry" in pkg_name.lower() and "SENTRY_AUTH_TOKEN" not in detected_env:
+            detected_env.append("SENTRY_AUTH_TOKEN")
+        elif "tavily" in pkg_name.lower() and "TAVILY_API_KEY" not in detected_env:
+            detected_env.append("TAVILY_API_KEY")
+        elif "firecrawl" in pkg_name.lower() and "FIRECRAWL_API_KEY" not in detected_env:
+            detected_env.append("FIRECRAWL_API_KEY")
+
+        # Generate a clean ID slug
+        server_id = pkg_name.split("/")[-1].replace("server-", "").replace("-mcp", "").replace("mcp-", "")
+
+        env_dict = {k: f"${{{k}}}" for k in detected_env}
+        clarification_needed = len(detected_env) > 0
+        prompt = ""
+        if clarification_needed:
+            prompt = (
+                f"I found the package '{pkg_name}' for '{clean_q}'. "
+                f"It appears to require the environment credential(s): {', '.join(detected_env)}. "
+                f"Would you like to provide the key(s) now, or should I install it in standby mode?"
+            )
+
+        return {
+            "ok": True,
+            "source": "npm_registry",
+            "id": server_id,
+            "name": f"{server_id.capitalize()} MCP Server",
+            "package": pkg_name,
+            "description": desc or f"MCP server from {pkg_name}",
+            "command": "npx",
+            "args": ["-y", pkg_name],
+            "env": env_dict,
+            "required_env": detected_env,
+            "required_args": [],
+            "clarification_needed": clarification_needed,
+            "clarification_prompt": prompt,
+            "candidates": npm_results[:4],
+        }
+
+    # 4. Fallback search via DuckDuckGo
+    try:
+        from duckduckgo_mcp_server import perform_ddg_search
+
+        ddg_res = perform_ddg_search(f"mcp server modelcontextprotocol {clean_q}", max_results=3)
+        if ddg_res and not ddg_res.startswith("Error"):
+            return {
+                "ok": True,
+                "source": "web_search",
+                "id": clean_q.replace(" ", "-").lower(),
+                "name": f"{clean_q.capitalize()} MCP Server",
+                "description": f"Discovered via web search for '{clean_q}'.",
+                "command": "npx",
+                "args": ["-y", f"@modelcontextprotocol/server-{clean_q.replace(' ', '-').lower()}"],
+                "env": {},
+                "required_env": [],
+                "required_args": [],
+                "clarification_needed": True,
+                "clarification_prompt": (
+                    f"I found information online regarding {clean_q} MCP. "
+                    f"Please confirm if you want me to install '@modelcontextprotocol/server-{clean_q.replace(' ', '-').lower()}' "
+                    f"or specify a custom package name/script path."
+                ),
+                "web_summary": ddg_res[:400],
+            }
+    except Exception as exc:
+        log.warning("DDG fallback search failed: %s", exc)
+
+    return {
+        "ok": False,
+        "error": f"No MCP server package found for query: '{clean_q}'. You can specify a custom command (e.g. 'npx <pkg>' or '.venv/bin/python3 <script.py>').",
+    }
+
+
+# --------------------------------------------------------------------------- #
+# MCP Manager (Dynamic Integration & Hot-Reloading)
+# --------------------------------------------------------------------------- #
 class MCPManager:
-    """Loads MCP servers from config and integrates tools dynamically into S.A.R.A.'s ToolRegistry."""
+    """Loads MCP servers from ~/.athena/mcp_servers.json and integrates tools dynamically into A.T.H.E.N.A.'s ToolRegistry."""
 
     def __init__(self, config_path: str | Path | None = None) -> None:
         if config_path is None:
-            config_path = Path(__file__).resolve().parent / "mcp_servers.json"
+            config_path = get_athena_mcp_config_path()
         self.config_path = Path(config_path)
         self.clients: dict[str, MCPProcessClient] = {}
         self.registry: Any = None
@@ -384,7 +708,7 @@ class MCPManager:
         self.registry = registry
 
     def ensure_default_config(self) -> None:
-        """Create a default mcp_servers.json if it doesn't already exist."""
+        """Create a default mcp_servers.json in ~/.athena/ if it doesn't already exist."""
         if not self.config_path.exists():
             default_config = {
                 "mcpServers": {
@@ -411,6 +735,7 @@ class MCPManager:
                 }
             }
             try:
+                self.config_path.parent.mkdir(parents=True, exist_ok=True)
                 with open(self.config_path, "w", encoding="utf-8") as f:
                     json.dump(default_config, f, indent=2)
                 log.info("Created default MCP config at %s", self.config_path)
@@ -428,6 +753,7 @@ class MCPManager:
 
     def _write_config(self, data: dict[str, Any]) -> bool:
         try:
+            self.config_path.parent.mkdir(parents=True, exist_ok=True)
             with open(self.config_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
             return True
@@ -456,7 +782,7 @@ class MCPManager:
                     self.clients[name] = client
 
     def register_into_tool_registry(self, registry: Any | None = None) -> int:
-        """Register all discovered MCP tools into S.A.R.A.'s ToolRegistry."""
+        """Register all discovered MCP tools into A.T.H.E.N.A.'s ToolRegistry."""
         if registry is not None:
             self.registry = registry
         if self.registry is None:
@@ -544,7 +870,14 @@ class MCPManager:
                     self.clients[name] = client
                     tools_count = self._register_client_tools(name)
                     log.info("Enabled and started MCP server %r with %d tools", name, tools_count)
-                    return {"ok": True, "name": name, "enabled": True, "running": True, "tools_count": tools_count}
+                    return {
+                        "ok": True,
+                        "name": name,
+                        "enabled": True,
+                        "running": True,
+                        "tools_count": tools_count,
+                        "tools": client.tools,
+                    }
                 else:
                     log.warning("Failed starting MCP server %r on enable", name)
                     return {"ok": False, "error": f"Failed to start server {name!r}"}
@@ -580,11 +913,17 @@ class MCPManager:
             if client.start(timeout=6.0):
                 self.clients[name] = client
                 tools_count = self._register_client_tools(name)
-                return {"ok": True, "name": name, "running": True, "tools_count": tools_count}
+                return {
+                    "ok": True,
+                    "name": name,
+                    "running": True,
+                    "tools_count": tools_count,
+                    "tools": client.tools,
+                }
             return {"ok": False, "error": f"Failed to restart {name!r}"}
 
     def save_server(self, name: str, spec: dict[str, Any]) -> dict[str, Any]:
-        """Add or update an MCP server configuration."""
+        """Add or update an MCP server configuration in ~/.athena/mcp_servers.json and hot-load it."""
         name = name.strip()
         if not name:
             return {"ok": False, "error": "Server name cannot be empty"}
@@ -607,6 +946,30 @@ class MCPManager:
         else:
             return self.toggle_server(name, False)
 
+    def install_and_hotload(self, name: str, spec: dict[str, Any]) -> dict[str, Any]:
+        """Convenience alias for saving, starting, and hotloading an MCP server."""
+        return self.save_server(name, spec)
+
+    def update_server(self, name: str, updates: dict[str, Any]) -> dict[str, Any]:
+        """Update an existing MCP server's command, args, or environment variables and hot-reload tools."""
+        name = name.strip()
+        data = self._read_config()
+        servers = data.get("mcpServers", {})
+        if name not in servers:
+            return {"ok": False, "error": f"Server {name!r} does not exist"}
+
+        current_spec = servers[name]
+        if "command" in updates and updates["command"]:
+            current_spec["command"] = updates["command"]
+        if "args" in updates and updates["args"] is not None:
+            current_spec["args"] = updates["args"]
+        if "env" in updates and isinstance(updates["env"], dict):
+            current_spec.setdefault("env", {}).update(updates["env"])
+        if "enabled" in updates:
+            current_spec["enabled"] = bool(updates["enabled"])
+
+        return self.save_server(name, current_spec)
+
     def delete_server(self, name: str) -> dict[str, Any]:
         """Delete an MCP server from configuration and terminate it."""
         with self._lock:
@@ -626,7 +989,7 @@ class MCPManager:
         return {"ok": True, "name": name}
 
     def get_all_status(self) -> dict[str, Any]:
-        """Return comprehensive live status of all configured MCP servers and catalog presets."""
+        """Return comprehensive live status of all configured MCP servers, active tools, and catalog presets."""
         data = self._read_config()
         configured = data.get("mcpServers", {})
 
@@ -652,6 +1015,8 @@ class MCPManager:
 
         return {
             "ok": True,
+            "config_path": str(self.config_path),
+            "athena_home": str(get_athena_home_dir()),
             "servers": server_list,
             "catalog": CURATED_MCP_CATALOG,
             "total_tools": sum(s["tools_count"] for s in server_list),

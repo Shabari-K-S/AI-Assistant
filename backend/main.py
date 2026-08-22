@@ -503,6 +503,7 @@ def _build_agent(cfg, confirm_fn: Callable[[str], bool] | None = None):
     registry = ToolRegistry(cfg.tools, confirm=confirm_fn or _confirm_terminal)
     mcp_manager = MCPManager()
     mcp_manager.set_registry(registry)
+    registry.set_mcp_manager(mcp_manager)
     if cfg.tools.enabled:
         try:
             mcp_manager.start_servers()

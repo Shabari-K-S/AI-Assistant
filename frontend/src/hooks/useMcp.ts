@@ -116,6 +116,43 @@ export function useMcp() {
     }
   }, [fetchMcp])
 
+  const updateServer = useCallback(async (
+    name: string,
+    updates: { command?: string; args?: string[]; env?: Record<string, string>; enabled?: boolean },
+  ): Promise<boolean> => {
+    soundFx.uplink()
+    try {
+      const res = await fetch(`${BRIDGE_URL}/mcp/update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, ...updates }),
+      })
+      const result = await res.json()
+      if (result.ok) {
+        soundFx.responseReady()
+        await fetchMcp(true)
+        return true
+      } else {
+        soundFx.error()
+        return false
+      }
+    } catch {
+      soundFx.error()
+      return false
+    }
+  }, [fetchMcp])
+
+  const searchEcosystem = useCallback(async (query: string) => {
+    if (!query.trim()) return null
+    try {
+      const res = await fetch(`${BRIDGE_URL}/mcp/search?q=${encodeURIComponent(query.trim())}`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return await res.json()
+    } catch {
+      return null
+    }
+  }, [])
+
   const deleteServer = useCallback(async (name: string): Promise<boolean> => {
     soundFx.click()
     try {
@@ -147,6 +184,9 @@ export function useMcp() {
     toggleServer,
     restartServer,
     saveServer,
+    updateServer,
     deleteServer,
+    searchEcosystem,
   }
 }
+

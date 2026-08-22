@@ -124,10 +124,34 @@ export interface McpCatalogItem {
 
 export interface McpStatusResponse {
   ok: boolean
+  config_path?: string
+  athena_home?: string
   servers: McpServerConfig[]
   catalog: McpCatalogItem[]
   total_tools: number
   active_servers: number
+}
+
+export interface McpDiscoveryResult {
+  ok: boolean
+  source?: string
+  id?: string
+  name?: string
+  description?: string
+  package?: string
+  command?: string
+  args?: string[]
+  env?: Record<string, string>
+  required_env?: string[]
+  required_args?: string[]
+  clarification_needed?: boolean
+  clarification_prompt?: string
+  error?: string
+  candidates?: Array<{
+    name: string
+    description: string
+    version: string
+  }>
 }
 
 export interface VaultNote {
