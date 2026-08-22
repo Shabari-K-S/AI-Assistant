@@ -271,7 +271,10 @@ class GeminiGemmaLLM(LLMEngine):
         if system_prompt:
             cfg["system_instruction"] = system_prompt
         if tools:
-            cfg["tools"] = tools
+            if isinstance(tools, list) and tools and isinstance(tools[0], dict) and "name" in tools[0] and "function_declarations" not in tools[0]:
+                cfg["tools"] = [{"function_declarations": tools}]
+            else:
+                cfg["tools"] = tools
         return types.GenerateContentConfig(**cfg)
 
     def _stream(
