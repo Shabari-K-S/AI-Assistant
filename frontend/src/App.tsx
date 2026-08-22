@@ -454,7 +454,7 @@ export default function App() {
 
               {/* Core Orb & Reactor Display */}
               <div className="flex flex-col items-center justify-center my-auto py-1 sm:py-2">
-                <CoreOrb size={isMobile ? 140 : 190} phase={activePhase} online={connected} />
+                <CoreOrb size={isMobile ? 165 : 220} phase={activePhase} online={connected} />
 
                 {/* Dynamic Phase Display */}
                 <div className="text-center mt-2 sm:mt-3">

@@ -1,6 +1,22 @@
 import { memo, useState, useEffect, useCallback, useRef } from 'react'
 import { soundFx } from '../lib/soundFx'
-import { Send, Terminal, Activity, CloudSun, GitBranch, Mic, Radio, BookOpen, Sparkles, ShieldCheck, Wifi, Flashlight, Volume2 } from 'lucide-react'
+import {
+  Send,
+  Terminal,
+  Activity,
+  CloudSun,
+  GitBranch,
+  Mic,
+  Radio,
+  BookOpen,
+  Sparkles,
+  ShieldCheck,
+  Wifi,
+  Flashlight,
+  Volume2,
+  X,
+  AudioWaveform,
+} from 'lucide-react'
 
 interface Props {
   onSend: (text: string) => Promise<boolean>
@@ -33,10 +49,10 @@ export const CommandDeck = memo(function CommandDeck({
 }: Props) {
   const [text, setText] = useState('')
   const [transmitting, setTransmitting] = useState(false)
-  const [isHolding, setIsHolding] = useState(false)
+  const [isRecording, setIsRecording] = useState(false)
   const recognitionRef = useRef<any>(null)
   const speechTextRef = useRef<string>('')
-  const isHoldingRef = useRef<boolean>(false)
+  const isRecordingRef = useRef<boolean>(false)
 
   // Clean up recognition instance on unmount
   useEffect(() => {
@@ -49,15 +65,15 @@ export const CommandDeck = memo(function CommandDeck({
     }
   }, [])
 
-  const startHoldVoice = useCallback(() => {
-    if (!connected || disabled || transmitting || isHoldingRef.current) return
+  const startTapVoice = useCallback(() => {
+    if (!connected || disabled || transmitting || isRecordingRef.current) return
 
     const SpeechRec =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
 
     if (!SpeechRec) {
       alert(
-        'Speech Recognition is not supported by this browser. Please use Google Chrome on Android or Safari on iOS.',
+        'Speech Recognition is not supported by this browser. Please use Google Chrome or Safari.',
       )
       return
     }
@@ -71,14 +87,14 @@ export const CommandDeck = memo(function CommandDeck({
 
     try {
       soundFx.click()
-      isHoldingRef.current = true
-      setIsHolding(true)
+      isRecordingRef.current = true
+      setIsRecording(true)
       onVoiceStateChange?.(true)
       speechTextRef.current = ''
       setText('')
 
       const rec = new SpeechRec()
-      rec.continuous = false
+      rec.continuous = true
       rec.interimResults = true
       rec.lang = 'en-US'
       rec.maxAlternatives = 1
@@ -106,15 +122,21 @@ export const CommandDeck = memo(function CommandDeck({
 
       rec.onerror = (event: any) => {
         if (event.error === 'not-allowed') {
-          alert('Microphone access blocked. Please allow microphone permissions in your mobile browser.')
+          alert('Microphone access blocked. Please allow microphone permissions in your browser.')
+          cancelTapVoice()
         } else if (event.error !== 'no-speech') {
           console.debug('Speech recognition event:', event.error)
         }
       }
 
       rec.onend = () => {
-        if (!isHoldingRef.current) {
-          setIsHolding(false)
+        // If continuous mode ended unexpectedly while still recording, restart
+        if (isRecordingRef.current) {
+          try {
+            rec.start()
+          } catch {}
+        } else {
+          setIsRecording(false)
           onVoiceStateChange?.(false)
         }
       }
@@ -123,16 +145,16 @@ export const CommandDeck = memo(function CommandDeck({
       rec.start()
     } catch (err) {
       console.error('Failed to start speech recognition:', err)
-      isHoldingRef.current = false
-      setIsHolding(false)
+      isRecordingRef.current = false
+      setIsRecording(false)
       onVoiceStateChange?.(false)
     }
   }, [connected, disabled, transmitting, onVoiceStateChange])
 
-  const stopHoldVoice = useCallback(async () => {
-    if (!isHoldingRef.current) return
-    isHoldingRef.current = false
-    setIsHolding(false)
+  const stopAndSendVoice = useCallback(async () => {
+    if (!isRecordingRef.current) return
+    isRecordingRef.current = false
+    setIsRecording(false)
     onVoiceStateChange?.(false)
 
     if (recognitionRef.current) {
@@ -146,53 +168,75 @@ export const CommandDeck = memo(function CommandDeck({
 
     const promptToSend = speechTextRef.current.trim() || text.trim()
     if (promptToSend && !transmitting && connected) {
+      soundFx.uplink()
       setTransmitting(true)
       await onSend(promptToSend)
       setText('')
       speechTextRef.current = ''
       setTransmitting(false)
+    } else {
+      soundFx.click()
+      setText('')
+      speechTextRef.current = ''
     }
   }, [text, transmitting, connected, onSend, onVoiceStateChange])
 
-  // Unified Pointer Handlers for Mobile Touch + Desktop Mouse
-  const handlePointerDown = (e: React.PointerEvent) => {
-    e.preventDefault()
-    startHoldVoice()
+  const cancelTapVoice = useCallback(() => {
+    isRecordingRef.current = false
+    setIsRecording(false)
+    onVoiceStateChange?.(false)
+    soundFx.click()
+
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort()
+      } catch {}
+      recognitionRef.current = null
+    }
+
+    setText('')
+    speechTextRef.current = ''
+  }, [onVoiceStateChange])
+
+  // Toggle Tap-to-Talk on button click
+  const handleToggleTapToTalk = () => {
+    if (isRecording) {
+      stopAndSendVoice()
+    } else {
+      startTapVoice()
+    }
   }
 
-  const handlePointerUp = (e: React.PointerEvent) => {
-    e.preventDefault()
-    stopHoldVoice()
-  }
-
-  // Desktop Spacebar Hotkey
+  // Spacebar Hotkey: Tap spacebar once to start, tap again to send
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const tag = (document.activeElement?.tagName || '').toLowerCase()
-      if (e.code === 'Space' && !e.repeat && tag !== 'input' && tag !== 'textarea') {
+      if (tag === 'input' || tag === 'textarea') return
+
+      if (e.code === 'Space' && !e.repeat) {
         e.preventDefault()
-        startHoldVoice()
+        if (isRecordingRef.current) {
+          stopAndSendVoice()
+        } else {
+          startTapVoice()
+        }
+      } else if (e.code === 'Escape' && isRecordingRef.current) {
+        e.preventDefault()
+        cancelTapVoice()
+      } else if (e.code === 'Enter' && isRecordingRef.current) {
+        e.preventDefault()
+        stopAndSendVoice()
       }
     }
-    const handleKeyUp = (e: KeyboardEvent) => {
-      const tag = (document.activeElement?.tagName || '').toLowerCase()
-      if (e.code === 'Space' && tag !== 'input' && tag !== 'textarea') {
-        e.preventDefault()
-        stopHoldVoice()
-      }
-    }
+
     window.addEventListener('keydown', handleKeyDown)
-    window.addEventListener('keyup', handleKeyUp)
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown)
-      window.removeEventListener('keyup', handleKeyUp)
-    }
-  }, [startHoldVoice, stopHoldVoice])
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [startTapVoice, stopAndSendVoice, cancelTapVoice])
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault()
-    if (isHolding) {
-      await stopHoldVoice()
+    if (isRecording) {
+      await stopAndSendVoice()
       return
     }
     const trimmed = text.trim()
@@ -208,44 +252,59 @@ export const CommandDeck = memo(function CommandDeck({
   const handleChipClick = async (query: string) => {
     soundFx.click()
     if (transmitting || disabled || !connected) return
+    if (isRecording) {
+      cancelTapVoice()
+    }
     setTransmitting(true)
     await onSend(query)
     setTransmitting(false)
   }
 
-  const isListening = phase === 'listening' || isHolding
+  const isListening = phase === 'listening' || isRecording
 
   return (
     <div className="w-full space-y-2.5">
-      {/* 1. Hold-To-Talk Voice Button (Unified Pointer Events) */}
+      {/* 1. Tap-To-Talk Voice Button with Visual Feedback */}
       <div className="flex items-center gap-2">
         <button
           type="button"
-          onPointerDown={handlePointerDown}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerUp}
-          onPointerLeave={isHolding ? handlePointerUp : undefined}
-          disabled={!connected || disabled}
-          className={`flex-1 py-2.5 sm:py-3 px-4 rounded font-display text-[11px] sm:text-xs tracking-[0.2em] sm:tracking-[0.25em] font-bold flex items-center justify-center gap-2 transition-all select-none touch-none active:scale-[0.98] ${
-            isHolding
+          onClick={handleToggleTapToTalk}
+          disabled={!connected || disabled || transmitting}
+          title={isRecording ? 'Tap to finish & transmit message (Space / Enter)' : 'Tap to start speaking (Space)'}
+          className={`flex-1 py-2.5 sm:py-3 px-4 rounded font-display text-[11px] sm:text-xs tracking-[0.2em] sm:tracking-[0.25em] font-bold flex items-center justify-center gap-2.5 transition-all select-none cursor-pointer active:scale-[0.98] ${
+            isRecording
               ? 'bg-[#41e6ff] text-[#03070b] shadow-[0_0_25px_#41e6ff] animate-pulse border border-[#7ef3ff]'
               : isListening
                 ? 'bg-[rgba(65,230,255,0.2)] text-[#41e6ff] border border-[#41e6ff] shadow-[0_0_10px_rgba(65,230,255,0.4)]'
                 : 'bg-[rgba(6,14,21,0.85)] text-[#7ef3ff] hover:text-[#e8fbff] border border-[rgba(65,230,255,0.3)] hover:border-[#41e6ff] hover:bg-[rgba(65,230,255,0.12)]'
           } disabled:opacity-40 disabled:pointer-events-none`}
         >
-          {isHolding ? (
+          {isRecording ? (
             <>
-              <Radio size={15} className="animate-spin text-[#03070b]" />
-              <span>RECORDING VOICE... RELEASE TO TRANSMIT</span>
+              <Radio size={16} className="text-[#03070b] animate-pulse" />
+              <span>RECORDING VOICE... TAP TO SEND ⏎</span>
+              <AudioWaveform size={14} className="text-[#03070b] animate-bounce ml-1" />
             </>
           ) : (
             <>
-              <Mic size={15} className="text-[#41e6ff]" />
-              <span>HOLD TO TALK // PUSH-TO-TALK</span>
+              <Mic size={16} className="text-[#41e6ff]" />
+              <span>TAP TO TALK // VOICE TRANSMIT</span>
             </>
           )}
         </button>
+
+        {/* Cancel Recording Button (Only visible while recording) */}
+        {isRecording && (
+          <button
+            type="button"
+            onClick={cancelTapVoice}
+            title="Cancel voice recording (Esc)"
+            className="px-3 py-2.5 sm:py-3 rounded bg-[rgba(255,93,93,0.15)] hover:bg-[rgba(255,93,93,0.3)] border border-[rgba(255,93,93,0.4)] text-[#ff7e7e] hover:text-white font-mono text-xs font-bold transition-all shadow-[0_0_8px_rgba(255,93,93,0.25)] flex items-center gap-1 shrink-0 cursor-pointer"
+          >
+            <X size={14} />
+            <span className="hidden xs:inline">CANCEL</span>
+          </button>
+        )}
       </div>
 
       {/* 2. Quick Action Chips */}
@@ -260,7 +319,7 @@ export const CommandDeck = memo(function CommandDeck({
               key={item.label}
               onClick={() => handleChipClick(item.query)}
               disabled={!connected || transmitting}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[10.5px] sm:text-[11px] font-mono tracking-wider text-[#7ef3ff] bg-[rgba(65,230,255,0.06)] hover:bg-[rgba(65,230,255,0.15)] border border-[rgba(65,230,255,0.22)] hover:border-[rgba(65,230,255,0.5)] rounded transition-all shrink-0 disabled:opacity-30 disabled:pointer-events-none active:scale-95 touch-manipulation"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[10.5px] sm:text-[11px] font-mono tracking-wider text-[#7ef3ff] bg-[rgba(65,230,255,0.06)] hover:bg-[rgba(65,230,255,0.15)] border border-[rgba(65,230,255,0.22)] hover:border-[rgba(65,230,255,0.5)] rounded transition-all shrink-0 disabled:opacity-30 disabled:pointer-events-none active:scale-95 touch-manipulation cursor-pointer"
             >
               <Icon size={10} className="text-[#41e6ff]" />
               <span>{item.label}</span>
@@ -280,15 +339,15 @@ export const CommandDeck = memo(function CommandDeck({
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder={
-            isHolding
-              ? 'Listening... release to send...'
+            isRecording
+              ? 'Listening... Speak now and tap button (or press Enter) to send...'
               : connected
-                ? 'Type command or message...'
+                ? 'Type command or tap voice button above...'
                 : 'Athena offline — run ./run.sh'
           }
           disabled={!connected || transmitting}
           className={`w-full pl-8 pr-28 sm:pr-32 py-2.5 font-mono text-xs tracking-wider bg-[rgba(6,14,21,0.85)] border ${
-            isHolding
+            isRecording
               ? 'border-[#41e6ff] shadow-[0_0_15px_rgba(65,230,255,0.35)] text-white'
               : 'border-[rgba(65,230,255,0.25)] text-[#e8fbff]'
           } focus:border-[#41e6ff] focus:ring-1 focus:ring-[#41e6ff] focus:outline-none rounded-lg placeholder-[#3e5c6d] shadow-[inset_0_0_12px_rgba(0,0,0,0.5)] transition-all disabled:opacity-40`}
@@ -297,7 +356,7 @@ export const CommandDeck = memo(function CommandDeck({
         <button
           type="submit"
           disabled={!connected || !text.trim() || transmitting}
-          className="absolute right-1.5 px-3 py-1.5 font-display text-[10px] tracking-[0.18em] text-[#041018] bg-[#41e6ff] hover:bg-[#7ef3ff] disabled:bg-[#1d4a5c] disabled:text-[#7da4b8] rounded font-semibold transition-all flex items-center gap-1.5 shadow-[0_0_10px_rgba(65,230,255,0.4)] disabled:shadow-none active:scale-95 touch-manipulation shrink-0"
+          className="absolute right-1.5 px-3 py-1.5 font-display text-[10px] tracking-[0.18em] text-[#041018] bg-[#41e6ff] hover:bg-[#7ef3ff] disabled:bg-[#1d4a5c] disabled:text-[#7da4b8] rounded font-semibold transition-all flex items-center gap-1.5 shadow-[0_0_10px_rgba(65,230,255,0.4)] disabled:shadow-none active:scale-95 touch-manipulation shrink-0 cursor-pointer"
         >
           <span>{transmitting ? 'SENDING' : 'TRANSMIT'}</span>
           <Send size={11} />
