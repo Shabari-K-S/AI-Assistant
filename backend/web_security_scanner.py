@@ -234,4 +234,29 @@ def run_full_vulnerability_scan(target_url: str) -> str:
         lines.append(f"   - **Payload Tested:** `{f['payload_tested']}`")
         lines.append(f"   - **Fix Recommendation:** {f['remediation']}")
 
-    return "\n".join(lines)
+    full_report = "\n".join(lines)
+
+    # Automatically archive scan report into Notes Vault
+    try:
+        from notes_mcp_server import _write_markdown_file, _rebuild_index, VAULT_DIR
+        sec_dir = VAULT_DIR / "security-reports"
+        sec_dir.mkdir(parents=True, exist_ok=True)
+        host_slug = re.sub(r"[^\w\-]", "_", urllib.parse.urlparse(raw_target).netloc or raw_target).strip("_")
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        report_file = sec_dir / f"scan_{host_slug}_{timestamp}.md"
+        frontmatter = {
+            "id": f"scan-{int(time.time() * 1000) % 1000000}",
+            "title": f"Security Assessment: {raw_target}",
+            "category": "security-reports",
+            "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "target": raw_target,
+            "severity": "Critical" if any(f.get("severity") == "Critical" for f in sqli_findings) else ("Moderate" if total_findings > 0 else "Clean"),
+            "entries_count": total_findings,
+            "tags": ["security-scan", "dast", "vulnerabilities", host_slug],
+        }
+        _write_markdown_file(report_file, frontmatter, full_report)
+        _rebuild_index()
+    except Exception:
+        pass
+
+    return full_report

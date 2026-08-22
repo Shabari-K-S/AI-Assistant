@@ -1114,7 +1114,10 @@ class ToolRegistry:
                     output_snippet=str(args.get("output_snippet", "")),
                 )
             elif act == "export":
-                return mgr.export_dossier()
+                return mgr.export_dossier(
+                    machine_name=str(args.get("machine_name", "")),
+                    target_ip=str(args.get("target_ip", "")),
+                )
             return mgr.get_status()
 
         self._register(

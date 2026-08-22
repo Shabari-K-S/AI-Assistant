@@ -389,6 +389,7 @@ class LabDossierManager:
                 note=f"Lab session initiated for target {self.active_machine} ({self.target_ip}) on {self.platform}.",
             )
         )
+        self._sync_to_vault()
         return f"🎯 **Lab Session Started:** Tracking **`{self.active_machine}`** (`{self.target_ip}`) on {self.platform}."
 
     def log_finding(
@@ -398,10 +399,10 @@ class LabDossierManager:
         command_used: str = "",
         output_snippet: str = "",
     ) -> str:
-        """Log a finding, command, or milestone in the active lab session."""
+        """Log a finding, command, or milestone in the active lab session and auto-sync to vault."""
         if not self.active_machine:
             # Auto-kickoff default session if none active
-            self.start_session("Unknown-Lab-Target", "127.0.0.1", "Lab Environment")
+            self.start_session("HTB-Lab-Target", "10.10.11.x", "Hack The Box")
 
         entry = LabEntry(
             timestamp=time.strftime("%H:%M:%S"),
@@ -411,12 +412,13 @@ class LabDossierManager:
             output_snippet=output_snippet.strip(),
         )
         self.entries.append(entry)
+        self._sync_to_vault()
         return f"📝 **Logged Finding ({entry.milestone}):** {note[:120]} (Total entries: {len(self.entries)})"
 
-    def export_dossier(self) -> str:
-        """Generate and save a publication-grade Markdown walkthrough in the Notes Vault."""
+    def _sync_to_vault(self) -> Path | None:
+        """Synchronize the active lab session state into a live Markdown Dossier in the Notes Vault."""
         if not self.active_machine:
-            return "❌ Error: No active lab session to export."
+            return None
 
         slug = re.sub(r"[^\w\-]", "-", self.active_machine.lower()).strip("-")
         DOSSIERS_DIR.mkdir(parents=True, exist_ok=True)
@@ -464,7 +466,7 @@ class LabDossierManager:
             "id": f"lab-{slug}",
             "title": f"Lab Dossier: {self.active_machine}",
             "category": "lab-dossiers",
-            "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "created_at": self.start_time or time.strftime("%Y-%m-%d %H:%M:%S"),
             "machine": self.active_machine,
             "target_ip": self.target_ip,
             "platform": self.platform,
@@ -472,26 +474,30 @@ class LabDossierManager:
             "tags": ["ctf", "lab-dossier", "hackthebox", slug],
         }
 
-        # Write frontmatter and markdown using standard vault writer
-        from notes_mcp_server import _write_markdown_file, _rebuild_index
-        _write_markdown_file(report_file, frontmatter, full_content)
-        _rebuild_index()
-
-        # Trigger live UI refresh via evbridge if bus is active
         try:
-            from evbridge import get_bus
-            bus = get_bus()
-            if bus:
-                bus.publish({"type": "notes_changed"})
-                bus.log("INFO", f"Lab Dossier exported to Vault: {self.active_machine}")
+            from notes_mcp_server import _write_markdown_file, _rebuild_index
+            _write_markdown_file(report_file, frontmatter, full_content)
+            _rebuild_index()
         except Exception:
             pass
+
+        return report_file
+
+    def export_dossier(self, machine_name: str = "", target_ip: str = "") -> str:
+        """Generate and save a publication-grade Markdown walkthrough in the Notes Vault."""
+        if not self.active_machine:
+            target_mach = machine_name.strip() or "HTB-Lab-Target"
+            target_addr = target_ip.strip() or "10.10.11.x"
+            self.start_session(target_mach, target_addr, "Hack The Box")
+
+        report_file = self._sync_to_vault()
+        filename = report_file.name if report_file else f"{self.active_machine}.md"
 
         return (
             f"🎉 **Lab Dossier Exported Successfully!**\n\n"
             f"- **Target:** `{self.active_machine}` (`{self.target_ip}`)\n"
             f"- **Entries Recorded:** `{len(self.entries)}`\n"
-            f"- **Saved to Notes Vault:** `{report_file.name}` (`data/notes/lab-dossiers/{slug}.md`)\n"
+            f"- **Saved to Notes Vault:** `{filename}` (`data/notes/lab-dossiers/{filename}`)\n"
         )
 
     def get_status(self) -> str:

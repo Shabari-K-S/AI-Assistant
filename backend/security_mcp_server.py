@@ -1253,7 +1253,10 @@ def handle_call_tool(params: dict[str, Any]) -> dict[str, Any]:
                 output_snippet=str(args.get("output_snippet", "")),
             )
         elif act == "export":
-            out = mgr.export_dossier()
+            out = mgr.export_dossier(
+                machine_name=str(args.get("machine_name", "")),
+                target_ip=str(args.get("target_ip", "")),
+            )
         else:
             out = mgr.get_status()
     elif name == "lab_vpn_status":

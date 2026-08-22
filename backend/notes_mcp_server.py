@@ -122,15 +122,15 @@ def _load_index(force: bool = False) -> dict[str, Any]:
             data = json.load(f)
 
         indexed_notes = data.get("notes", [])
-        md_files = [f for f in VAULT_DIR.glob("**/*.md") if f.name != "active_todos.md"]
+        all_md_files = list(VAULT_DIR.glob("**/*.md"))
 
         # Check if file count changed or index is empty
-        if len(md_files) != len(indexed_notes):
+        if len(all_md_files) != len(indexed_notes):
             return _rebuild_index()
 
         # Check if any .md file was modified after index was generated
         index_mtime = INDEX_FILE.stat().st_mtime
-        if any(f.stat().st_mtime > index_mtime for f in md_files):
+        if any(f.stat().st_mtime > index_mtime for f in all_md_files):
             return _rebuild_index()
 
         return data
@@ -145,6 +145,8 @@ def _rebuild_index() -> dict[str, Any]:
     mem_engine = get_memory_engine()
 
     notes: list[dict[str, Any]] = []
+
+    # Scan regular content notes
     for md_file in VAULT_DIR.glob("**/*.md"):
         if md_file.name == "active_todos.md":
             continue
@@ -182,6 +184,37 @@ def _rebuild_index() -> dict[str, Any]:
             "mtime": md_file.stat().st_mtime,
         })
 
+    # Include Active To-Do Checklist
+    if TODOS_FILE.exists():
+        try:
+            todo_content = TODOS_FILE.read_text(encoding="utf-8")
+            todo_mtime = TODOS_FILE.stat().st_mtime
+            lines = [line.strip() for line in todo_content.splitlines() if line.strip().startswith("- [")]
+            pending_count = sum(1 for line in lines if line.startswith("- [ ]"))
+            done_count = sum(1 for line in lines if line.startswith("- [x]") or line.startswith("- [X]"))
+            rel_path = str(TODOS_FILE.relative_to(DATA_DIR))
+            notes.append({
+                "id": "active-todos",
+                "title": "Active Tasks & To-Do Checklist",
+                "category": "todos",
+                "path": rel_path,
+                "created_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(todo_mtime)),
+                "updated_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(todo_mtime)),
+                "preview": f"Checklist with {pending_count} pending and {done_count} completed tasks.",
+                "tags": ["todos", "tasks", "checklist"],
+                "sources_count": None,
+                "model_used": None,
+                "machine": None,
+                "target_ip": None,
+                "platform": None,
+                "entries_count": len(lines),
+                "severity": None,
+                "target": None,
+                "mtime": todo_mtime,
+            })
+        except Exception:
+            pass
+
     # Sort notes by most recently modified / created first
     notes.sort(key=lambda n: n.get("mtime", 0), reverse=True)
     for n in notes:
@@ -194,12 +227,26 @@ def _rebuild_index() -> dict[str, Any]:
     }
     with open(INDEX_FILE, "w", encoding="utf-8") as f:
         json.dump(index_data, f, indent=2, ensure_ascii=False)
+
+    # Broadcast real-time update event to connected UI clients
+    try:
+        from evbridge import get_bus
+        bus = get_bus()
+        if bus:
+            bus.publish({"type": "notes_changed"})
+    except Exception:
+        pass
+
     return index_data
 
 
 def _find_note_file(target: str) -> tuple[Path | None, dict[str, Any] | None]:
     """Find a note file by ID, title, machine name, filename, or partial path."""
     target_clean = target.strip().lower()
+
+    if target_clean in ("active-todos", "active_todos", "active_todos.md", "todos", "notes/todos/active_todos.md") and TODOS_FILE.exists():
+        return TODOS_FILE, {"id": "active-todos", "title": "Active Tasks & To-Do Checklist", "category": "todos"}
+
     index_data = _load_index()
 
     for item in index_data.get("notes", []):
@@ -439,6 +486,7 @@ def handle_add_todo(args: dict[str, Any]) -> str:
     due_str = f" (due: {due_date})" if due_date else ""
     new_entry = f"- [ ] #{next_id} {task} [priority: {priority}]{due_str}\n"
     TODOS_FILE.write_text(raw.strip() + "\n" + new_entry, encoding="utf-8")
+    _rebuild_index()
 
     return f"To-Do Added to Vault:\n• Task #{next_id}: {task}\n• Priority: {priority}{due_str}\n• Saved in: notes/todos/active_todos.md"
 
@@ -487,6 +535,7 @@ def handle_complete_todo(args: dict[str, Any]) -> str:
 
     updated = re.sub(pattern, f"- [x] #{task_id}", raw)
     TODOS_FILE.write_text(updated, encoding="utf-8")
+    _rebuild_index()
     return f"Marked Task #{task_id} as completed in active_todos.md."
 
 
@@ -529,6 +578,7 @@ def handle_delete_todo(args: dict[str, Any]) -> str:
         return f"No matching task found to delete in active_todos.md (searched task_id={task_id}, keyword='{keyword}')."
 
     TODOS_FILE.write_text("\n".join(remaining).strip() + "\n", encoding="utf-8")
+    _rebuild_index()
     return f"Successfully deleted {deleted_count} task(s) from active_todos.md."
 
 
@@ -554,6 +604,7 @@ def handle_clear_completed_todos(args: dict[str, Any] | None = None) -> str:
         return "No completed tasks found to clear in active_todos.md (all tasks are still pending)."
 
     TODOS_FILE.write_text("\n".join(remaining).strip() + "\n", encoding="utf-8")
+    _rebuild_index()
     return f"Cleaned up to-do checklist: removed {removed_count} completed task(s) from active_todos.md."
 
 
@@ -585,6 +636,7 @@ def handle_deduplicate_todos(args: dict[str, Any] | None = None) -> str:
         return "No duplicate tasks found in active_todos.md."
 
     TODOS_FILE.write_text("\n".join(cleaned_lines).strip() + "\n", encoding="utf-8")
+    _rebuild_index()
     return f"Deduplicated to-do checklist: removed {dup_count} duplicate task(s)."
 
 
