@@ -315,19 +315,28 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json({"ok": False, "error": f"Note '{target}' not found in vault"}, 404)
                 return
             frontmatter, body = _parse_markdown_frontmatter(file_path)
-            title = frontmatter.get("title") or (meta.get("title") if meta else file_path.stem.replace("_", " ").title())
-            category = frontmatter.get("category") or file_path.parent.name
-            created_at = frontmatter.get("created_at") or time.strftime("%Y-%m-%d %H:%M:%S")
+            merged_meta = dict(meta or {})
+            merged_meta.update(frontmatter)
+            title = merged_meta.get("title") or file_path.stem.replace("_", " ").title()
+            category = merged_meta.get("category") or file_path.parent.name
+            created_at = merged_meta.get("created_at") or time.strftime("%Y-%m-%d %H:%M:%S")
             self._json({
                 "ok": True,
-                "id": frontmatter.get("id") or (meta.get("id") if meta else file_path.stem),
+                "id": merged_meta.get("id") or file_path.stem,
                 "title": title,
                 "category": category,
                 "path": str(file_path.relative_to(DATA_DIR)),
                 "created_at": created_at,
-                "tags": frontmatter.get("tags", []),
-                "sources_count": frontmatter.get("sources_count") or (meta.get("sources_count") if meta else None),
-                "model_used": frontmatter.get("model_used") or (meta.get("model_used") if meta else None),
+                "updated_at": merged_meta.get("updated_at"),
+                "tags": merged_meta.get("tags", []),
+                "sources_count": merged_meta.get("sources_count"),
+                "model_used": merged_meta.get("model_used"),
+                "machine": merged_meta.get("machine"),
+                "target_ip": merged_meta.get("target_ip"),
+                "platform": merged_meta.get("platform"),
+                "entries_count": merged_meta.get("entries_count"),
+                "severity": merged_meta.get("severity"),
+                "target": merged_meta.get("target"),
                 "content": body,
             }, 200)
             return
@@ -656,7 +665,14 @@ class _Handler(BaseHTTPRequestHandler):
 
             from notes_mcp_server import handle_add_note, handle_edit_note
             if target:
-                res_text = handle_edit_note({"note_id_or_title_or_path": target, "content": content, "append": append})
+                res_text = handle_edit_note({
+                    "note_id_or_title_or_path": target,
+                    "title": title,
+                    "content": content,
+                    "category": category,
+                    "tags": tags,
+                    "append": append,
+                })
             else:
                 res_text = handle_add_note({"title": title, "content": content, "category": category, "tags": tags})
 

@@ -111,14 +111,42 @@ export function useNotes() {
 
   useEffect(() => {
     fetchNotes()
+
+    let es: EventSource | null = null
+    try {
+      es = new EventSource(`${BRIDGE_URL}/stream`)
+      es.addEventListener('notes_changed', () => {
+        fetchNotes()
+      })
+    } catch {
+      /* ignore */
+    }
+
+    const handleFocus = () => {
+      fetchNotes()
+    }
+    window.addEventListener('focus', handleFocus)
+
+    return () => {
+      if (es) es.close()
+      window.removeEventListener('focus', handleFocus)
+    }
   }, [fetchNotes])
 
   const categories = useMemo(() => {
     const set = new Set<string>()
+    const preferredOrder = ['all', 'lab-dossiers', 'ctf', 'security-reports', 'deep-research', 'general', 'work', 'ideas', 'todos']
+    
     notes.forEach((n) => {
       if (n.category) set.add(n.category.toLowerCase())
     })
-    return ['all', ...Array.from(set).sort()]
+
+    const presentCategories = Array.from(set)
+    const sorted = [
+      ...preferredOrder.filter((c) => c === 'all' || presentCategories.includes(c)),
+      ...presentCategories.filter((c) => !preferredOrder.includes(c)).sort(),
+    ]
+    return sorted
   }, [notes])
 
   const filteredNotes = useMemo(() => {

@@ -39,7 +39,7 @@ def _slugify(text: str) -> str:
 def _init_vault() -> None:
     """Ensure vault category folders and initial notes exist."""
     VAULT_DIR.mkdir(parents=True, exist_ok=True)
-    for cat in ["general", "deep-research", "work", "ideas", "todos"]:
+    for cat in ["general", "deep-research", "lab-dossiers", "ctf", "security-reports", "work", "ideas", "todos"]:
         (VAULT_DIR / cat).mkdir(parents=True, exist_ok=True)
 
     # Create welcome note if no content notes exist yet
@@ -83,10 +83,13 @@ def _parse_markdown_frontmatter(file_path: Path) -> tuple[dict[str, Any], str]:
                         k, v = line.split(":", 1)
                         k = k.strip()
                         v = v.strip()
-                        if v.startswith("[") and v.endswith("]"):
-                            meta[k] = [x.strip().strip("'\"") for x in v[1:-1].split(",") if x.strip()]
-                        else:
-                            meta[k] = v.strip("'\"")
+                        try:
+                            meta[k] = json.loads(v)
+                        except Exception:
+                            if v.startswith("[") and v.endswith("]"):
+                                meta[k] = [x.strip().strip("'\"") for x in v[1:-1].split(",") if x.strip()]
+                            else:
+                                meta[k] = v.strip("'\"")
                 return meta, body
         return {}, raw.strip()
     except Exception:
@@ -94,31 +97,43 @@ def _parse_markdown_frontmatter(file_path: Path) -> tuple[dict[str, Any], str]:
 
 
 def _write_markdown_file(file_path: Path, frontmatter: dict[str, Any], body: str) -> None:
-    """Write markdown file with YAML frontmatter."""
+    """Write markdown file with clean YAML frontmatter."""
     file_path.parent.mkdir(parents=True, exist_ok=True)
     fm_lines = ["---"]
     for k, v in frontmatter.items():
-        if isinstance(v, list):
-            items_str = ", ".join(f'"{x}"' for x in v)
-            fm_lines.append(f"{k}: [{items_str}]")
+        if v is None:
+            continue
+        if isinstance(v, (list, dict, int, float, bool)):
+            fm_lines.append(f"{k}: {json.dumps(v)}")
         else:
-            fm_lines.append(f"{k}: {v}")
+            fm_lines.append(f"{k}: \"{v}\"")
     fm_lines.append("---")
     full_text = "\n".join(fm_lines) + "\n\n" + body.strip() + "\n"
     file_path.write_text(full_text, encoding="utf-8")
 
 
-def _load_index() -> dict[str, Any]:
-    """Load or rebuild notes index."""
+def _load_index(force: bool = False) -> dict[str, Any]:
+    """Load or rebuild notes index with automatic filesystem change detection."""
     _init_vault()
-    if not INDEX_FILE.exists():
+    if force or not INDEX_FILE.exists():
         return _rebuild_index()
     try:
         with open(INDEX_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
-            if not data.get("notes") and list(VAULT_DIR.glob("**/*.md")):
-                return _rebuild_index()
-            return data
+
+        indexed_notes = data.get("notes", [])
+        md_files = [f for f in VAULT_DIR.glob("**/*.md") if f.name != "active_todos.md"]
+
+        # Check if file count changed or index is empty
+        if len(md_files) != len(indexed_notes):
+            return _rebuild_index()
+
+        # Check if any .md file was modified after index was generated
+        index_mtime = INDEX_FILE.stat().st_mtime
+        if any(f.stat().st_mtime > index_mtime for f in md_files):
+            return _rebuild_index()
+
+        return data
     except Exception:
         return _rebuild_index()
 
@@ -135,7 +150,7 @@ def _rebuild_index() -> dict[str, Any]:
             continue
         meta, body = _parse_markdown_frontmatter(md_file)
         rel_path = str(md_file.relative_to(DATA_DIR))
-        cat = md_file.parent.name
+        cat = meta.get("category") or md_file.parent.name
         title = meta.get("title") or md_file.stem.replace("_", " ").title()
         note_id = meta.get("id") or f"note-{int(md_file.stat().st_mtime * 1000) % 1000000}"
         created_at = meta.get("created_at") or time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(md_file.stat().st_ctime))
@@ -144,7 +159,7 @@ def _rebuild_index() -> dict[str, Any]:
         # Sync into vector search engine
         try:
             mem_engine.index_vault_file(rel_path, meta, body)
-        except Exception as exc:
+        except Exception:
             pass
 
         notes.append({
@@ -153,11 +168,24 @@ def _rebuild_index() -> dict[str, Any]:
             "category": cat,
             "path": rel_path,
             "created_at": created_at,
+            "updated_at": meta.get("updated_at"),
             "preview": preview,
             "tags": meta.get("tags", []),
             "sources_count": meta.get("sources_count"),
             "model_used": meta.get("model_used"),
+            "machine": meta.get("machine"),
+            "target_ip": meta.get("target_ip"),
+            "platform": meta.get("platform"),
+            "entries_count": meta.get("entries_count"),
+            "severity": meta.get("severity"),
+            "target": meta.get("target"),
+            "mtime": md_file.stat().st_mtime,
         })
+
+    # Sort notes by most recently modified / created first
+    notes.sort(key=lambda n: n.get("mtime", 0), reverse=True)
+    for n in notes:
+        n.pop("mtime", None)
 
     index_data = {
         "updated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -170,25 +198,36 @@ def _rebuild_index() -> dict[str, Any]:
 
 
 def _find_note_file(target: str) -> tuple[Path | None, dict[str, Any] | None]:
-    """Find a note file by ID, title, filename, or partial path."""
+    """Find a note file by ID, title, machine name, filename, or partial path."""
     target_clean = target.strip().lower()
     index_data = _load_index()
 
     for item in index_data.get("notes", []):
+        note_id = str(item.get("id") or "").lower()
+        title = str(item.get("title") or "").lower()
+        machine = str(item.get("machine") or "").lower()
+        rel_path = str(item.get("path") or "").lower()
+        stem = Path(rel_path).stem.lower()
+        fname = Path(rel_path).name.lower()
+
         if (
-            item.get("id", "").lower() == target_clean
-            or item.get("title", "").lower() == target_clean
-            or item.get("path", "").lower().endswith(target_clean)
-            or Path(item.get("path", "")).stem.lower() == target_clean
+            note_id == target_clean
+            or title == target_clean
+            or machine == target_clean
+            or rel_path == target_clean
+            or rel_path.endswith(target_clean)
+            or stem == target_clean
+            or fname == target_clean
         ):
             full_path = DATA_DIR / item["path"]
             if full_path.exists():
                 return full_path, item
 
-    # Direct filesystem check
+    # Direct filesystem fallback
     for md_file in VAULT_DIR.glob("**/*.md"):
         if md_file.stem.lower() == target_clean or md_file.name.lower() == target_clean:
-            return md_file, None
+            meta, _ = _parse_markdown_frontmatter(md_file)
+            return md_file, meta
 
     return None, None
 
@@ -268,27 +307,45 @@ def handle_read_note(args: dict[str, Any]) -> str:
 
 
 def handle_edit_note(args: dict[str, Any]) -> str:
-    target = str(args.get("note_id_or_title_or_path", "")).strip()
+    target = str(args.get("note_id_or_title_or_path", "") or args.get("target", "")).strip()
     content = str(args.get("content", "")).strip()
     append = bool(args.get("append", False))
+    title = str(args.get("title", "")).strip()
+    category = str(args.get("category", "")).strip().lower()
+    tags = args.get("tags")
 
     if not target:
         return "Error: note_id_or_title_or_path is required."
-    if not content:
-        return "Error: content is required for editing."
+    if not content and not title and not category and tags is None:
+        return "Error: content, title, or category is required for editing."
 
     file_path, meta = _find_note_file(target)
     if not file_path or not file_path.exists():
         return f"Error: Note '{target}' not found to edit."
 
     frontmatter, existing_body = _parse_markdown_frontmatter(file_path)
-    if append:
-        new_body = existing_body + "\n\n" + content
+    new_body = (existing_body + "\n\n" + content) if append else (content if content else existing_body)
+
+    if title:
+        frontmatter["title"] = title
+    if tags is not None:
+        if isinstance(tags, str):
+            tags = [t.strip() for t in tags.split(",") if t.strip()]
+        frontmatter["tags"] = tags
+
+    if category and category != frontmatter.get("category", file_path.parent.name):
+        frontmatter["category"] = category
+        target_dir = VAULT_DIR / category
+        target_dir.mkdir(parents=True, exist_ok=True)
+        new_file_path = target_dir / file_path.name
+        _write_markdown_file(new_file_path, frontmatter, new_body)
+        if new_file_path != file_path and file_path.exists():
+            file_path.unlink()
+        file_path = new_file_path
     else:
-        new_body = content
+        _write_markdown_file(file_path, frontmatter, new_body)
 
     frontmatter["updated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
-    _write_markdown_file(file_path, frontmatter, new_body)
     _rebuild_index()
 
     action = "Appended content to" if append else "Updated"

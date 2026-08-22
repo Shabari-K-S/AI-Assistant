@@ -472,16 +472,20 @@ class LabDossierManager:
             "tags": ["ctf", "lab-dossier", "hackthebox", slug],
         }
 
-        # Write frontmatter and markdown
-        fm_yaml = "---\n"
-        for k, v in frontmatter.items():
-            if isinstance(v, list):
-                fm_yaml += f"{k}: {json.dumps(v)}\n"
-            else:
-                fm_yaml += f"{k}: {json.dumps(v)}\n"
-        fm_yaml += "---\n\n"
+        # Write frontmatter and markdown using standard vault writer
+        from notes_mcp_server import _write_markdown_file, _rebuild_index
+        _write_markdown_file(report_file, frontmatter, full_content)
+        _rebuild_index()
 
-        report_file.write_text(fm_yaml + full_content, encoding="utf-8")
+        # Trigger live UI refresh via evbridge if bus is active
+        try:
+            from evbridge import get_bus
+            bus = get_bus()
+            if bus:
+                bus.publish({"type": "notes_changed"})
+                bus.log("INFO", f"Lab Dossier exported to Vault: {self.active_machine}")
+        except Exception:
+            pass
 
         return (
             f"🎉 **Lab Dossier Exported Successfully!**\n\n"

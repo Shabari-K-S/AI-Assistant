@@ -23,37 +23,70 @@ interface Props {
   onSendPrompt: (prompt: string) => Promise<boolean> | Promise<void> | void
 }
 
-// Category color mapping
-const CATEGORY_COLORS: Record<string, { bg: string; text: string; border: string; glow: string }> = {
+// Category color mapping with custom cyber icons & glowing neon borders
+const CATEGORY_COLORS: Record<string, { bg: string; text: string; border: string; glow: string; icon: string }> = {
+  'lab-dossiers': {
+    bg: 'bg-[rgba(255,51,102,0.16)]',
+    text: 'text-[#ff3366]',
+    border: 'border-[rgba(255,51,102,0.45)]',
+    glow: 'shadow-[0_0_10px_rgba(255,51,102,0.35)]',
+    icon: '🎯',
+  },
+  ctf: {
+    bg: 'bg-[rgba(255,85,85,0.16)]',
+    text: 'text-[#ff5555]',
+    border: 'border-[rgba(255,85,85,0.45)]',
+    glow: 'shadow-[0_0_10px_rgba(255,85,85,0.35)]',
+    icon: '🚩',
+  },
+  'security-reports': {
+    bg: 'bg-[rgba(255,153,0,0.16)]',
+    text: 'text-[#ff9900]',
+    border: 'border-[rgba(255,153,0,0.45)]',
+    glow: 'shadow-[0_0_10px_rgba(255,153,0,0.35)]',
+    icon: '🛡️',
+  },
+  hackthebox: {
+    bg: 'bg-[rgba(46,229,157,0.16)]',
+    text: 'text-[#2ee59d]',
+    border: 'border-[rgba(46,229,157,0.45)]',
+    glow: 'shadow-[0_0_10px_rgba(46,229,157,0.35)]',
+    icon: '🟩',
+  },
   'deep-research': {
     bg: 'bg-[rgba(186,104,255,0.15)]',
     text: 'text-[#ba68ff]',
     border: 'border-[rgba(186,104,255,0.4)]',
     glow: 'shadow-[0_0_8px_rgba(186,104,255,0.3)]',
+    icon: '🔬',
   },
   general: {
     bg: 'bg-[rgba(65,230,255,0.12)]',
     text: 'text-[#41e6ff]',
     border: 'border-[rgba(65,230,255,0.3)]',
     glow: 'shadow-[0_0_8px_rgba(65,230,255,0.2)]',
+    icon: '📄',
   },
   work: {
     bg: 'bg-[rgba(255,194,75,0.15)]',
     text: 'text-[#ffc24b]',
     border: 'border-[rgba(255,194,75,0.4)]',
     glow: 'shadow-[0_0_8px_rgba(255,194,75,0.25)]',
+    icon: '⚡',
   },
   ideas: {
     bg: 'bg-[rgba(77,255,145,0.15)]',
     text: 'text-[#4dff91]',
     border: 'border-[rgba(77,255,145,0.4)]',
     glow: 'shadow-[0_0_8px_rgba(77,255,145,0.25)]',
+    icon: '💡',
   },
   todos: {
     bg: 'bg-[rgba(255,93,93,0.15)]',
     text: 'text-[#ff5d5d]',
     border: 'border-[rgba(255,93,93,0.4)]',
     glow: 'shadow-[0_0_8px_rgba(255,93,93,0.25)]',
+    icon: '✅',
   },
 }
 
@@ -65,6 +98,7 @@ function getCategoryStyle(cat?: string) {
       text: 'text-[#41e6ff]',
       border: 'border-[rgba(65,230,255,0.25)]',
       glow: '',
+      icon: '📝',
     }
   )
 }
@@ -654,11 +688,14 @@ export function NotesVaultPanel({ onSendPrompt }: Props) {
                 onChange={(e) => setFormCategory(e.target.value)}
                 className="w-full px-3 py-1.5 rounded-lg bg-[rgba(10,24,36,0.8)] border border-[rgba(65,230,255,0.25)] text-xs text-[#e8fbff] focus:outline-none focus:border-[#41e6ff] font-mono"
               >
-                <option value="general">GENERAL</option>
-                <option value="deep-research">DEEP-RESEARCH</option>
-                <option value="work">WORK</option>
-                <option value="ideas">IDEAS</option>
-                <option value="todos">TODOS</option>
+                <option value="general">📄 GENERAL</option>
+                <option value="lab-dossiers">🎯 LAB-DOSSIERS (HTB / CTF)</option>
+                <option value="ctf">🚩 CTF WRITEUPS & CHEATSHEETS</option>
+                <option value="security-reports">🛡️ SECURITY REPORTS</option>
+                <option value="deep-research">🔬 DEEP-RESEARCH</option>
+                <option value="work">⚡ WORK</option>
+                <option value="ideas">💡 IDEAS</option>
+                <option value="todos">✅ TODOS</option>
               </select>
             </div>
           </div>
@@ -670,7 +707,7 @@ export function NotesVaultPanel({ onSendPrompt }: Props) {
               type="text"
               value={formTags}
               onChange={(e) => setFormTags(e.target.value)}
-              placeholder="e.g. quantum, batteries, research"
+              placeholder="e.g. ctf, hackthebox, nmap, privesc"
               className="w-full px-3 py-1.5 rounded-lg bg-[rgba(10,24,36,0.8)] border border-[rgba(65,230,255,0.25)] text-xs text-[#e8fbff] focus:outline-none focus:border-[#41e6ff] font-mono"
             />
           </div>
@@ -690,6 +727,8 @@ export function NotesVaultPanel({ onSendPrompt }: Props) {
     }
 
     if (selectedNote) {
+      const catStyle = getCategoryStyle(selectedNote.category)
+
       return (
         <div className="flex-1 flex flex-col h-full min-h-0">
           {/* Reader Header Toolbar */}
@@ -707,14 +746,10 @@ export function NotesVaultPanel({ onSendPrompt }: Props) {
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <span
-                    className={`font-mono text-[9px] px-2 py-0.5 rounded border uppercase tracking-wider ${
-                      getCategoryStyle(selectedNote.category).bg
-                    } ${getCategoryStyle(selectedNote.category).text} ${
-                      getCategoryStyle(selectedNote.category).border
-                    }`}
+                    className={`font-mono text-[9px] px-2 py-0.5 rounded border uppercase tracking-wider flex items-center gap-1 ${catStyle.bg} ${catStyle.text} ${catStyle.border} ${catStyle.glow}`}
                   >
-                    {selectedNote.category?.toLowerCase() === 'deep-research' ? '🔬 ' : ''}
-                    {selectedNote.category?.toUpperCase() || 'GENERAL'}
+                    <span>{catStyle.icon}</span>
+                    <span>{selectedNote.category?.toUpperCase() || 'GENERAL'}</span>
                   </span>
                   <span className="font-mono text-[10px] text-[#7da4b8] flex items-center gap-1">
                     <Calendar size={11} />
@@ -723,6 +758,36 @@ export function NotesVaultPanel({ onSendPrompt }: Props) {
                   {selectedNote.category?.toLowerCase() === 'deep-research' && (
                     <span className="font-mono text-[9px] px-1.5 py-0.5 rounded bg-[rgba(186,104,255,0.15)] text-[#ba68ff] border border-[rgba(186,104,255,0.35)] shadow-[0_0_6px_rgba(186,104,255,0.2)]">
                       COLLEGE PROJECT PAPER
+                    </span>
+                  )}
+                  {selectedNote.machine && (
+                    <span className="font-mono text-[9px] px-1.5 py-0.5 rounded bg-[rgba(255,51,102,0.18)] text-[#ff3366] border border-[rgba(255,51,102,0.4)] shadow-[0_0_6px_rgba(255,51,102,0.25)] font-bold">
+                      🎯 MACHINE: {selectedNote.machine}
+                    </span>
+                  )}
+                  {selectedNote.target_ip && (
+                    <span className="font-mono text-[9px] px-1.5 py-0.5 rounded bg-[rgba(99,102,241,0.18)] text-[#818cf8] border border-[rgba(99,102,241,0.4)]">
+                      🌐 IP: {selectedNote.target_ip}
+                    </span>
+                  )}
+                  {selectedNote.platform && (
+                    <span className="font-mono text-[9px] px-1.5 py-0.5 rounded bg-[rgba(46,229,157,0.15)] text-[#2ee59d] border border-[rgba(46,229,157,0.35)]">
+                      🏢 {selectedNote.platform.toUpperCase()}
+                    </span>
+                  )}
+                  {selectedNote.entries_count !== undefined && (
+                    <span className="font-mono text-[9px] px-1.5 py-0.5 rounded bg-[rgba(255,194,75,0.15)] text-[#ffc24b] border border-[rgba(255,194,75,0.35)]">
+                      📋 {selectedNote.entries_count} MILESTONES
+                    </span>
+                  )}
+                  {selectedNote.severity && (
+                    <span className="font-mono text-[9px] px-1.5 py-0.5 rounded bg-[rgba(255,153,0,0.18)] text-[#ff9900] border border-[rgba(255,153,0,0.4)] font-bold">
+                      🛡️ SEVERITY: {selectedNote.severity.toUpperCase()}
+                    </span>
+                  )}
+                  {selectedNote.target && !selectedNote.machine && (
+                    <span className="font-mono text-[9px] px-1.5 py-0.5 rounded bg-[rgba(65,230,255,0.12)] text-[#41e6ff] border border-[rgba(65,230,255,0.3)]">
+                      🎯 TARGET: {selectedNote.target}
                     </span>
                   )}
                   {selectedNote.sources_count && (
@@ -880,6 +945,7 @@ export function NotesVaultPanel({ onSendPrompt }: Props) {
           {categories.map((cat) => {
             const isSelected = selectedCategory === cat
             const isDeepResearch = cat === 'deep-research'
+            const style = getCategoryStyle(cat)
 
             return (
               <button
@@ -890,12 +956,11 @@ export function NotesVaultPanel({ onSendPrompt }: Props) {
                 }}
                 className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-md font-mono text-[10px] sm:text-[11px] tracking-wider transition-all whitespace-nowrap flex items-center gap-1 ${
                   isSelected
-                    ? isDeepResearch
-                      ? 'bg-[rgba(186,104,255,0.25)] border border-[#ba68ff] text-[#ba68ff] shadow-[0_0_10px_rgba(186,104,255,0.4)] font-bold'
-                      : 'bg-[rgba(65,230,255,0.2)] border border-[#41e6ff] text-[#41e6ff] shadow-[0_0_10px_rgba(65,230,255,0.3)] font-bold'
+                    ? `${style.bg} border ${style.border} ${style.text} ${style.glow} font-bold`
                     : 'bg-[rgba(65,230,255,0.05)] border border-[rgba(65,230,255,0.15)] text-[#7da4b8] hover:text-[#e8fbff]'
                 }`}
               >
+                {cat === 'all' ? <span>🗄️</span> : <span>{style.icon}</span>}
                 {isDeepResearch && <Sparkles size={10} className="text-[#ba68ff]" />}
                 <span>{cat.toUpperCase()}</span>
               </button>
@@ -910,7 +975,7 @@ export function NotesVaultPanel({ onSendPrompt }: Props) {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search notes, tags..."
+            placeholder="Search notes, CTF machines, tags..."
             className="w-full pl-7 pr-6 py-1 rounded-md bg-[rgba(6,14,21,0.8)] border border-[rgba(65,230,255,0.2)] text-[11px] text-[#e8fbff] placeholder-[#7da4b8]/50 focus:outline-none focus:border-[#41e6ff] font-mono"
           />
           {searchQuery && (
@@ -950,7 +1015,6 @@ export function NotesVaultPanel({ onSendPrompt }: Props) {
           {notes.map((note) => {
             const isSelected = selectedNote?.id === note.id || selectedNote?.path === note.path
             const style = getCategoryStyle(note.category)
-            const isDeep = note.category?.toLowerCase() === 'deep-research'
 
             return (
               <div
@@ -968,13 +1032,34 @@ export function NotesVaultPanel({ onSendPrompt }: Props) {
                 {/* Note Header Badges */}
                 <div className="flex items-center justify-between gap-1 mb-1">
                   <span
-                    className={`font-mono text-[8.5px] px-1.5 py-0.5 rounded border uppercase tracking-wider ${style.bg} ${style.text} ${style.border}`}
+                    className={`font-mono text-[8.5px] px-1.5 py-0.5 rounded border uppercase tracking-wider flex items-center gap-1 ${style.bg} ${style.text} ${style.border}`}
                   >
-                    {isDeep ? '🔬 ' : ''}
-                    {note.category || 'general'}
+                    <span>{style.icon}</span>
+                    <span>{note.category || 'general'}</span>
                   </span>
                   <span className="font-mono text-[9px] text-[#7da4b8]">{note.created_at?.split(' ')[0] || ''}</span>
                 </div>
+
+                {/* Extra CTF / Lab / Security Badges in note card */}
+                {(note.machine || note.target_ip || note.severity) && (
+                  <div className="flex items-center gap-1 flex-wrap my-1">
+                    {note.machine && (
+                      <span className="font-mono text-[8px] px-1 py-0.2 rounded bg-[rgba(255,51,102,0.15)] text-[#ff3366] border border-[rgba(255,51,102,0.3)] font-bold">
+                        🎯 {note.machine}
+                      </span>
+                    )}
+                    {note.target_ip && (
+                      <span className="font-mono text-[8px] px-1 py-0.2 rounded bg-[rgba(99,102,241,0.15)] text-[#818cf8] border border-[rgba(99,102,241,0.3)]">
+                        {note.target_ip}
+                      </span>
+                    )}
+                    {note.severity && (
+                      <span className="font-mono text-[8px] px-1 py-0.2 rounded bg-[rgba(255,153,0,0.15)] text-[#ff9900] border border-[rgba(255,153,0,0.3)] font-bold">
+                        {note.severity.toUpperCase()} RISK
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {/* Title */}
                 <h4
@@ -993,7 +1078,7 @@ export function NotesVaultPanel({ onSendPrompt }: Props) {
                 {/* Tags */}
                 {note.tags && note.tags.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-1.5">
-                    {note.tags.slice(0, 3).map((tag, tIdx) => (
+                    {note.tags.slice(0, 4).map((tag, tIdx) => (
                       <span
                         key={tIdx}
                         className="font-mono text-[8.5px] px-1 rounded bg-[rgba(65,230,255,0.06)] text-[#7da4b8] border border-[rgba(65,230,255,0.15)]"

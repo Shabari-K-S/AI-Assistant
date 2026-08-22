@@ -160,10 +160,17 @@ export interface VaultNote {
   category: string
   path: string
   created_at: string
+  updated_at?: string
   preview: string
   tags?: string[]
   sources_count?: number
   model_used?: string
+  machine?: string
+  target_ip?: string
+  platform?: string
+  entries_count?: number
+  severity?: string
+  target?: string
 }
 
 export interface VaultIndexResponse {
@@ -183,6 +190,12 @@ export interface VaultNoteDetail {
   tags?: string[]
   sources_count?: number
   model_used?: string
+  machine?: string
+  target_ip?: string
+  platform?: string
+  entries_count?: number
+  severity?: string
+  target?: string
   content: string
 }
 
