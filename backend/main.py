@@ -85,9 +85,13 @@ def _start_audio(cfg, on_score=None):
             trigger = WakeWordTrigger(cfg.audio, on_score=on_score)
             mic = MicCapture(cfg.audio, sink=trigger.on_audio)
         mic.start()
-    except (OSError, RuntimeError) as exc:
-        print(f"audio error: {exc}", file=sys.stderr)
-        print("run `python main.py --list-devices` to inspect your audio setup", file=sys.stderr)
+    except Exception as exc:
+        log.warning(
+            "Local audio microphone unavailable (%s). Degrading to Web HUD / UI voice mode.",
+            exc,
+        )
+        print(f"\n⚠️  Local microphone unavailable ({exc}).", file=sys.stderr)
+        print("💡 Running in Web HUD mode: Access http://localhost:2026 or http://localhost:2027 to speak via browser microphone / Tap-to-Talk.\n", file=sys.stderr)
         return None, None
     return mic, trigger
 
@@ -317,8 +321,11 @@ def _speak(tts, text: str, bus=None, muted: bool = False, mic=None, trigger=None
         if bus is not None:
             bus.log("INFO", "speaking…" if not muted else "speaking… (muted)")
         if not muted:
-            sd.play(audio, 16000)
-            sd.wait()
+            try:
+                sd.play(audio, 16000)
+                sd.wait()
+            except Exception as e:
+                log.debug("Local audio playback unavailable: %s", e)
             if not _speech_state["interrupted"]:
                 time.sleep(0.35)
 
@@ -584,10 +591,15 @@ def _run_assistant(cfg, once: bool, text: str | None) -> int:
                 on_score=lambda _ts, score, noise: bus.set(wake_score=score, noise_floor=noise),
             )
             if mic is None:
-                return 2
-            stt = STTEngine(cfg.stt)
-            prompt_str = _PROMPT_PTT if cfg.audio.trigger == "ptt" else _PROMPT_WAKE
-            print(prompt_str, flush=True)
+                log.info("Running in pure Web HUD mode (browser audio & prompt deck).")
+                print(
+                    "Web HUD Mode Active — speak or type via http://localhost:2026 (Ctrl+C to quit)...",
+                    flush=True,
+                )
+            else:
+                stt = STTEngine(cfg.stt)
+                prompt_str = _PROMPT_PTT if cfg.audio.trigger == "ptt" else _PROMPT_WAKE
+                print(prompt_str, flush=True)
     try:
         tts = build_tts_engine(cfg.tts)
         log.info("tts provider: %s", cfg.tts.provider)

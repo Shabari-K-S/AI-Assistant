@@ -658,24 +658,39 @@ class MicCapture:
                 except Exception:  # noqa: BLE001 - a sink bug must never kill capture
                     log.exception("capture sink failed")
 
-        self._stream = sd.InputStream(
-            samplerate=cfg.sample_rate,
-            channels=cfg.channels,
-            dtype="float32",
-            blocksize=cfg.blocksize,
-            device=device,
-            callback=callback,
-        )
-        self._stream.start()
-        log.debug(
-            "capture started: %d Hz, %d ch, device=%r",
-            cfg.sample_rate, cfg.channels, device,
-        )
+        try:
+            self._stream = sd.InputStream(
+                samplerate=cfg.sample_rate,
+                channels=cfg.channels,
+                dtype="float32",
+                blocksize=cfg.blocksize,
+                device=device,
+                callback=callback,
+            )
+            self._stream.start()
+            log.debug(
+                "capture started: %d Hz, %d ch, device=%r",
+                cfg.sample_rate, cfg.channels, device,
+            )
+        except Exception as exc:
+            if self._stream is not None:
+                try:
+                    self._stream.close()
+                except Exception:
+                    pass
+                self._stream = None
+            raise
 
     def stop(self) -> None:
         if self._stream is not None:
-            self._stream.stop()
-            self._stream.close()
+            try:
+                self._stream.stop()
+            except Exception:
+                pass
+            try:
+                self._stream.close()
+            except Exception:
+                pass
             self._stream = None
 
     def flush(self, until_monotonic: float | None = None) -> None:
