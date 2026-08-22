@@ -368,9 +368,18 @@ export const CommandDeck = memo(function CommandDeck({
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
       setSelectedSlashIndex((prev) => (prev - 1 + filteredCommands.length) % filteredCommands.length)
-    } else if (e.key === 'Tab' || (e.key === 'Enter' && filteredCommands[selectedSlashIndex])) {
-      e.preventDefault()
-      selectSlashCommand(filteredCommands[selectedSlashIndex])
+    } else if (e.key === 'Tab') {
+      if (filteredCommands[selectedSlashIndex]) {
+        e.preventDefault()
+        selectSlashCommand(filteredCommands[selectedSlashIndex])
+      }
+    } else if (e.key === 'Enter') {
+      if (text.trim() === '/' && filteredCommands[selectedSlashIndex]) {
+        e.preventDefault()
+        selectSlashCommand(filteredCommands[selectedSlashIndex])
+      } else {
+        setSlashMenuOpen(false)
+      }
     } else if (e.key === 'Escape') {
       setSlashMenuOpen(false)
     }

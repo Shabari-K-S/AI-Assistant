@@ -30,8 +30,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = Path(__file__).resolve().parent / "data"
 AGENT_TASKS_FILE = DATA_DIR / "agent_tasks.json"
 
-WORKSPACE_AGENTS_DIR = PROJECT_ROOT / ".athena" / "agents"
-GLOBAL_AGENTS_DIR = Path.home() / ".athena" / "agents"
+ATHENA_HOME_DIR = Path.home() / ".athena"
+AGENTS_DIR = ATHENA_HOME_DIR / "agents"
 
 
 @dataclass
@@ -62,7 +62,7 @@ class AgentJob:
     error: str = ""
 
 
-# Default agent profiles initialized in .athena/agents/
+# Default agent profiles initialized in ~/.athena/agents/
 DEFAULT_AGENT_PROFILES: list[dict[str, Any]] = [
     {
         "name": "recon_specialist",
@@ -112,7 +112,7 @@ class MultiAgentDispatcher:
 
     def __init__(self, bus: Any = None) -> None:
         self.bus = bus
-        self.agents_dir = WORKSPACE_AGENTS_DIR
+        self.agents_dir = AGENTS_DIR
         self._profiles: Dict[str, AthenaAgentProfile] = {}
         self._jobs: Dict[str, AgentJob] = {}
         self._threads: Dict[str, threading.Thread] = {}
@@ -125,7 +125,7 @@ class MultiAgentDispatcher:
         self.bus = bus
 
     def _init_agents_directory(self) -> None:
-        """Ensure .athena/agents exists and pre-populate default profiles."""
+        """Ensure ~/.athena/agents exists and pre-populate default profiles."""
         try:
             self.agents_dir.mkdir(parents=True, exist_ok=True)
             existing = list(self.agents_dir.glob("*.json"))
@@ -144,33 +144,29 @@ class MultiAgentDispatcher:
             log.warning("Agent directory initialization error: %s", exc)
 
     def discover_agents(self) -> list[AthenaAgentProfile]:
-        """Scan .athena/agents/ and load all agent profiles."""
+        """Scan ~/.athena/agents/ and load all agent profiles."""
         with self._lock:
             self._profiles.clear()
-            paths = [self.agents_dir]
-            if GLOBAL_AGENTS_DIR.exists() and GLOBAL_AGENTS_DIR != WORKSPACE_AGENTS_DIR:
-                paths.append(GLOBAL_AGENTS_DIR)
+            if not self.agents_dir.exists():
+                return []
 
-            for base_dir in paths:
-                if not base_dir.exists():
-                    continue
-                for f in base_dir.glob("*.json"):
-                    try:
-                        data = json.loads(f.read_text(encoding="utf-8"))
-                        name = data.get("name") or f.stem
-                        prof = AthenaAgentProfile(
-                            name=name,
-                            role=data.get("role", "Specialized Sub-Agent"),
-                            description=data.get("description", ""),
-                            system_prompt=data.get("system_prompt", ""),
-                            allowed_tools=data.get("allowed_tools", []),
-                            category=data.get("category", "general"),
-                            created_at=data.get("created_at", ""),
-                            is_builtin=data.get("is_builtin", False),
-                        )
-                        self._profiles[name] = prof
-                    except Exception as err:
-                        log.debug("Failed parsing agent profile %s: %s", f, err)
+            for f in self.agents_dir.glob("*.json"):
+                try:
+                    data = json.loads(f.read_text(encoding="utf-8"))
+                    name = data.get("name") or f.stem
+                    prof = AthenaAgentProfile(
+                        name=name,
+                        role=data.get("role", "Specialized Sub-Agent"),
+                        description=data.get("description", ""),
+                        system_prompt=data.get("system_prompt", ""),
+                        allowed_tools=data.get("allowed_tools", []),
+                        category=data.get("category", "general"),
+                        created_at=data.get("created_at", ""),
+                        is_builtin=data.get("is_builtin", False),
+                    )
+                    self._profiles[name] = prof
+                except Exception as err:
+                    log.debug("Failed parsing agent profile %s: %s", f, err)
 
             log.info("Discovered %d Athena agent profiles in %s", len(self._profiles), self.agents_dir)
             return list(self._profiles.values())

@@ -84,8 +84,8 @@ def test_slash_command_execution():
     print("✅ /agent list handled successfully")
 
     handled, reply = handler._execute_slash_command("/learn https://example.com", bus)
-    assert handled and "Skill Learned & Saved Successfully" in reply
-    print("✅ /learn <url> handled successfully")
+    assert handled and "Skill Synthesis Initiated" in reply
+    print("✅ /learn <url> handled successfully (asynchronous synthesis)")
 
     print("\n🎉 ALL BACKEND TESTS PASSED!")
 

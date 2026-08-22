@@ -33,13 +33,9 @@ from typing import Any, Dict, List, Optional
 
 log = logging.getLogger("ev.skills")
 
-# Base directory for Athena skills
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-WORKSPACE_ATHENA_DIR = PROJECT_ROOT / ".athena"
-GLOBAL_ATHENA_DIR = Path.home() / ".athena"
-
-# Prefer workspace .athena/skills, fallback to global ~/.athena/skills
-SKILLS_DIR = WORKSPACE_ATHENA_DIR / "skills"
+# Global storage directory for Athena skills in user's home folder
+ATHENA_HOME_DIR = Path.home() / ".athena"
+SKILLS_DIR = ATHENA_HOME_DIR / "skills"
 
 
 @dataclass
@@ -228,47 +224,42 @@ class SkillsEngine:
             log.warning("Skills directory initialization error: %s", exc)
 
     def discover_skills(self) -> list[AthenaSkill]:
-        """Scan .athena/skills/ and return all loaded skills."""
+        """Scan ~/.athena/skills/ and return all loaded skills."""
         with self._lock:
             self._skills.clear()
-            # 1. Scan workspace .athena/skills/
-            paths_to_scan = [self.skills_dir]
-            if GLOBAL_ATHENA_DIR.exists() and GLOBAL_ATHENA_DIR != WORKSPACE_ATHENA_DIR:
-                paths_to_scan.append(GLOBAL_ATHENA_DIR / "skills")
+            if not self.skills_dir.exists():
+                return []
 
-            for base_path in paths_to_scan:
-                if not base_path.exists():
-                    continue
-                # Support both .athena/skills/<name>/SKILL.md and .athena/skills/<name>.md
-                for md_file in base_path.glob("**/*.md"):
-                    try:
-                        raw = md_file.read_text(encoding="utf-8")
-                        meta, body = _parse_frontmatter(raw)
-                        name = meta.get("name") or (md_file.parent.name if md_file.name == "SKILL.md" else md_file.stem)
-                        name = _slugify(name)
-                        desc = meta.get("description") or f"Athena skill for {name.replace('_', ' ')}"
-                        cat = meta.get("category") or "general"
-                        triggers = meta.get("triggers") or [f"/{name}", name.replace("_", " ")]
-                        tools = meta.get("tools") or []
-                        sources = meta.get("sources") or []
-                        created = meta.get("created_at") or time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(md_file.stat().st_ctime))
-                        is_builtin = meta.get("is_builtin", False)
+            # Support both ~/.athena/skills/<name>/SKILL.md and ~/.athena/skills/<name>.md
+            for md_file in self.skills_dir.glob("**/*.md"):
+                try:
+                    raw = md_file.read_text(encoding="utf-8")
+                    meta, body = _parse_frontmatter(raw)
+                    name = meta.get("name") or (md_file.parent.name if md_file.name == "SKILL.md" else md_file.stem)
+                    name = _slugify(name)
+                    desc = meta.get("description") or f"Athena skill for {name.replace('_', ' ')}"
+                    cat = meta.get("category") or "general"
+                    triggers = meta.get("triggers") or [f"/{name}", name.replace("_", " ")]
+                    tools = meta.get("tools") or []
+                    sources = meta.get("sources") or []
+                    created = meta.get("created_at") or time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(md_file.stat().st_ctime))
+                    is_builtin = meta.get("is_builtin", False)
 
-                        skill = AthenaSkill(
-                            name=name,
-                            description=desc,
-                            category=cat,
-                            triggers=triggers,
-                            tools=tools,
-                            sources=sources,
-                            file_path=str(md_file),
-                            instructions=body,
-                            created_at=created,
-                            is_builtin=is_builtin,
-                        )
-                        self._skills[name] = skill
-                    except Exception as err:
-                        log.debug("Failed parsing skill file %s: %s", md_file, err)
+                    skill = AthenaSkill(
+                        name=name,
+                        description=desc,
+                        category=cat,
+                        triggers=triggers,
+                        tools=tools,
+                        sources=sources,
+                        file_path=str(md_file),
+                        instructions=body,
+                        created_at=created,
+                        is_builtin=is_builtin,
+                    )
+                    self._skills[name] = skill
+                except Exception as err:
+                    log.debug("Failed parsing skill file %s: %s", md_file, err)
 
             log.info("Discovered %d Athena skills in %s", len(self._skills), self.skills_dir)
             return list(self._skills.values())
@@ -293,9 +284,9 @@ class SkillsEngine:
         """Format a human-readable list of all discovered skills."""
         skills = self.discover_skills()
         if not skills:
-            return "No skills currently registered in `.athena/skills/`."
+            return "No skills currently registered in `~/.athena/skills/`."
 
-        lines = [f"⚡ **Athena Skill Registry ({len(skills)} skills loaded):**\n"]
+        lines = [f"⚡ **Athena Skill Registry ({len(skills)} skills loaded from ~/.athena/skills/):**\n"]
         for s in skills:
             triggers_str = ", ".join(f"`{t}`" for t in s.triggers[:3])
             tools_str = f" | Tools: {', '.join(s.tools[:3])}" if s.tools else ""
@@ -315,7 +306,7 @@ class SkillsEngine:
     ) -> str:
         """Learn a new skill from a URL, web search topic, or direct instructions.
         
-        Saves the structured skill into `.athena/skills/<skill_name>/SKILL.md`.
+        Saves the structured skill into ~/.athena/skills/<skill_name>/SKILL.md.
         """
         raw = input_query.strip()
         if not raw:
@@ -406,10 +397,10 @@ class SkillsEngine:
                         "name": skill_name,
                         "description": description,
                         "category": category,
-                        "path": str(skill_file.relative_to(PROJECT_ROOT) if skill_file.is_relative_to(PROJECT_ROOT) else skill_file),
+                        "path": str(skill_file),
                     },
                 })
-                bus.log("INFO", f"⚡ New Skill Learned & Saved: '{skill_name}' (.athena/skills/{skill_name}/SKILL.md)")
+                bus.log("INFO", f"⚡ New Skill Learned & Saved: '{skill_name}' (~/.athena/skills/{skill_name}/SKILL.md)")
         except Exception:
             pass
 

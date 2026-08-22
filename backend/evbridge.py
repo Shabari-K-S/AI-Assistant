@@ -435,10 +435,16 @@ class _Handler(BaseHTTPRequestHandler):
         if command == "/learn":
             if not args:
                 return True, "❌ Usage: `/learn <documentation_url | topic_name | instructions>`\nExample: `/learn https://docs.pwntools.com` or `/learn \"GraphQL security testing\"`"
-            from skills_engine import get_skills_engine
-            engine = get_skills_engine()
-            res = engine.learn_skill(input_query=args)
-            return True, res
+            bus.set(phase="processing", transcript=f"/learn {args}")
+            bus.log("INFO", f"⚡ Learning skill for '{args}'...")
+            def _learn_thread():
+                from skills_engine import get_skills_engine
+                engine = get_skills_engine()
+                res = engine.learn_skill(input_query=args)
+                bus.set(phase="idle", reply=res)
+                bus.event("reply", text=res)
+            threading.Thread(target=_learn_thread, daemon=True).start()
+            return True, f"⚡ **Skill Synthesis Initiated:** '{args}' — Ingesting knowledge into `~/.athena/skills/`..."
 
         if command == "/skill":
             from skills_engine import get_skills_engine

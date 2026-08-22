@@ -270,13 +270,13 @@ export const FeedPanel = memo(function FeedPanel({ snap, logs, onClearLogs, onCl
                     {isCmd && (
                       <div className="text-[#ba68ff]">
                         <span className="font-bold">&gt; </span>
-                        <span>{l.text}</span>
+                        <span>{String(l.text || '')}</span>
                       </div>
                     )}
 
                     {isTrans && (
                       <div className="text-[#41e6ff]">
-                        “{l.text}”
+                        “{String(l.text || '')}”
                         {l.confidence != null && (
                           <span className="text-[#3e5c6d] ml-1">({l.confidence.toFixed(2)})</span>
                         )}
@@ -284,13 +284,17 @@ export const FeedPanel = memo(function FeedPanel({ snap, logs, onClearLogs, onCl
                     )}
 
                     {isReply && (
-                      <div className="text-[#e8fbff]">
-                        “{l.text}”
+                      <div className="text-[#e8fbff] whitespace-pre-wrap">
+                        {typeof l.text === 'object' ? JSON.stringify(l.text, null, 2) : String(l.text || '')}
                       </div>
                     )}
 
                     {!isTool && !isMem && !isLlm && !isCmd && !isTrans && !isReply && (
-                      <span>{l.msg ?? l.text}</span>
+                      <span className="whitespace-pre-wrap">
+                        {typeof (l.msg ?? l.text) === 'object'
+                          ? JSON.stringify(l.msg ?? l.text, null, 2)
+                          : String(l.msg ?? l.text ?? '')}
+                      </span>
                     )}
                   </div>
 
