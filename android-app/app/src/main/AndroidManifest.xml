@@ -3,22 +3,15 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <!-- ═══════════════════════════════════════════════════════════════════
-         A.T.H.E.N.A. — Adaptive Thinking Hands-free Engine for Neural Assistance
-         24/7 Always-On Voice Bridge & Android Default Assistant
+         A.T.H.E.N.A. — Native Android Digital Assistant
+         On-Demand Perplexity-Style HUD & Gesture Triggers (Zero Battery Drain)
          ═══════════════════════════════════════════════════════════════════ -->
 
-    <!-- Core Permissions -->
+    <!-- Core Permissions for On-Demand Assistant -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.VIBRATE" />
-
-    <!-- 24/7 Background Survival Permissions -->
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:allowBackup="true"
@@ -27,10 +20,10 @@
         android:roundIcon="@drawable/ic_launcher"
         android:supportsRtl="true"
         android:theme="@style/Theme.Athena"
-        android:usesCleartextTraffic="true"
+        android:networkSecurityConfig="@xml/network_security_config"
         tools:targetApi="34">
 
-        <!-- Main Dashboard Activity -->
+        <!-- Main Dashboard / Setup Activity -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -41,23 +34,45 @@
             </intent-filter>
         </activity>
 
-        <!-- Android System ASSIST Activity (Replaces Google Assistant Trigger) -->
+        <!-- Perplexity-Style Floating Assistant Overlay Activity (Task-isolated to prevent previous app focus) -->
         <activity
-            android:name=".AssistActivity"
+            android:name=".AssistantOverlayActivity"
             android:exported="true"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            android:launchMode="singleInstance"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:stateNotNeeded="true"
+            android:clearTaskOnLaunch="true"
+            android:theme="@style/Theme.Athena.AssistantOverlay"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.ASSIST" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
 
-        <!-- 24/7 Voice Bridge Foreground Service -->
-        <service
-            android:name=".VoiceBridgeService"
-            android:enabled="true"
+        <!-- Access Assistant Guide Activity (Image 2 Replica) -->
+        <activity
+            android:name=".AccessAssistantActivity"
             android:exported="false"
-            android:foregroundServiceType="microphone" />
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.Athena" />
+
+        <!-- Android System ASSIST Intent Receiver Activity -->
+        <activity
+            android:name=".AssistActivity"
+            android:exported="true"
+            android:launchMode="singleInstance"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@style/Theme.Athena.AssistantOverlay">
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
 
         <!-- Android Default Digital Assistant System Service -->
         <service
@@ -88,17 +103,6 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </service>
-
-        <!-- Auto-Start on Device Boot -->
-        <receiver
-            android:name=".BootReceiver"
-            android:enabled="true"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
-            </intent-filter>
-        </receiver>
 
     </application>
 

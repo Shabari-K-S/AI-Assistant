@@ -1,0 +1,225 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/athena_bg"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <!-- Top Header Bar with Close Button -->
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="16dp">
+
+            <ImageView
+                android:id="@+id/btnCloseAccessGuide"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_alignParentStart="true"
+                android:layout_centerVertical="true"
+                android:background="@drawable/btn_action_circle"
+                android:padding="10dp"
+                android:src="@drawable/ic_close"
+                app:tint="@color/text_primary"
+                android:contentDescription="Close guide" />
+        </RelativeLayout>
+
+        <!-- Access Assistant Title -->
+        <TextView
+            android:id="@+id/txtAccessTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/access_assistant_title"
+            android:textColor="@color/text_primary"
+            android:textSize="30sp"
+            android:fontFamily="serif"
+            android:textStyle="normal"
+            android:letterSpacing="0.01"
+            android:layout_marginBottom="10dp" />
+
+        <!-- Access Assistant Subtitle -->
+        <TextView
+            android:id="@+id/txtAccessSubtitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/access_assistant_subtitle"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp"
+            android:lineSpacingExtra="3dp"
+            android:layout_marginBottom="24dp" />
+
+        <!-- ═══════════════════════════════════════════════════════════════
+             Card 1: Press & Hold Power Button
+             ═══════════════════════════════════════════════════════════════ -->
+        <LinearLayout
+            android:id="@+id/cardPowerButton"
+            android:layout_width="match_parent"
+            android:layout_height="116dp"
+            android:orientation="horizontal"
+            android:background="@drawable/access_card_background"
+            android:gravity="center_vertical"
+            android:paddingStart="16dp"
+            android:paddingEnd="20dp"
+            android:layout_marginBottom="14dp">
+
+            <ImageView
+                android:layout_width="120dp"
+                android:layout_height="90dp"
+                android:src="@drawable/img_power_button"
+                android:scaleType="fitCenter"
+                android:contentDescription="Power Button Trigger" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:layout_marginStart="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/method_power_title"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/method_power_desc"
+                    android:textColor="@color/text_primary"
+                    android:textSize="19sp"
+                    android:textStyle="bold"
+                    android:layout_marginTop="2dp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- ═══════════════════════════════════════════════════════════════
+             Card 2: Press & Hold Home Button
+             ═══════════════════════════════════════════════════════════════ -->
+        <LinearLayout
+            android:id="@+id/cardHomeButton"
+            android:layout_width="match_parent"
+            android:layout_height="116dp"
+            android:orientation="horizontal"
+            android:background="@drawable/access_card_background"
+            android:gravity="center_vertical"
+            android:paddingStart="20dp"
+            android:paddingEnd="16dp"
+            android:layout_marginBottom="14dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/method_home_title"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/method_home_desc"
+                    android:textColor="@color/text_primary"
+                    android:textSize="19sp"
+                    android:textStyle="bold"
+                    android:layout_marginTop="2dp" />
+            </LinearLayout>
+
+            <ImageView
+                android:layout_width="120dp"
+                android:layout_height="90dp"
+                android:src="@drawable/img_home_button"
+                android:scaleType="fitCenter"
+                android:layout_marginStart="16dp"
+                android:contentDescription="Home Button Trigger" />
+        </LinearLayout>
+
+        <!-- ═══════════════════════════════════════════════════════════════
+             Card 3: Swipe From Bottom Left To Center
+             ═══════════════════════════════════════════════════════════════ -->
+        <LinearLayout
+            android:id="@+id/cardSwipeGesture"
+            android:layout_width="match_parent"
+            android:layout_height="116dp"
+            android:orientation="horizontal"
+            android:background="@drawable/access_card_background"
+            android:gravity="center_vertical"
+            android:paddingStart="16dp"
+            android:paddingEnd="20dp"
+            android:layout_marginBottom="24dp">
+
+            <ImageView
+                android:layout_width="120dp"
+                android:layout_height="90dp"
+                android:src="@drawable/img_swipe_gesture"
+                android:scaleType="fitCenter"
+                android:contentDescription="Corner Swipe Gesture" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:layout_marginStart="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/method_swipe_title"
+                    android:textColor="@color/text_primary"
+                    android:textSize="19sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/method_swipe_desc"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="13.5sp"
+                    android:layout_marginTop="2dp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- ═══════════════════════════════════════════════════════════════
+             Action Buttons
+             ═══════════════════════════════════════════════════════════════ -->
+        <Button
+            android:id="@+id/btnSetDefaultAssistant"
+            android:layout_width="match_parent"
+            android:layout_height="54dp"
+            android:text="⚙️  Set as Default Digital Assistant"
+            android:textColor="#FFFFFF"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:textAllCaps="false"
+            android:background="@drawable/btn_rounded"
+            android:layout_marginBottom="12dp" />
+
+        <Button
+            android:id="@+id/btnTryAssistantNow"
+            android:layout_width="match_parent"
+            android:layout_height="50dp"
+            android:text="✨  Try Assistant Overlay Now"
+            android:textColor="@color/athena_cyan"
+            android:textSize="14sp"
+            android:textAllCaps="false"
+            android:background="@drawable/access_card_background"
+            android:layout_marginBottom="20dp" />
+
+    </LinearLayout>
+</ScrollView>

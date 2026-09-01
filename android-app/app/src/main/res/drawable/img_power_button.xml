@@ -1,0 +1,40 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="140dp"
+    android:height="100dp"
+    android:viewportWidth="140"
+    android:viewportHeight="100">
+    <!-- Phone body silhouette -->
+    <path
+        android:fillColor="#181D26"
+        android:strokeColor="#333D4F"
+        android:strokeWidth="2"
+        android:pathData="M15,10 C15,4.5 19.5,0 25,0 L85,0 C90.5,0 95,4.5 95,10 L95,100 L15,100 Z" />
+    <!-- Camera hole punch -->
+    <path
+        android:fillColor="#0D1117"
+        android:pathData="M30,15 C30,12.8 31.8,11 34,11 C36.2,11 38,12.8 38,15 C38,17.2 36.2,19 34,19 C31.8,19 30,17.2 30,15 Z" />
+    <!-- Speaker slit / status -->
+    <path
+        android:fillColor="#475569"
+        android:pathData="M80,12 L88,12 C88.5,12 89,12.5 89,13 C89,13.5 88.5,14 88,14 L80,14 C79.5,14 79,13.5 79,13 C79,12.5 79.5,12 80,12 Z" />
+
+    <!-- Power button on the right edge -->
+    <path
+        android:fillColor="#0284C7"
+        android:pathData="M95,36 C95,35 96,35 96.5,35 L98,35 C99.1,35 100,35.9 100,37 L100,53 C100,54.1 99.1,55 98,55 L96.5,55 C96,55 95,55 95,54 Z" />
+
+    <!-- Glowing Teal Halo Rings around Power Button -->
+    <path
+        android:fillColor="#1500F0FF"
+        android:pathData="M95,45 C95,30 105,25 115,25 C125,25 135,34 135,45 C135,56 125,65 115,65 C105,65 95,60 95,45 Z" />
+    <path
+        android:fillColor="#3500F0FF"
+        android:pathData="M95,45 C95,35 102,32 108,32 C115,32 121,38 121,45 C121,52 115,58 108,58 C102,58 95,55 95,45 Z" />
+    <path
+        android:fillColor="#8022D3EE"
+        android:pathData="M95,45 C95,40 98,38 102,38 C106,38 109,41 109,45 C109,49 106,52 102,52 C98,52 95,50 95,45 Z" />
+    <!-- Bright center glow dot -->
+    <path
+        android:fillColor="#E0F2FE"
+        android:pathData="M98,45 C98,43.5 99.5,42 101,42 C102.5,42 104,43.5 104,45 C104,46.5 102.5,48 101,48 C99.5,48 98,46.5 98,45 Z" />
+</vector>

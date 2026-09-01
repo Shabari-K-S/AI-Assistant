@@ -1,396 +1,507 @@
 package com.assistant.athena
 
 import android.Manifest
-import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Color
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.PowerManager
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.provider.Settings
-import android.util.Log
-import android.widget.Button
-import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.widget.SwitchCompat
-import androidx.core.app.ActivityCompat
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Gesture
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import okhttp3.*
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
+import com.assistant.athena.ui.components.DotMatrixBackground
+import com.assistant.athena.ui.components.HudCard
+import com.assistant.athena.ui.components.NeuralArcReactor
+import com.assistant.athena.ui.theme.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import org.json.JSONObject
-import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /**
- * A.T.H.E.N.A. Dashboard — Control center for the 24/7 voice bridge.
- *
- * Speech is handled exclusively by Termux Python TTS (no duplicate Android speech).
+ * Principal Android UI/UX Engineer Implementation:
+ * Cyberpunk JARVIS-meets-Perplexity Neural AI Dashboard in Jetpack Compose (Material 3).
  */
-class MainActivity : AppCompatActivity() {
+class MainActivity : ComponentActivity() {
 
-    companion object {
-        private const val TAG = "Athena.Main"
-        private const val PERMISSION_REQUEST_CODE = 101
-        private const val BACKEND_STATE_URL = "http://127.0.0.1:2027/state"
-        private const val BACKEND_ASK_URL = "http://127.0.0.1:2027/ask"
-    }
+    private val requestAudioPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* Permission result handled */ }
 
-    // UI elements
-    private lateinit var txtTitle: TextView
-    private lateinit var txtSubtitle: TextView
-    private lateinit var txtServiceStatus: TextView
-    private lateinit var txtLiveLog: TextView
-    private lateinit var txtBackendStatus: TextView
-    private lateinit var txtPermissionStatus: TextView
-    private lateinit var btnToggleService: Button
-    private lateinit var btnTestQuery: Button
-    private lateinit var btnSetDefaultAssistant: Button
-    private lateinit var btnCheckBackend: Button
-    private lateinit var switchAutoStart: SwitchCompat
-
-    private var isServiceRunning = false
-
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(35, TimeUnit.SECONDS)
-        .writeTimeout(10, TimeUnit.SECONDS)
+    private val httpClient = OkHttpClient.Builder()
+        .connectTimeout(4, TimeUnit.SECONDS)
+        .readTimeout(5, TimeUnit.SECONDS)
         .build()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        try {
-            setContentView(R.layout.activity_main)
 
-            // Bind views
-            txtTitle = findViewById(R.id.txtTitle)
-            txtSubtitle = findViewById(R.id.txtSubtitle)
-            txtServiceStatus = findViewById(R.id.txtServiceStatus)
-            txtLiveLog = findViewById(R.id.txtLiveLog)
-            txtBackendStatus = findViewById(R.id.txtBackendStatus)
-            txtPermissionStatus = findViewById(R.id.txtPermissionStatus)
-            btnToggleService = findViewById(R.id.btnToggleService)
-            btnTestQuery = findViewById(R.id.btnTestQuery)
-            btnSetDefaultAssistant = findViewById(R.id.btnSetDefaultAssistant)
-            btnCheckBackend = findViewById(R.id.btnCheckBackend)
-            switchAutoStart = findViewById(R.id.switchAutoStart)
+        checkAudioPermission()
 
-            // Ensure all phone audio streams are unmuted
-            val am = getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && am != null) {
-                try {
-                    am.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, android.media.AudioManager.ADJUST_UNMUTE, 0)
-                    am.adjustStreamVolume(android.media.AudioManager.STREAM_NOTIFICATION, android.media.AudioManager.ADJUST_UNMUTE, 0)
-                    am.adjustStreamVolume(android.media.AudioManager.STREAM_ALARM, android.media.AudioManager.ADJUST_UNMUTE, 0)
-                    am.adjustStreamVolume(android.media.AudioManager.STREAM_SYSTEM, android.media.AudioManager.ADJUST_UNMUTE, 0)
-                } catch (_: Exception) {}
+        setContent {
+            AthenaTheme {
+                AthenaDashboardScreen(
+                    onOpenOverlay = { launchOverlay() },
+                    onOpenSettings = { openAssistantSettings() },
+                    onOpenGuide = { openAccessGuide() },
+                    onCheckBackend = { checkBackendHealth() }
+                )
             }
-
-            // Attach log listener to VoiceBridgeService
-            VoiceBridgeService.onLogListener = { msg ->
-                appendLog(msg)
-            }
-
-            // Check and request permissions
-            checkAndRequestPermissions()
-            requestBatteryOptimizationExemption()
-
-            // Load auto-start preference
-            val prefs = getSharedPreferences("athena_prefs", Context.MODE_PRIVATE)
-            switchAutoStart.isChecked = prefs.getBoolean("auto_start_on_boot", true)
-
-            // Event handlers
-            btnToggleService.setOnClickListener {
-                if (!isServiceRunning) {
-                    startVoiceService()
-                } else {
-                    stopVoiceService()
-                }
-            }
-
-            btnTestQuery.setOnClickListener {
-                runTestQuery()
-            }
-
-            btnSetDefaultAssistant.setOnClickListener {
-                try {
-                    val intent = Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)
-                    startActivity(intent)
-                } catch (e: Exception) {
-                    try {
-                        val intent = Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)
-                        startActivity(intent)
-                    } catch (_: Exception) {
-                        val intent = Intent(Settings.ACTION_SETTINGS)
-                        startActivity(intent)
-                    }
-                }
-            }
-
-            btnCheckBackend.setOnClickListener {
-                checkBackendHealth()
-            }
-
-            switchAutoStart.setOnCheckedChangeListener { _, isChecked ->
-                prefs.edit().putBoolean("auto_start_on_boot", isChecked).apply()
-            }
-
-            updatePermissionStatus()
-            checkBackendHealth()
-        } catch (e: Exception) {
-            Log.e(TAG, "Fatal error in onCreate", e)
         }
     }
 
-    override fun onDestroy() {
-        VoiceBridgeService.onLogListener = null
-        super.onDestroy()
+    private fun checkAudioPermission() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
     }
 
-    private fun appendLog(line: String) {
-        runOnUiThread {
+    private fun launchOverlay() {
+        triggerHaptic(VibrationEffect.EFFECT_CLICK)
+        val intent = Intent(this, AssistantOverlayActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION
+        }
+        startActivity(intent)
+    }
+
+    private fun openAssistantSettings() {
+        triggerHaptic(VibrationEffect.EFFECT_CLICK)
+        try {
+            startActivity(Intent(Settings.ACTION_VOICE_INPUT_SETTINGS))
+        } catch (_: Exception) {
             try {
-                val current = txtLiveLog.text.toString()
-                val lines = current.split("\n").takeLast(5).toMutableList()
-                lines.add("• $line")
-                txtLiveLog.text = lines.joinToString("\n")
-            } catch (_: Exception) {}
+                startActivity(Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS))
+            } catch (_: Exception) {
+                startActivity(Intent(Settings.ACTION_SETTINGS))
+            }
         }
     }
 
-    // =========================================================================
-    // Test Voice Uplink (Triggers Termux Python TTS)
-    // =========================================================================
-
-    private fun runTestQuery() {
-        val testPrompt = "Hello Athena, what is the system status and time?"
-        appendLog("⚡ Sending test query to Termux: '$testPrompt'")
-        btnTestQuery.isEnabled = false
-        btnTestQuery.text = "⏳ Contacting Termux AI..."
-
-        val jsonBody = JSONObject().put("text", testPrompt).toString()
-        val requestBody = jsonBody.toRequestBody("application/json; charset=utf-8".toMediaType())
-
-        val request = Request.Builder()
-            .url(BACKEND_ASK_URL)
-            .post(requestBody)
-            .build()
-
-        client.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                runOnUiThread {
-                    appendLog("❌ Uplink failed: ${e.message}")
-                    btnTestQuery.isEnabled = true
-                    btnTestQuery.text = "⚡  Test Voice Uplink"
-                }
-            }
-
-            override fun onResponse(call: Call, response: Response) {
-                val body = response.body?.string() ?: "{}"
-                response.close()
-                runOnUiThread {
-                    btnTestQuery.isEnabled = true
-                    btnTestQuery.text = "⚡  Test Voice Uplink"
-                    try {
-                        val json = JSONObject(body)
-                        val ok = json.optBoolean("ok", false)
-                        val reply = json.optString("reply", "")
-                        if (ok && reply.isNotEmpty()) {
-                            appendLog("🤖 Termux Speaking: \"$reply\"")
-                        } else {
-                            val err = json.optString("error", "Unknown error")
-                            appendLog("⚠️ Termux: $err")
-                        }
-                    } catch (e: Exception) {
-                        appendLog("⚠️ Parse error: ${e.message}")
-                    }
-                }
-            }
-        })
+    private fun openAccessGuide() {
+        triggerHaptic(VibrationEffect.EFFECT_CLICK)
+        startActivity(Intent(this, AccessAssistantActivity::class.java))
     }
 
-    // =========================================================================
-    // Service Control
-    // =========================================================================
-
-    private fun startVoiceService() {
-        if (!hasRequiredPermissions()) {
-            checkAndRequestPermissions()
-            return
-        }
-
-        val serviceIntent = Intent(this, VoiceBridgeService::class.java)
+    private suspend fun checkBackendHealth(): BackendStatus = withContext(Dispatchers.IO) {
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(serviceIntent)
+            val request = Request.Builder()
+                .url("http://127.0.0.1:2027/state")
+                .build()
+            val response = httpClient.newCall(request).execute()
+            val body = response.body?.string() ?: "{}"
+            response.close()
+            val json = JSONObject(body)
+            val online = json.optBoolean("online", false)
+            val phase = json.optString("phase", "standby")
+            val model = json.optString("llm_model", "Gemini 2.5 Flash")
+            BackendStatus(isOnline = online, phase = phase, model = model)
+        } catch (_: Exception) {
+            BackendStatus(isOnline = false, phase = "offline", model = "Gemini 2.5 Flash")
+        }
+    }
+
+    private fun triggerHaptic(effectId: Int) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val vm = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
+                vm?.defaultVibrator?.vibrate(VibrationEffect.createPredefined(effectId))
             } else {
-                startService(serviceIntent)
+                @Suppress("DEPRECATION")
+                val v = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+                @Suppress("DEPRECATION")
+                v?.vibrate(25L)
             }
-            isServiceRunning = true
-            updateServiceUI(true)
-            appendLog("🟢 Voice Bridge active (Termux TTS mode)")
-            Log.i(TAG, "Voice Bridge service started")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to start service", e)
-            txtServiceStatus.text = "❌ Failed to start: ${e.message}"
-        }
+        } catch (_: Exception) {}
+    }
+}
+
+data class BackendStatus(
+    val isOnline: Boolean = false,
+    val phase: String = "checking",
+    val model: String = "Gemini 2.5 Flash"
+)
+
+@Composable
+fun AthenaDashboardScreen(
+    onOpenOverlay: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenGuide: () -> Unit,
+    onCheckBackend: suspend () -> BackendStatus
+) {
+    var status by remember { mutableStateOf(BackendStatus()) }
+    val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        status = onCheckBackend()
     }
 
-    private fun stopVoiceService() {
-        val serviceIntent = Intent(this, VoiceBridgeService::class.java)
-        stopService(serviceIntent)
-        isServiceRunning = false
-        updateServiceUI(false)
-        appendLog("🔴 Voice Bridge service stopped")
-        Log.i(TAG, "Voice Bridge service stopped")
-    }
-
-    private fun updateServiceUI(running: Boolean) {
-        if (running) {
-            txtServiceStatus.text = "🟢  Voice Bridge: ACTIVE (24/7)"
-            txtServiceStatus.setTextColor(Color.parseColor("#4CAF50"))
-            btnToggleService.text = "⏹  Stop ATHENA"
-            btnToggleService.setBackgroundColor(Color.parseColor("#E53935"))
-        } else {
-            txtServiceStatus.text = "🔴  Voice Bridge: STOPPED"
-            txtServiceStatus.setTextColor(Color.parseColor("#E53935"))
-            btnToggleService.text = "▶  Start ATHENA"
-            btnToggleService.setBackgroundColor(Color.parseColor("#4CAF50"))
-        }
-    }
-
-    // =========================================================================
-    // Backend Health Check
-    // =========================================================================
-
-    private fun checkBackendHealth() {
-        txtBackendStatus.text = "⏳  Checking Termux backend..."
-        txtBackendStatus.setTextColor(Color.parseColor("#FF9800"))
-
-        val request = Request.Builder()
-            .url(BACKEND_STATE_URL)
-            .build()
-
-        client.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                runOnUiThread {
-                    txtBackendStatus.text = "🔴  Backend OFFLINE — Start in Termux: bash scripts/daemon_watchdog.sh"
-                    txtBackendStatus.setTextColor(Color.parseColor("#E53935"))
-                    appendLog("⚠️ Termux backend offline at 127.0.0.1:2027")
-                }
-            }
-
-            override fun onResponse(call: Call, response: Response) {
-                val body = response.body?.string() ?: "{}"
-                response.close()
-                runOnUiThread {
-                    try {
-                        val json = JSONObject(body)
-                        val online = json.optBoolean("online", false)
-                        val phase = json.optString("phase", "unknown")
-                        val llmModel = json.optString("llm_model", "unknown")
-                        if (online) {
-                            txtBackendStatus.text = "🟢  Backend ONLINE — $llmModel ($phase)"
-                            txtBackendStatus.setTextColor(Color.parseColor("#4CAF50"))
-                            appendLog("✅ Connected to Termux AI Backend ($llmModel)")
-                        } else {
-                            txtBackendStatus.text = "🟡  Backend connected but not ready"
-                            txtBackendStatus.setTextColor(Color.parseColor("#FF9800"))
-                        }
-                    } catch (e: Exception) {
-                        txtBackendStatus.text = "🟡  Backend responded but unexpected format"
-                        txtBackendStatus.setTextColor(Color.parseColor("#FF9800"))
-                    }
-                }
-            }
-        })
-    }
-
-    // =========================================================================
-    // Permissions
-    // =========================================================================
-
-    private fun hasRequiredPermissions(): Boolean {
-        val mic = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-        return mic == PackageManager.PERMISSION_GRANTED
-    }
-
-    private fun checkAndRequestPermissions() {
-        val needed = mutableListOf<String>()
-
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-            != PackageManager.PERMISSION_GRANTED
+    DotMatrixBackground {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            needed.add(Manifest.permission.RECORD_AUDIO)
-        }
+            Spacer(modifier = Modifier.height(12.dp))
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
-                != PackageManager.PERMISSION_GRANTED
-            ) {
-                needed.add(Manifest.permission.POST_NOTIFICATIONS)
-            }
-        }
+            // ═══ 1. JARVIS Central Arc Reactor & Neural Core ═══
+            NeuralArcReactor(
+                isOnline = status.isOnline
+            )
 
-        if (needed.isNotEmpty()) {
-            ActivityCompat.requestPermissions(this, needed.toTypedArray(), PERMISSION_REQUEST_CODE)
-        }
-    }
+            Spacer(modifier = Modifier.height(28.dp))
 
-    @SuppressLint("BatteryLife")
-    private fun requestBatteryOptimizationExemption() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-            if (!pm.isIgnoringBatteryOptimizations(packageName)) {
-                try {
-                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                        data = Uri.parse("package:$packageName")
+            // ═══ 2. Glassmorphism HUD Telemetry Card ═══
+            HudTelemetryCard(
+                status = status,
+                onRefresh = {
+                    coroutineScope.launch {
+                        status = onCheckBackend()
                     }
-                    startActivity(intent)
-                } catch (e: Exception) {
-                    Log.w(TAG, "Could not request battery optimization exemption", e)
+                }
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // ═══ 3. Primary Next-Gen Action: ⚡ OPEN ASSISTANT HUD ═══
+            Button(
+                onClick = onOpenOverlay,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .shadow(
+                        elevation = 8.dp,
+                        shape = RoundedCornerShape(14.dp),
+                        ambientColor = NeonCyanGlow,
+                        spotColor = NeonCyan
+                    ),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = NeonCyan,
+                    contentColor = VoidBlack
+                ),
+                contentPadding = PaddingValues(vertical = 12.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = "⚡",
+                        fontSize = 18.sp,
+                        color = VoidBlack
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "OPEN ASSISTANT HUD",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp,
+                        fontFamily = FontFamily.SansSerif,
+                        color = VoidBlack
+                    )
                 }
             }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // ═══ 4. Secondary Action Tiles: CONFIG & GESTURES ═══
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                ActionTile(
+                    title = "CONFIG",
+                    subtitle = "Default App",
+                    icon = Icons.Default.Settings,
+                    modifier = Modifier.weight(1f),
+                    onClick = onOpenSettings
+                )
+                ActionTile(
+                    title = "GESTURES",
+                    subtitle = "Power / Swipe",
+                    icon = Icons.Default.TouchApp,
+                    modifier = Modifier.weight(1f),
+                    onClick = onOpenGuide
+                )
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // ═══ 5. Integrated Capabilities Log ═══
+            CapabilitiesLogCard()
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // ═══ 6. Modern Footer Telemetry ═══
+            Text(
+                text = "127.0.0.1:2027 // TERMUX HUD LINK",
+                color = TextMuted,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                letterSpacing = 1.2.sp,
+                fontFamily = FontFamily.Monospace
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
         }
     }
+}
 
-    private fun updatePermissionStatus() {
-        val mic = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
-                PackageManager.PERMISSION_GRANTED
-        val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
-                    PackageManager.PERMISSION_GRANTED
-        } else true
-        val battery = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            (getSystemService(Context.POWER_SERVICE) as PowerManager)
-                .isIgnoringBatteryOptimizations(packageName)
-        } else true
+/**
+ * Translucent Glassmorphism Telemetry Card with Animated LED Status Indicator.
+ */
+@Composable
+fun HudTelemetryCard(
+    status: BackendStatus,
+    onRefresh: () -> Unit
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "LedPulse")
+    val ledAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.4f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "ledAlpha"
+    )
 
-        val status = buildString {
-            append(if (mic) "✅" else "❌")
-            append(" Mic   ")
-            append(if (notification) "✅" else "❌")
-            append(" Notifications   ")
-            append(if (battery) "✅" else "⚠️")
-            append(" Battery Exempt")
+    HudCard {
+        // Digital Assistant Row
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "DIGITAL ASSISTANT",
+                color = TextMuted,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 1.sp,
+                fontFamily = FontFamily.Monospace
+            )
+            Text(
+                text = "NATIVE TRIGGERS READY",
+                color = NeonCyan,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.SansSerif
+            )
         }
-        txtPermissionStatus.text = status
-    }
 
-    override fun onRequestPermissionsResult(
-        requestCode: Int, permissions: Array<out String>, grantResults: IntArray
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // AI Engine Backend Row
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "AI ENGINE BACKEND",
+                color = TextMuted,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 1.sp,
+                fontFamily = FontFamily.Monospace
+            )
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Animated Pulsing LED
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (status.isOnline) NeonGreen.copy(alpha = ledAlpha)
+                            else NeonAmber.copy(alpha = ledAlpha)
+                        )
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = if (status.isOnline) "ONLINE" else "STANDBY",
+                    color = if (status.isOnline) NeonGreen else NeonAmber,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Telemetry Specs
+        Text(
+            text = "Model: ${status.model}  •  Port: 2027  •  Phase: ${status.phase}",
+            color = TextSecondary,
+            fontSize = 11.5.sp,
+            fontFamily = FontFamily.Monospace
+        )
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Refresh Connection Link
+        Text(
+            text = "› REFRESH CONNECTION",
+            color = NeonCyan,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Monospace,
+            modifier = Modifier
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onRefresh
+                )
+                .padding(vertical = 4.dp)
+        )
+    }
+}
+
+/**
+ * Cyberpunk Action Tile with frosted glass backdrop and neon cyan stroke.
+ */
+@Composable
+fun ActionTile(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = modifier
+            .height(84.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .border(
+                border = BorderStroke(1.dp, PanelStroke),
+                shape = RoundedCornerShape(14.dp)
+            )
+            .clickable(onClick = onClick),
+        color = PanelDark,
+        shape = RoundedCornerShape(14.dp)
     ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == PERMISSION_REQUEST_CODE) {
-            updatePermissionStatus()
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.Start
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = title,
+                    tint = NeonCyan,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = title,
+                    color = TextPrimary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.8.sp,
+                    fontFamily = FontFamily.SansSerif
+                )
+            }
+            Spacer(modifier = Modifier.height(3.dp))
+            Text(
+                text = subtitle,
+                color = TextMuted,
+                fontSize = 10.5.sp,
+                fontFamily = FontFamily.Monospace
+            )
         }
     }
+}
 
-    override fun onResume() {
-        super.onResume()
-        updatePermissionStatus()
+/**
+ * Terminal-style Integrated Capabilities Log Card.
+ */
+@Composable
+fun CapabilitiesLogCard() {
+    HudCard {
+        Text(
+            text = "INTEGRATED CAPABILITIES",
+            color = TextMuted,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 1.sp,
+            fontFamily = FontFamily.Monospace
+        )
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        val capabilities = listOf(
+            "Real-Time Streaming SSE Link (Live AI Reasoning)",
+            "Hardware Power & Home Button Long-Press",
+            "Corner Gesture Navigation Invocation",
+            "Continuous Conversational Turn Listening",
+            "Live Dynamic Audio Waveform Spectrum",
+            "Zero Background Battery Drain"
+        )
+
+        capabilities.forEach { item ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 3.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                Text(
+                    text = "›",
+                    color = NeonCyan,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = item,
+                    color = TextSecondary,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    fontFamily = FontFamily.SansSerif
+                )
+            }
+        }
     }
 }

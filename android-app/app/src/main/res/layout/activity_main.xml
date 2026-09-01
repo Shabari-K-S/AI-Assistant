@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#121212"
+    android:background="@color/athena_bg"
     android:fillViewport="true">
 
     <LinearLayout
@@ -12,17 +14,23 @@
         android:orientation="vertical"
         android:padding="20dp">
 
-        <!-- ═══ Header ═══ -->
+        <!-- ═══ Hero Holographic Orb ═══ -->
+        <com.assistant.athena.ui.OrbView
+            android:id="@+id/dashOrbView"
+            android:layout_width="84dp"
+            android:layout_height="84dp"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="10dp" />
+
         <TextView
             android:id="@+id/txtTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
             android:text="A.T.H.E.N.A."
-            android:textColor="#E0E0E0"
-            android:textSize="32sp"
-            android:textStyle="bold"
-            android:letterSpacing="0.15" />
+            android:textColor="@color/text_primary"
+            android:textSize="28sp"
+            android:fontFamily="sans-serif-medium"
+            android:letterSpacing="0.1" />
 
         <TextView
             android:id="@+id/txtSubtitle"
@@ -30,199 +38,157 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
             android:layout_marginBottom="24dp"
-            android:text="Adaptive Thinking Hands-free Engine\nfor Neural Assistance"
-            android:textColor="#9E9E9E"
-            android:textSize="12sp"
-            android:gravity="center"
-            android:lineSpacingExtra="2dp" />
+            android:text="Next-Generation Neural AI Assistant for Android"
+            android:textColor="@color/text_secondary"
+            android:textSize="13sp"
+            android:gravity="center" />
 
-        <!-- ═══ Service Status Card ═══ -->
+        <!-- ═══ Status & Health Hero Card ═══ -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="@drawable/card_background"
             android:padding="16dp"
-            android:layout_marginBottom="12dp">
+            android:layout_marginBottom="16dp">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Voice Bridge"
-                android:textColor="#BDBDBD"
-                android:textSize="11sp"
-                android:textAllCaps="true"
-                android:letterSpacing="0.1"
-                android:layout_marginBottom="6dp" />
-
-            <TextView
-                android:id="@+id/txtServiceStatus"
+            <!-- Assistant Status Row -->
+            <RelativeLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="🔴  Voice Bridge: STOPPED"
-                android:textColor="#E53935"
-                android:textSize="15sp"
-                android:textStyle="bold" />
-        </LinearLayout>
+                android:layout_marginBottom="12dp">
 
-        <!-- ═══ Primary Toggle Button ═══ -->
-        <Button
-            android:id="@+id/btnToggleService"
-            android:layout_width="match_parent"
-            android:layout_height="52dp"
-            android:text="▶  Start ATHENA"
-            android:textColor="#FFFFFF"
-            android:textSize="15sp"
-            android:textStyle="bold"
-            android:textAllCaps="false"
-            android:background="@drawable/btn_rounded"
-            android:layout_marginBottom="10dp" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Digital Assistant"
+                    android:textColor="@color/text_tertiary"
+                    android:textSize="11.5sp"
+                    android:textAllCaps="true"
+                    android:letterSpacing="0.08" />
 
-        <!-- ═══ Test Query Button ═══ -->
-        <Button
-            android:id="@+id/btnTestQuery"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:text="⚡  Test Voice Uplink"
-            android:textColor="#41E6FF"
-            android:textSize="13sp"
-            android:textAllCaps="false"
-            android:background="@drawable/card_background"
-            android:layout_marginBottom="10dp" />
+                <TextView
+                    android:id="@+id/txtAssistantStatus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentEnd="true"
+                    android:text="Native Triggers Ready"
+                    android:textColor="@color/athena_teal"
+                    android:textSize="12.5sp"
+                    android:textStyle="bold" />
+            </RelativeLayout>
 
-        <!-- ═══ Set Default Assistant Button ═══ -->
-        <Button
-            android:id="@+id/btnSetDefaultAssistant"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:text="📱  Replace Google Assistant with ATHENA"
-            android:textColor="#BA68C8"
-            android:textSize="13sp"
-            android:textAllCaps="false"
-            android:background="@drawable/card_background"
-            android:layout_marginBottom="14dp" />
-
-        <!-- ═══ Live Activity Log Card ═══ -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="@drawable/card_background"
-            android:padding="16dp"
-            android:layout_marginBottom="12dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Live Activity &amp; Transcripts"
-                android:textColor="#BDBDBD"
-                android:textSize="11sp"
-                android:textAllCaps="true"
-                android:letterSpacing="0.1"
-                android:layout_marginBottom="6dp" />
-
-            <TextView
-                android:id="@+id/txtLiveLog"
+            <!-- Backend Status Row -->
+            <RelativeLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:minLines="3"
-                android:text="[Ready] Tap 'Start ATHENA' or say 'Athena, what time is it?'"
-                android:textColor="#80D8FF"
+                android:layout_marginBottom="6dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="AI Engine Backend"
+                    android:textColor="@color/text_tertiary"
+                    android:textSize="11.5sp"
+                    android:textAllCaps="true"
+                    android:letterSpacing="0.08" />
+
+                <TextView
+                    android:id="@+id/txtBackendStatus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentEnd="true"
+                    android:text="Checking…"
+                    android:textColor="@color/athena_amber"
+                    android:textSize="12.5sp"
+                    android:textStyle="bold" />
+            </RelativeLayout>
+
+            <TextView
+                android:id="@+id/txtBackendDetails"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Port: 127.0.0.1:2027"
+                android:textColor="@color/text_secondary"
                 android:textSize="12sp"
-                android:fontFamily="monospace"
-                android:lineSpacingExtra="2dp" />
-        </LinearLayout>
-
-        <!-- ═══ Backend Status Card ═══ -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="@drawable/card_background"
-            android:padding="16dp"
-            android:layout_marginBottom="12dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Termux Backend"
-                android:textColor="#BDBDBD"
-                android:textSize="11sp"
-                android:textAllCaps="true"
-                android:letterSpacing="0.1"
-                android:layout_marginBottom="6dp" />
-
-            <TextView
-                android:id="@+id/txtBackendStatus"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="⏳  Checking Termux backend..."
-                android:textColor="#FF9800"
-                android:textSize="13sp" />
+                android:layout_marginTop="2dp" />
 
             <Button
                 android:id="@+id/btnCheckBackend"
                 android:layout_width="wrap_content"
-                android:layout_height="36dp"
-                android:text="Check Connection"
-                android:textColor="#BB86FC"
+                android:layout_height="34dp"
+                android:text="Refresh Connection"
+                android:textColor="@color/athena_cyan"
                 android:textSize="12sp"
                 android:textAllCaps="false"
                 android:background="?attr/selectableItemBackground"
                 android:layout_marginTop="6dp" />
         </LinearLayout>
 
-        <!-- ═══ Permissions Card ═══ -->
+        <!-- ═══ Primary Action: Launch Floating Assistant HUD ═══ -->
+        <Button
+            android:id="@+id/btnLaunchOverlay"
+            android:layout_width="match_parent"
+            android:layout_height="54dp"
+            android:text="✨  Open Assistant HUD"
+            android:textColor="#FFFFFF"
+            android:textSize="15.5sp"
+            android:textStyle="bold"
+            android:textAllCaps="false"
+            android:background="@drawable/btn_rounded"
+            android:layout_marginBottom="12dp" />
+
+        <!-- ═══ Secondary Action: Set Default Assistant ═══ -->
+        <Button
+            android:id="@+id/btnSetDefaultAssistant"
+            android:layout_width="match_parent"
+            android:layout_height="50dp"
+            android:text="⚙️  Set as Android Default Assistant"
+            android:textColor="@color/athena_cyan"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textAllCaps="false"
+            android:background="@drawable/access_card_background"
+            android:layout_marginBottom="12dp" />
+
+        <!-- ═══ Tertiary Action: Access Methods Guide ═══ -->
+        <Button
+            android:id="@+id/btnOpenAccessGuide"
+            android:layout_width="match_parent"
+            android:layout_height="50dp"
+            android:text="📱  Access Assistant Methods &amp; Gestures"
+            android:textColor="@color/text_secondary"
+            android:textSize="13.5sp"
+            android:textAllCaps="false"
+            android:background="@drawable/card_background"
+            android:layout_marginBottom="16dp" />
+
+        <!-- ═══ Features & Capabilities Card ═══ -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="@drawable/card_background"
             android:padding="16dp"
-            android:layout_marginBottom="12dp">
+            android:layout_marginBottom="20dp">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Permissions"
-                android:textColor="#BDBDBD"
-                android:textSize="11sp"
+                android:text="Integrated Capabilities"
+                android:textColor="@color/text_tertiary"
+                android:textSize="11.5sp"
                 android:textAllCaps="true"
-                android:letterSpacing="0.1"
-                android:layout_marginBottom="6dp" />
+                android:letterSpacing="0.08"
+                android:layout_marginBottom="10dp" />
 
             <TextView
-                android:id="@+id/txtPermissionStatus"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Checking..."
-                android:textColor="#E0E0E0"
-                android:textSize="12sp" />
-        </LinearLayout>
-
-        <!-- ═══ Settings Card ═══ -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:background="@drawable/card_background"
-            android:padding="16dp"
-            android:layout_marginBottom="16dp"
-            android:gravity="center_vertical">
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Auto-start on boot"
-                android:textColor="#E0E0E0"
-                android:textSize="14sp" />
-
-            <androidx.appcompat.widget.SwitchCompat
-                android:id="@+id/switchAutoStart"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:checked="true" />
+                android:text="• Real-Time Streaming SSE Link (Live AI Reasoning)\n• Hardware Power &amp; Home Button Long-Press\n• Corner Gesture Navigation Invocation\n• Live Dynamic Audio Waveform Spectrum\n• Zero Background Battery Drain"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp"
+                android:lineSpacingExtra="5dp" />
         </LinearLayout>
 
         <!-- ═══ Footer ═══ -->
@@ -230,10 +196,10 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/footer_instructions"
-            android:textColor="#616161"
-            android:textSize="11sp"
+            android:textColor="@color/text_tertiary"
+            android:textSize="11.5sp"
             android:gravity="center"
-            android:lineSpacingExtra="2dp"
+            android:lineSpacingExtra="3dp"
             android:layout_marginBottom="16dp" />
 
     </LinearLayout>

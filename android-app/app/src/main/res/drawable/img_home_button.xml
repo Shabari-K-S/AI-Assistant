@@ -1,0 +1,39 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="140dp"
+    android:height="100dp"
+    android:viewportWidth="140"
+    android:viewportHeight="100">
+    <!-- Phone bottom silhouette -->
+    <path
+        android:fillColor="#181D26"
+        android:strokeColor="#333D4F"
+        android:strokeWidth="2"
+        android:pathData="M30,0 L110,0 L110,85 C110,93.3 103.3,100 95,100 L45,100 C36.7,100 30,93.3 30,85 Z" />
+
+    <!-- 3-Button Navigation Bar Area -->
+    <!-- Back triangle (left) -->
+    <path
+        android:fillColor="#64748B"
+        android:pathData="M51,84 L46,87 L51,90 Z" />
+
+    <!-- Recents square (right) -->
+    <path
+        android:fillColor="#64748B"
+        android:pathData="M89,84 L95,84 L95,90 L89,90 Z" />
+
+    <!-- Outer soft glowing cyan aura around Home Button -->
+    <path
+        android:fillColor="#1500F0FF"
+        android:pathData="M70,87 C54,87 40,73 40,57 C40,41 54,27 70,27 C86,27 100,41 100,57 C100,73 86,87 70,87 Z" />
+    <path
+        android:fillColor="#3500F0FF"
+        android:pathData="M70,87 C58,87 48,77 48,65 C48,53 58,43 70,43 C82,43 92,53 92,65 C92,77 82,87 70,87 Z" />
+    <path
+        android:fillColor="#7022D3EE"
+        android:pathData="M70,87 C63,87 57,81 57,74 C57,67 63,61 70,61 C77,61 83,67 83,74 C83,81 77,87 70,87 Z" />
+
+    <!-- Home Button center circle -->
+    <path
+        android:fillColor="#E0F2FE"
+        android:pathData="M70,84 C68.3,84 67,85.3 67,87 C67,88.7 68.3,90 70,90 C71.7,90 73,88.7 73,87 C73,85.3 71.7,84 70,84 Z" />
+</vector>

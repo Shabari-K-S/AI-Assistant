@@ -1,11 +1,39 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="athena_bg">#121212</color>
-    <color name="athena_card">#1E1E1E</color>
-    <color name="athena_accent">#BB86FC</color>
-    <color name="athena_green">#4CAF50</color>
-    <color name="athena_red">#E53935</color>
-    <color name="athena_orange">#FF9800</color>
-    <color name="athena_text">#E0E0E0</color>
-    <color name="athena_text_dim">#9E9E9E</color>
+    <!-- Core Dark Theme -->
+    <color name="athena_bg">#0D0E11</color>
+    <color name="athena_surface">#14161B</color>
+    <color name="athena_surface_variant">#1C1F26</color>
+    <color name="athena_card">#181B22</color>
+    <color name="athena_card_stroke">#262A34</color>
+    <color name="athena_card_highlight">#2D323E</color>
+    <color name="overlay_backdrop">#B3000000</color>
+    <color name="overlay_sheet_bg">#13151A</color>
+    <color name="overlay_sheet_stroke">#282D3A</color>
+
+    <!-- Accent & Glow Colors -->
+    <color name="athena_teal">#22D3EE</color>
+    <color name="athena_cyan">#38BDF8</color>
+    <color name="athena_blue">#3B82F6</color>
+    <color name="athena_purple">#A855F7</color>
+    <color name="athena_violet">#8B5CF6</color>
+    <color name="athena_amber">#F59E0B</color>
+    <color name="athena_orange">#F97316</color>
+    <color name="athena_green">#10B981</color>
+    <color name="athena_emerald">#34D399</color>
+    <color name="athena_red">#EF4444</color>
+
+    <!-- Text Colors -->
+    <color name="text_primary">#F8FAFC</color>
+    <color name="text_secondary">#94A3B8</color>
+    <color name="text_tertiary">#64748B</color>
+    <color name="text_muted">#475569</color>
+
+    <!-- Waveform & Chip Colors -->
+    <color name="chip_bg">#1E222B</color>
+    <color name="chip_stroke">#333A48</color>
+    <color name="chip_text">#CBD5E1</color>
+    <color name="waveform_dot_active">#FB923C</color>
+    <color name="waveform_dot_bright">#FDBA74</color>
+    <color name="waveform_dot_dim">#7C2D12</color>
 </resources>

@@ -1,4 +1,30 @@
 <resources>
     <string name="app_name">ATHENA</string>
-    <string name="footer_instructions">Say &quot;Athena&quot; followed by your command\nVoice bridge connects to Termux @ 127.0.0.1:2027</string>
+    <string name="assistant_name">ATHENA</string>
+    <string name="assistant_title">athena</string>
+    <string name="footer_instructions">Android Native Digital Assistant\nConnected to Termux Backend @ 127.0.0.1:2027</string>
+    
+    <!-- Access Assistant Screen Strings -->
+    <string name="access_assistant_title">Access Assistant</string>
+    <string name="access_assistant_subtitle">Depending on your device and settings, there are several ways to access the Assistant</string>
+    <string name="method_power_title">Press &amp; hold the</string>
+    <string name="method_power_desc">Power Button</string>
+    <string name="method_home_title">Press &amp; hold the</string>
+    <string name="method_home_desc">Home Button</string>
+    <string name="method_swipe_title">Swipe</string>
+    <string name="method_swipe_desc">from bottom left to center</string>
+    
+    <!-- Suggestion Chips -->
+    <string name="chip_notifications">Catch me up on notifications</string>
+    <string name="chip_screen">What\'s on my screen?</string>
+    <string name="chip_news">Deep research today\'s news</string>
+    <string name="chip_schedule">Check weather &amp; schedule</string>
+    <string name="chip_system">System diagnosis</string>
+    
+    <!-- Assistant States -->
+    <string name="status_listening">Listening…</string>
+    <string name="status_thinking">Thinking…</string>
+    <string name="status_speaking">Speaking…</string>
+    <string name="status_ready">How can I help you today?</string>
+    <string name="type_query_hint">Ask anything…</string>
 </resources>

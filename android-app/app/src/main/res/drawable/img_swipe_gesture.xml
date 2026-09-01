@@ -1,0 +1,42 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="140dp"
+    android:height="100dp"
+    android:viewportWidth="140"
+    android:viewportHeight="100">
+    <!-- Phone bottom-left corner silhouette -->
+    <path
+        android:fillColor="#181D26"
+        android:strokeColor="#333D4F"
+        android:strokeWidth="2"
+        android:pathData="M20,0 L115,0 L115,100 L40,100 C29,100 20,91 20,80 Z" />
+
+    <!-- Outer glowing cyan circles at the end of swipe -->
+    <path
+        android:fillColor="#1500F0FF"
+        android:pathData="M78,40 C63,40 50,27 50,12 C50,-3 63,-16 78,-16 C93,-16 106,-3 106,12 C106,27 93,40 78,40 Z" />
+    <path
+        android:fillColor="#3500F0FF"
+        android:pathData="M78,40 C68,40 60,32 60,22 C60,12 68,4 78,4 C88,4 96,12 96,22 C96,32 88,40 78,40 Z" />
+
+    <!-- Curved Glowing Swipe Trail from bottom-left corner to center -->
+    <path
+        android:strokeColor="#2000F0FF"
+        android:strokeWidth="18"
+        android:strokeLineCap="round"
+        android:pathData="M32,88 C38,82 52,65 78,40" />
+    <path
+        android:strokeColor="#5022D3EE"
+        android:strokeWidth="10"
+        android:strokeLineCap="round"
+        android:pathData="M32,88 C38,82 52,65 78,40" />
+    <path
+        android:strokeColor="#38BDF8"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:pathData="M32,88 C38,82 52,65 78,40" />
+
+    <!-- Bright starting swipe dot -->
+    <path
+        android:fillColor="#E0F2FE"
+        android:pathData="M78,36 C75.8,36 74,37.8 74,40 C74,42.2 75.8,44 78,44 C80.2,44 82,42.2 82,40 C82,37.8 80.2,36 78,36 Z" />
+</vector>

@@ -1,11 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Athena" parent="Theme.AppCompat.DayNight.NoActionBar">
-        <item name="colorPrimary">#BB86FC</item>
-        <item name="colorPrimaryDark">#121212</item>
-        <item name="colorAccent">#BB86FC</item>
-        <item name="android:windowBackground">#121212</item>
-        <item name="android:statusBarColor">#121212</item>
-        <item name="android:navigationBarColor">#121212</item>
+    <!-- Base App Theme -->
+    <style name="Theme.Athena" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/athena_cyan</item>
+        <item name="colorPrimaryDark">@color/athena_bg</item>
+        <item name="colorAccent">@color/athena_teal</item>
+        <item name="android:windowBackground">@color/athena_bg</item>
+        <item name="android:statusBarColor">@color/athena_bg</item>
+        <item name="android:navigationBarColor">@color/athena_bg</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <!-- Translucent Perplexity-style Assistant Overlay Theme -->
+    <style name="Theme.Athena.AssistantOverlay" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowIsFloating">false</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:backgroundDimAmount">0.65</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowAnimationStyle">@style/Animation.Athena.AssistantSheet</item>
+    </style>
+
+    <!-- Slide Up/Down Animation for Assistant Sheet -->
+    <style name="Animation.Athena.AssistantSheet" parent="@android:style/Animation.Dialog">
+        <item name="android:windowEnterAnimation">@anim/slide_up_in</item>
+        <item name="android:windowExitAnimation">@anim/slide_down_out</item>
     </style>
 </resources>

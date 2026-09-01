@@ -11,10 +11,10 @@ import android.util.Log
 /**
  * Android Digital Assistant Service for A.T.H.E.N.A.
  *
- * This allows ATHENA to be selected as the system-level Default Digital Assistant
- * in Android Settings -> Apps -> Default Apps -> Digital Assistant App,
- * replacing Google Assistant when the user holds the Home button, long-presses Power,
- * or triggers assistant shortcuts.
+ * Allows ATHENA to be selected as the system-level Default Digital Assistant
+ * in Android Settings -> Apps -> Default Apps -> Digital Assistant App.
+ * When the user holds the Home button, long-presses Power, or swipes from corners,
+ * this service immediately brings up the Perplexity-styled Assistant Overlay.
  */
 class AthenaVoiceInteractionService : VoiceInteractionService() {
 
@@ -42,9 +42,8 @@ class AthenaVoiceSessionService : VoiceInteractionSessionService() {
 class AthenaVoiceSession(context: android.content.Context) : VoiceInteractionSession(context) {
     override fun onHandleAssist(data: Bundle?, structure: android.app.assist.AssistStructure?, content: android.app.assist.AssistContent?) {
         super.onHandleAssist(data, structure, content)
-        // When assistant is triggered by user gesture (power button / swipe / home button):
-        val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        val intent = Intent(context, AssistantOverlayActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION
             putExtra("trigger_voice", true)
         }
         context.startActivity(intent)
