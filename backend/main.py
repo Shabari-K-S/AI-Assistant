@@ -307,6 +307,15 @@ def _speak(tts, text: str, bus=None, muted: bool = False, mic=None, trigger=None
         return
     if bus is not None:
         bus.set(phase="speaking")
+
+    # If ANDROID_TTS_MODE is enabled, dispatch reply to client and skip local playback
+    is_android_tts = os.environ.get("ANDROID_TTS_MODE", "").strip().lower() in ("true", "1", "yes", "on") or os.environ.get("EV_ANDROID_TTS_MODE", "").strip().lower() in ("true", "1", "yes", "on")
+    if is_android_tts:
+        if bus is not None:
+            bus.event("reply", text=text, client_tts=True)
+            bus.log("INFO", "reply text dispatched to client (ANDROID_TTS_MODE=true: local speaker muted)")
+        return
+
     if trigger is not None:
         trigger.set_enabled(False)
     _speech_state["is_speaking"] = True
@@ -321,12 +330,6 @@ def _speak(tts, text: str, bus=None, muted: bool = False, mic=None, trigger=None
             return
         if bus is not None:
             bus.log("INFO", "speaking…" if not muted else "speaking… (muted)")
-        # If ANDROID_TTS_MODE is enabled, mute local Termux speaker playback and let client speak
-        is_android_tts = getattr(cfg.tts, "android_tts_mode", False) or os.environ.get("ANDROID_TTS_MODE", "").lower() in ("true", "1", "yes")
-        if is_android_tts:
-            if bus is not None:
-                bus.log("INFO", "reply text dispatched to client (ANDROID_TTS_MODE=true: local speaker muted)")
-            return
 
         if not muted:
             try:

@@ -100,9 +100,14 @@ class EdgeTTS(TTSEngine):
     async def _synthesize_async(self, text: str) -> bytes:
         import edge_tts
 
+        # Auto-detect Tamil script and switch to neural Tamil voice
+        voice = self._voice
+        if re.search(r"[\u0B80-\u0BFF]", text):
+            voice = "ta-IN-PallaviNeural"
+
         communicate = edge_tts.Communicate(
             text=text,
-            voice=self._voice,
+            voice=voice,
             rate=self._rate,
             pitch=self._pitch,
             volume=self._volume,

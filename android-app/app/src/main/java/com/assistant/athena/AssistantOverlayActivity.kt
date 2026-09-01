@@ -210,8 +210,8 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
 
         btnSpeakResponse.setOnClickListener {
             val text = lastSpokenText.ifEmpty { txtResponseContent.text.toString() }
-            if (text.isNotEmpty() && isTtsReady) {
-                tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "AthenaReply")
+            if (text.isNotEmpty()) {
+                speakText(text)
             }
         }
     }
@@ -288,9 +288,10 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
                         renderFormattedResponse(replyText)
                         triggerHaptic(VibrationEffect.EFFECT_TICK)
 
-                        // Only speak on Android if backend explicitly flagged client_tts
-                        if (isTtsReady && json.optBoolean("client_tts", false)) {
-                            tts?.speak(replyText, TextToSpeech.QUEUE_FLUSH, null, "AthenaReply")
+                        // Speak via native Android TTS if client_tts is requested or if Tamil text is detected
+                        val hasTamil = replyText.any { it in '\u0B80'..'\u0BFF' }
+                        if (json.optBoolean("client_tts", false) || hasTamil) {
+                            speakText(replyText)
                         }
                     }
                 }
@@ -644,7 +645,7 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
     }
 
     // =========================================================================
-    // TTS & Haptics
+    // Native Android TTS & Haptics (Supports Tamil & Multilingual Speech)
     // =========================================================================
 
     private fun initTTS() {
@@ -655,6 +656,25 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
         if (status == TextToSpeech.SUCCESS) {
             tts?.language = Locale.US
             isTtsReady = true
+        }
+    }
+
+    private fun speakText(text: String) {
+        if (!isTtsReady || text.isEmpty()) return
+        try {
+            val hasTamil = text.any { it in '\u0B80'..'\u0BFF' }
+            if (hasTamil) {
+                val tamilLocale = Locale("ta", "IN")
+                val res = tts?.setLanguage(tamilLocale)
+                if (res == TextToSpeech.LANG_MISSING_DATA || res == TextToSpeech.LANG_NOT_SUPPORTED) {
+                    tts?.language = Locale("ta")
+                }
+            } else {
+                tts?.language = Locale.US
+            }
+            tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "AthenaReply")
+        } catch (e: Exception) {
+            Log.w(TAG, "Native TTS playback error", e)
         }
     }
 
