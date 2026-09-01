@@ -308,10 +308,11 @@ def _speak(tts, text: str, bus=None, muted: bool = False, mic=None, trigger=None
     if bus is not None:
         bus.set(phase="speaking")
 
-    # If ANDROID_TTS_MODE is enabled, dispatch reply to client and skip local playback
+    # If ANDROID_TTS_MODE is enabled, dispatch reply to client and cleanly restore post_phase
     is_android_tts = os.environ.get("ANDROID_TTS_MODE", "").strip().lower() in ("true", "1", "yes", "on") or os.environ.get("EV_ANDROID_TTS_MODE", "").strip().lower() in ("true", "1", "yes", "on")
     if is_android_tts:
         if bus is not None:
+            bus.set(phase=post_phase, reply=text)
             bus.event("reply", text=text, client_tts=True)
             bus.log("INFO", "reply text dispatched to client (ANDROID_TTS_MODE=true: local speaker muted)")
         return

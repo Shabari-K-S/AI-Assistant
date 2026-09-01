@@ -18,6 +18,7 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.text.Html
 import android.text.Spanned
 import android.util.Base64
@@ -283,15 +284,27 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
                     val replyText = json.optString("text", "")
                     if (replyText.isNotEmpty()) {
                         lastSpokenText = replyText
-                        orbView.setState(OrbView.STATE_SPEAKING)
-                        waveformVisualizer.setMode(listening = false, thinking = false, speaking = true)
                         renderFormattedResponse(replyText)
                         triggerHaptic(VibrationEffect.EFFECT_TICK)
 
-                        // Speak via native Android TTS if client_tts is requested or if Tamil text is detected
                         val hasTamil = replyText.any { it in '\u0B80'..'\u0BFF' }
-                        if (json.optBoolean("client_tts", false) || hasTamil) {
+                        val shouldSpeakOnAndroid = json.optBoolean("client_tts", false) || hasTamil
+
+                        if (shouldSpeakOnAndroid) {
                             speakText(replyText)
+                        } else {
+                            // Backend audio or text-only: show speaking state then seamlessly settle back to listening
+                            orbView.setState(OrbView.STATE_SPEAKING)
+                            waveformVisualizer.setMode(listening = false, thinking = false, speaking = true)
+                            handler.postDelayed({
+                                if (!isFinishing) {
+                                    orbView.setState(OrbView.STATE_LISTENING)
+                                    waveformVisualizer.setMode(listening = true, thinking = false, speaking = false)
+                                    if (!isRecording) {
+                                        startAudioRecording()
+                                    }
+                                }
+                            }, 3200)
                         }
                     }
                 }
@@ -655,6 +668,34 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
             tts?.language = Locale.US
+            tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                override fun onStart(utteranceId: String?) {
+                    handler.post {
+                        orbView.setState(OrbView.STATE_SPEAKING)
+                        waveformVisualizer.setMode(listening = false, thinking = false, speaking = true)
+                    }
+                }
+
+                override fun onDone(utteranceId: String?) {
+                    handler.post {
+                        orbView.setState(OrbView.STATE_LISTENING)
+                        waveformVisualizer.setMode(listening = true, thinking = false, speaking = false)
+                        if (!isRecording && !isFinishing) {
+                            startAudioRecording()
+                        }
+                    }
+                }
+
+                override fun onError(utteranceId: String?) {
+                    handler.post {
+                        orbView.setState(OrbView.STATE_LISTENING)
+                        waveformVisualizer.setMode(listening = true, thinking = false, speaking = false)
+                        if (!isRecording && !isFinishing) {
+                            startAudioRecording()
+                        }
+                    }
+                }
+            })
             isTtsReady = true
         }
     }
