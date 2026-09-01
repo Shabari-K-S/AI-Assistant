@@ -10,10 +10,13 @@ import android.graphics.Color
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.media.audiofx.AcousticEchoCanceler
+import android.media.audiofx.NoiseSuppressor
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -98,9 +101,11 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
     private val audioFormat = AudioFormat.ENCODING_PCM_16BIT
     private val minBufferSize = maxOf(AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat), 4096)
 
-    // Android TTS Fallback
+    // Android TTS & Echo Guard
     private var tts: TextToSpeech? = null
     private var isTtsReady = false
+    @Volatile private var isTtsSpeaking = false
+    @Volatile private var ttsQuietUntil = 0L
 
     // HTTP & SSE Clients
     private val client = OkHttpClient.Builder()
@@ -458,7 +463,7 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
 
     @SuppressLint("MissingPermission")
     private fun startAudioRecording() {
-        if (isRecording) return
+        if (isRecording || isTtsSpeaking || SystemClock.uptimeMillis() < ttsQuietUntil) return
         try {
             audioRecord = AudioRecord(
                 MediaRecorder.AudioSource.VOICE_RECOGNITION,
@@ -478,6 +483,21 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
                 )
             }
 
+            // Enable Hardware Acoustic Echo Cancellation and Noise Suppression
+            val sessionId = audioRecord?.audioSessionId ?: 0
+            if (sessionId != 0) {
+                if (AcousticEchoCanceler.isAvailable()) {
+                    try {
+                        AcousticEchoCanceler.create(sessionId)?.enabled = true
+                    } catch (_: Exception) {}
+                }
+                if (NoiseSuppressor.isAvailable()) {
+                    try {
+                        NoiseSuppressor.create(sessionId)?.enabled = true
+                    } catch (_: Exception) {}
+                }
+            }
+
             audioRecord?.startRecording()
             isRecording = true
 
@@ -495,6 +515,15 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
                 while (isRecording && !isFinishing) {
                     val read = audioRecord?.read(buffer, 0, buffer.size) ?: 0
                     if (read > 0) {
+                        // Guard against TTS speech audio bleeding into mic input
+                        if (isTtsSpeaking || SystemClock.uptimeMillis() < ttsQuietUntil) {
+                            isVoiceActive = false
+                            speechFrames = 0
+                            silenceFrames = 0
+                            speechStream.reset()
+                            continue
+                        }
+
                         var sum = 0.0
                         for (i in 0 until read) {
                             sum += abs(buffer[i].toDouble())
@@ -605,10 +634,23 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
                         val json = JSONObject(body)
                         val text = json.optString("text", "")
                         val cmd = json.optString("command", "")
-                        val queryText = if (cmd.isNotEmpty()) cmd else text
+                        val rawQuery = if (cmd.isNotEmpty()) cmd else text
+                        val queryText = rawQuery.trim()
 
                         if (queryText.isNotEmpty()) {
-                            executeQuery(queryText)
+                            // Filter out acoustic self-echo of previous AI response
+                            if (isEchoOfLastReply(queryText, lastSpokenText)) {
+                                Log.i(TAG, "Ignored acoustic echo of previous response: '$queryText'")
+                                orbView.setState(OrbView.STATE_LISTENING)
+                                waveformVisualizer.setMode(listening = true, thinking = false, speaking = false)
+                                handler.postDelayed({
+                                    if (!isRecording && !isFinishing && !isTtsSpeaking) {
+                                        startAudioRecording()
+                                    }
+                                }, 600)
+                            } else {
+                                executeQuery(queryText)
+                            }
                         } else {
                             orbView.setState(OrbView.STATE_IDLE)
                             waveformVisualizer.setMode(listening = false, thinking = false, speaking = false)
@@ -670,6 +712,8 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
             tts?.language = Locale.US
             tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {
+                    isTtsSpeaking = true
+                    ttsQuietUntil = SystemClock.uptimeMillis() + 60000L
                     handler.post {
                         orbView.setState(OrbView.STATE_SPEAKING)
                         waveformVisualizer.setMode(listening = false, thinking = false, speaking = true)
@@ -677,23 +721,31 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
                 }
 
                 override fun onDone(utteranceId: String?) {
+                    isTtsSpeaking = false
+                    ttsQuietUntil = SystemClock.uptimeMillis() + 1000L // 1.0s quiet grace period
                     handler.post {
                         orbView.setState(OrbView.STATE_LISTENING)
                         waveformVisualizer.setMode(listening = true, thinking = false, speaking = false)
-                        if (!isRecording && !isFinishing) {
+                    }
+                    handler.postDelayed({
+                        if (!isTtsSpeaking && !isRecording && !isFinishing) {
                             startAudioRecording()
                         }
-                    }
+                    }, 1000L)
                 }
 
                 override fun onError(utteranceId: String?) {
+                    isTtsSpeaking = false
+                    ttsQuietUntil = SystemClock.uptimeMillis() + 600L
                     handler.post {
                         orbView.setState(OrbView.STATE_LISTENING)
                         waveformVisualizer.setMode(listening = true, thinking = false, speaking = false)
-                        if (!isRecording && !isFinishing) {
+                    }
+                    handler.postDelayed({
+                        if (!isTtsSpeaking && !isRecording && !isFinishing) {
                             startAudioRecording()
                         }
-                    }
+                    }, 600L)
                 }
             })
             isTtsReady = true
@@ -702,6 +754,9 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
 
     private fun speakText(text: String) {
         if (!isTtsReady || text.isEmpty()) return
+        stopAudioRecording()
+        isTtsSpeaking = true
+        ttsQuietUntil = SystemClock.uptimeMillis() + 60000L
         try {
             val hasTamil = text.any { it in '\u0B80'..'\u0BFF' }
             if (hasTamil) {
@@ -715,8 +770,21 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
             }
             tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "AthenaReply")
         } catch (e: Exception) {
+            isTtsSpeaking = false
+            ttsQuietUntil = SystemClock.uptimeMillis() + 500L
             Log.w(TAG, "Native TTS playback error", e)
         }
+    }
+
+    private fun isEchoOfLastReply(transcript: String, lastReply: String): Boolean {
+        if (transcript.length < 2) return true
+        if (lastReply.isEmpty()) return false
+        val normTranscript = transcript.lowercase().replace(Regex("[^\\p{L}\\p{Nd}]+"), "")
+        val normReply = lastReply.lowercase().replace(Regex("[^\\p{L}\\p{Nd}]+"), "")
+        if (normTranscript.isEmpty() || normReply.isEmpty()) return false
+        if (normReply.contains(normTranscript) && normTranscript.length > 8) return true
+        if (normTranscript.contains(normReply) && normReply.length > 8) return true
+        return false
     }
 
     private fun triggerHaptic(effectId: Int) {
