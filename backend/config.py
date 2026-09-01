@@ -133,6 +133,7 @@ class TTSConfig:
     voice_id: str = ""  # empty = ElevenLabs default voice
     piper_voice_path: str = ""  # path to a piper .onnx voice model
     piper_rate: float = 1.0
+    android_tts_mode: bool = False  # If true, python backend skips local audio playback so client/Android can speak
 
 
 @dataclass(frozen=True)
@@ -274,6 +275,7 @@ def load_config() -> Config:
                 else _env("EV_PIPER_VOICE_PATH")
             ),
             piper_rate=_env_float("EV_PIPER_VOICE_RATE", 1.0),
+            android_tts_mode=_env_bool("ANDROID_TTS_MODE", _env_bool("EV_ANDROID_TTS_MODE", False)),
         ),
         tools=ToolsConfig(
             enabled=_env_bool("EV_TOOLS_ENABLED", True),
