@@ -74,7 +74,12 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
     private lateinit var txtAssistantTitle: TextView
     private lateinit var waveformVisualizer: AudioWaveformView
     private lateinit var cardResponseContainer: NestedScrollView
+    private lateinit var layoutUserPromptRow: LinearLayout
+    private lateinit var txtUserPrompt: TextView
+    private lateinit var txtStatusTelemetry: TextView
+    private lateinit var viewPromptDivider: View
     private lateinit var txtResponseContent: TextView
+    private lateinit var layoutResponseActions: LinearLayout
     private lateinit var btnCopyResponse: ImageButton
     private lateinit var btnSpeakResponse: ImageButton
     private lateinit var layoutTextInputRow: LinearLayout
@@ -145,9 +150,15 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
         txtAssistantTitle = findViewById(R.id.txtAssistantTitle)
         waveformVisualizer = findViewById(R.id.waveformVisualizer)
         cardResponseContainer = findViewById(R.id.cardResponseContainer)
+        layoutUserPromptRow = findViewById(R.id.layoutUserPromptRow)
+        txtUserPrompt = findViewById(R.id.txtUserPrompt)
+        txtStatusTelemetry = findViewById(R.id.txtStatusTelemetry)
+        viewPromptDivider = findViewById(R.id.viewPromptDivider)
         txtResponseContent = findViewById(R.id.txtResponseContent)
+        layoutResponseActions = findViewById(R.id.layoutResponseActions)
         btnCopyResponse = findViewById(R.id.btnCopyResponse)
         btnSpeakResponse = findViewById(R.id.btnSpeakResponse)
+
         layoutTextInputRow = findViewById(R.id.layoutTextInputRow)
         editQueryInput = findViewById(R.id.editQueryInput)
         btnSendTextQuery = findViewById(R.id.btnSendTextQuery)
@@ -289,7 +300,7 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
                     val replyText = json.optString("text", "")
                     if (replyText.isNotEmpty()) {
                         lastSpokenText = replyText
-                        renderFormattedResponse(replyText)
+                        showAssistantResponse(replyText)
                         triggerHaptic(VibrationEffect.EFFECT_TICK)
 
                         val hasTamil = replyText.any { it in '\u0B80'..'\u0BFF' }
@@ -329,9 +340,9 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
                             orbView.setState(OrbView.STATE_LISTENING)
                             waveformVisualizer.setMode(listening = true, thinking = false, speaking = false)
                             // Continuous conversation: automatically resume listening for user's next turn
-                            if (!isRecording && !isFinishing) {
+                            if (!isRecording && !isFinishing && !isTtsSpeaking) {
                                 handler.postDelayed({
-                                    if (!isRecording && !isFinishing) {
+                                    if (!isRecording && !isFinishing && !isTtsSpeaking) {
                                         startAudioRecording()
                                     }
                                 }, 600)
@@ -344,14 +355,13 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
                     val toolName = json.optString("name", "tool")
                     orbView.setState(OrbView.STATE_THINKING)
                     waveformVisualizer.setMode(listening = false, thinking = true, speaking = false)
-                    cardResponseContainer.visibility = View.VISIBLE
-                    txtResponseContent.text = formatHtml("⚡ <i>Executing ${cleanToolName(toolName)}…</i>")
+                    showStatusTelemetry("⚡ <i>Executing ${cleanToolName(toolName)}…</i>")
                 }
 
                 "tool_end" -> {
                     val toolName = json.optString("name", "tool")
                     val duration = json.optInt("duration_ms", 0)
-                    txtResponseContent.text = formatHtml("⚡ <i>${cleanToolName(toolName)} finished (${duration}ms), finalizing response…</i>")
+                    showStatusTelemetry("✓ <i>${cleanToolName(toolName)} finished (${duration}ms)</i>")
                 }
 
                 "snapshot" -> {
@@ -361,7 +371,7 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
                         lastSpokenText = reply
                         orbView.setState(OrbView.STATE_SPEAKING)
                         waveformVisualizer.setMode(listening = false, thinking = false, speaking = true)
-                        renderFormattedResponse(reply)
+                        showAssistantResponse(reply)
                     }
                 }
             }
@@ -389,10 +399,9 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
         stopAudioRecording()
         lastSpokenText = ""
 
+        showUserQuery(promptText)
         orbView.setState(OrbView.STATE_THINKING)
         waveformVisualizer.setMode(listening = false, thinking = true, speaking = false)
-        cardResponseContainer.visibility = View.VISIBLE
-        txtResponseContent.text = formatHtml("⚡ <i>Reasoning with AI…</i>")
 
         val jsonBody = JSONObject().put("text", promptText).toString()
         val requestBody = jsonBody.toRequestBody("application/json; charset=utf-8".toMediaType())
@@ -407,7 +416,7 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
                 handler.post {
                     orbView.setState(OrbView.STATE_IDLE)
                     waveformVisualizer.setMode(listening = false, thinking = false, speaking = false)
-                    renderFormattedResponse("Unable to reach Termux AI backend. Please verify evbridge is running at 127.0.0.1:2027.")
+                    showStatusTelemetry("⚠️ <i>Unable to reach Termux AI backend (127.0.0.1:2027)</i>")
                 }
             }
 
@@ -426,7 +435,7 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
                             lastSpokenText = directReply
                             orbView.setState(OrbView.STATE_SPEAKING)
                             waveformVisualizer.setMode(listening = false, thinking = false, speaking = true)
-                            renderFormattedResponse(directReply)
+                            showAssistantResponse(directReply)
                         }
                     } catch (_: Exception) {}
                 }
@@ -434,18 +443,40 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
         })
     }
 
-    private fun renderFormattedResponse(responseText: String) {
+    private fun showUserQuery(queryText: String) {
         cardResponseContainer.visibility = View.VISIBLE
-        // Convert markdown bold, bullet points, headers into clean formatted text
-        var formatted = responseText
+        layoutUserPromptRow.visibility = View.VISIBLE
+        txtUserPrompt.text = "“$queryText”"
+        txtStatusTelemetry.visibility = View.VISIBLE
+        txtStatusTelemetry.text = formatHtml("⚡ <i>Reasoning with AI…</i>")
+        viewPromptDivider.visibility = View.VISIBLE
+        txtResponseContent.visibility = View.GONE
+        layoutResponseActions.visibility = View.GONE
+        cardResponseContainer.post { cardResponseContainer.fullScroll(View.FOCUS_UP) }
+    }
+
+    private fun showStatusTelemetry(statusHtml: String) {
+        cardResponseContainer.visibility = View.VISIBLE
+        txtStatusTelemetry.visibility = View.VISIBLE
+        txtStatusTelemetry.text = formatHtml(statusHtml)
+        viewPromptDivider.visibility = View.VISIBLE
+    }
+
+    private fun showAssistantResponse(responseText: String) {
+        cardResponseContainer.visibility = View.VISIBLE
+        txtStatusTelemetry.visibility = View.GONE
+        viewPromptDivider.visibility = View.VISIBLE
+        txtResponseContent.visibility = View.VISIBLE
+        txtResponseContent.text = formatHtml(formatMarkdown(responseText))
+        layoutResponseActions.visibility = View.VISIBLE
+        cardResponseContainer.post { cardResponseContainer.fullScroll(View.FOCUS_UP) }
+    }
+
+    private fun formatMarkdown(text: String): String {
+        return text
             .replace(Regex("\\*\\*(.*?)\\*\\*"), "<b>$1</b>")
             .replace(Regex("`([^`]+)`"), "<tt>$1</tt>")
             .replace("\n", "<br/>")
-
-        txtResponseContent.text = formatHtml(formatted)
-        cardResponseContainer.post {
-            cardResponseContainer.fullScroll(View.FOCUS_UP)
-        }
     }
 
     private fun formatHtml(html: String): Spanned {
@@ -602,8 +633,7 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
         stopAudioRecording()
         orbView.setState(OrbView.STATE_THINKING)
         waveformVisualizer.setMode(listening = false, thinking = true, speaking = false)
-        cardResponseContainer.visibility = View.VISIBLE
-        txtResponseContent.text = formatHtml("⚡ <i>Transcribing speech…</i>")
+        showStatusTelemetry("⚡ <i>Transcribing speech…</i>")
 
         val b64 = Base64.encodeToString(wavBytes, Base64.NO_WRAP)
         val jsonBody = JSONObject().apply {

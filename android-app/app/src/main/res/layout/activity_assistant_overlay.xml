@@ -144,22 +144,80 @@
             android:layout_height="52dp"
             android:layout_marginBottom="10dp" />
 
-        <!-- 5. Floating AI Response Area (Appears smoothly when answer arrives) -->
+        <!-- 5. Floating AI Response Area (Shows Transcribed Query + Status + Response) -->
         <androidx.core.widget.NestedScrollView
             android:id="@+id/cardResponseContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:maxHeight="200dp"
+            android:maxHeight="240dp"
             android:visibility="gone"
             android:layout_marginBottom="10dp"
             android:background="@drawable/card_background"
-            android:padding="14dp">
+            android:padding="14dp"
+            tools:visibility="visible">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical">
 
+                <!-- User Transcribed Query -->
+                <LinearLayout
+                    android:id="@+id/layoutUserPromptRow"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="6dp"
+                    android:visibility="gone"
+                    tools:visibility="visible">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="› "
+                        android:textColor="#00F2FE"
+                        android:textSize="15sp"
+                        android:fontFamily="monospace"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/txtUserPrompt"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:textColor="#E2E8F0"
+                        android:textSize="14.5sp"
+                        android:fontFamily="sans-serif-medium"
+                        android:textIsSelectable="true"
+                        tools:text="“Hi”" />
+                </LinearLayout>
+
+                <!-- Live Status / Tool Telemetry -->
+                <TextView
+                    android:id="@+id/txtStatusTelemetry"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="#38BDF8"
+                    android:textSize="12sp"
+                    android:fontFamily="monospace"
+                    android:layout_marginBottom="6dp"
+                    android:visibility="gone"
+                    tools:visibility="visible"
+                    tools:text="⚡ Reasoning with AI…" />
+
+                <!-- Divider -->
+                <View
+                    android:id="@+id/viewPromptDivider"
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:background="#1E293B"
+                    android:layout_marginTop="2dp"
+                    android:layout_marginBottom="8dp"
+                    android:visibility="gone"
+                    tools:visibility="visible" />
+
+                <!-- AI Response Text -->
                 <TextView
                     android:id="@+id/txtResponseContent"
                     android:layout_width="match_parent"
@@ -168,34 +226,40 @@
                     android:textSize="14sp"
                     android:lineSpacingExtra="3dp"
                     android:textIsSelectable="true"
-                    tools:text="Running system diagnostics..." />
+                    android:visibility="gone"
+                    tools:visibility="visible"
+                    tools:text="Hello! How can I assist you today?" />
 
+                <!-- Action Buttons (Copy & Speak) -->
                 <LinearLayout
+                    android:id="@+id/layoutResponseActions"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
                     android:gravity="end|center_vertical"
-                    android:layout_marginTop="8dp">
+                    android:layout_marginTop="8dp"
+                    android:visibility="gone"
+                    tools:visibility="visible">
 
                     <ImageButton
                         android:id="@+id/btnCopyResponse"
-                        android:layout_width="34dp"
-                        android:layout_height="34dp"
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
                         android:background="?attr/selectableItemBackgroundBorderless"
                         android:src="@drawable/ic_copy"
                         app:tint="#94A3B8"
-                        android:padding="7dp"
+                        android:padding="6dp"
                         android:contentDescription="Copy response" />
 
                     <ImageButton
                         android:id="@+id/btnSpeakResponse"
-                        android:layout_width="34dp"
-                        android:layout_height="34dp"
-                        android:layout_marginStart="8dp"
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:layout_marginStart="6dp"
                         android:background="?attr/selectableItemBackgroundBorderless"
                         android:src="@drawable/ic_speaker"
                         app:tint="#94A3B8"
-                        android:padding="7dp"
+                        android:padding="6dp"
                         android:contentDescription="Read aloud" />
                 </LinearLayout>
             </LinearLayout>

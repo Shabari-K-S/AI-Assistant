@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingStart="4dp"
+    android:paddingEnd="4dp"
+    android:paddingTop="3dp"
+    android:paddingBottom="5dp">
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         1. User Message Layout (Right-aligned)
+         ═══════════════════════════════════════════════════════════════ -->
+    <LinearLayout
+        android:id="@+id/layoutUserContainer"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="end"
+        android:layout_marginStart="48dp"
+        android:orientation="vertical"
+        android:background="@drawable/bubble_user_bg"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp"
+        android:visibility="gone"
+        tools:visibility="visible">
+
+        <TextView
+            android:id="@+id/txtUserLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="YOU ›"
+            android:textColor="#38BDF8"
+            android:textSize="10.5sp"
+            android:fontFamily="monospace"
+            android:letterSpacing="0.05"
+            android:layout_marginBottom="2dp" />
+
+        <TextView
+            android:id="@+id/txtUserContent"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#F1F5F9"
+            android:textSize="13.5sp"
+            android:lineSpacingExtra="2dp"
+            android:textIsSelectable="true"
+            tools:text="What is the weather today?" />
+    </LinearLayout>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         2. Assistant Message Layout (Left-aligned)
+         ═══════════════════════════════════════════════════════════════ -->
+    <LinearLayout
+        android:id="@+id/layoutAssistantContainer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="20dp"
+        android:orientation="vertical"
+        android:background="@drawable/bubble_assistant_bg"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp"
+        android:visibility="gone"
+        tools:visibility="visible">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="4dp">
+
+            <View
+                android:layout_width="6dp"
+                android:layout_height="6dp"
+                android:background="@drawable/btn_action_circle"
+                android:backgroundTint="#00F2FE"
+                android:layout_marginEnd="6dp" />
+
+            <TextView
+                android:id="@+id/txtAssistantLabel"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="A.T.H.E.N.A."
+                android:textColor="#00F2FE"
+                android:textSize="10.5sp"
+                android:fontFamily="monospace"
+                android:letterSpacing="0.08" />
+
+            <ImageButton
+                android:id="@+id/btnItemCopy"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_copy"
+                app:tint="#64748B"
+                android:padding="5dp"
+                android:contentDescription="Copy response" />
+
+            <ImageButton
+                android:id="@+id/btnItemSpeak"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_marginStart="4dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_speaker"
+                app:tint="#64748B"
+                android:padding="5dp"
+                android:contentDescription="Read aloud" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/txtAssistantContent"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#F8FAFC"
+            android:textSize="13.5sp"
+            android:lineSpacingExtra="3dp"
+            android:textIsSelectable="true"
+            tools:text="Weather today is sunny with 28 degrees Celsius." />
+    </LinearLayout>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         3. System Telemetry / Tool Event (Compact Pill)
+         ═══════════════════════════════════════════════════════════════ -->
+    <LinearLayout
+        android:id="@+id/layoutSystemContainer"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="start"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@drawable/bubble_system_bg"
+        android:paddingStart="8dp"
+        android:paddingEnd="10dp"
+        android:paddingTop="3dp"
+        android:paddingBottom="3dp"
+        android:visibility="gone"
+        tools:visibility="visible">
+
+        <TextView
+            android:id="@+id/txtSystemContent"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#94A3B8"
+            android:textSize="11sp"
+            android:fontFamily="monospace"
+            tools:text="⚡ Executing opencode_list_files…" />
+    </LinearLayout>
+
+</LinearLayout>

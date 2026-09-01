@@ -265,41 +265,36 @@ def clean_for_speech(text: str) -> str:
     return t.strip()
 
 
+_speech_state = {
+    "is_speaking": False,
+    "interrupted": False,
+    "last_spoken_time": 0.0,
+}
+
+
 def _is_self_echo(user_text: str, last_reply: str) -> bool:
     """Detect if the transcribed speech is an acoustic echo/bleed from the assistant's own speaker output."""
     if not user_text or not last_reply:
         return False
+    # Echo bleed is only possible within 2.5 seconds of local speaker finishing
+    now = time.monotonic()
+    if now - _speech_state.get("last_spoken_time", 0.0) > 2.5:
+        return False
+
     u = re.sub(r"[^a-z0-9\s]", "", user_text.lower()).strip()
     r = re.sub(r"[^a-z0-9\s]", "", last_reply.lower()).strip()
     if not u or not r:
         return False
 
-    # 1. Exact substring or reverse containment
-    if len(u) > 15 and (u in r or r in u):
+    # 1. Exact substring or reverse containment of substantial length
+    if len(u) > 25 and (u in r or r in u):
         return True
 
-    # 2. Token overlap ratio (word intersection)
-    u_words = set(u.split())
-    r_words = set(r.split())
-    if len(u_words) >= 3:
-        overlap = len(u_words & r_words) / len(u_words)
-        if overlap >= 0.60:
-            return True
-
-    # 3. Fuzzy sequence similarity
+    # 2. Strict sequence similarity (must be an actual acoustic copy of response)
     import difflib
 
     ratio = difflib.SequenceMatcher(None, u, r).ratio()
-    return ratio >= 0.55
-
-
-# --------------------------------------------------------------------------- #
-# Stage 3: Claude + tools
-# --------------------------------------------------------------------------- #
-_speech_state = {
-    "is_speaking": False,
-    "interrupted": False,
-}
+    return ratio >= 0.85
 
 
 def _speak(tts, text: str, bus=None, muted: bool = False, mic=None, trigger=None, post_phase: str = "standby") -> None:
@@ -352,6 +347,7 @@ def _speak(tts, text: str, bus=None, muted: bool = False, mic=None, trigger=None
         log.exception("tts failed")
     finally:
         _speech_state["is_speaking"] = False
+        _speech_state["last_spoken_time"] = time.monotonic()
         if trigger is not None:
             trigger.set_enabled(True)
         if bus is not None and not _speech_state["interrupted"]:

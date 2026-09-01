@@ -624,12 +624,11 @@ class _Handler(BaseHTTPRequestHandler):
                 }
                 transcribed_text = ""
                 models_to_try = [
+                    "gemini-2.0-flash",
+                    "gemini-2.0-flash-lite",
                     "gemini-2.5-flash",
-                    "gemini-3.5-flash",
-                    "gemini-3.1-flash-lite",
-                    "gemini-3.5-flash-lite",
-                    "gemini-flash-latest",
-                    "gemini-flash-lite-latest",
+                    "gemini-1.5-flash",
+                    "gemini-1.5-flash-8b",
                 ]
 
                 for model_name in models_to_try:
@@ -640,7 +639,7 @@ class _Handler(BaseHTTPRequestHandler):
                         headers={"Content-Type": "application/json"}
                     )
                     try:
-                        with urllib.request.urlopen(req, timeout=15.0) as resp:
+                        with urllib.request.urlopen(req, timeout=12.0) as resp:
                             res_data = json.loads(resp.read().decode("utf-8"))
                             
                         candidates = res_data.get("candidates", [])
@@ -650,10 +649,10 @@ class _Handler(BaseHTTPRequestHandler):
                             if transcribed_text:
                                 break  # Success!
                     except urllib.error.HTTPError as e:
-                        logger.warning(f"Transcription failed with model {model_name}: {e.code} {e.reason}")
+                        log.warning("Transcription failed with model %s: %s %s (trying fallback)", model_name, e.code, e.reason)
                         continue
                     except Exception as e:
-                        logger.warning(f"Transcription exception with model {model_name}: {e}")
+                        log.warning("Transcription exception with model %s: %s (trying fallback)", model_name, e)
                         continue
 
                 if not transcribed_text:
