@@ -30,8 +30,8 @@
     <color name="text_muted">#475569</color>
 
     <!-- Waveform & Chip Colors -->
-    <color name="chip_bg">#1E222B</color>
-    <color name="chip_stroke">#333A48</color>
+    <color name="chip_bg">#1C1D22</color>
+    <color name="chip_stroke">#2B2C34</color>
     <color name="chip_text">#CBD5E1</color>
     <color name="waveform_dot_active">#FB923C</color>
     <color name="waveform_dot_bright">#FDBA74</color>

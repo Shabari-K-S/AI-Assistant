@@ -463,7 +463,7 @@ class _Handler(BaseHTTPRequestHandler):
                 engine = get_skills_engine()
                 res = engine.learn_skill(input_query=args)
                 bus.set(phase="standby", reply=res)
-                bus.event("reply", text=res)
+                bus.event("reply", text=res, client_tts=True)
             threading.Thread(target=_learn_thread, daemon=True).start()
             return True, f"⚡ **Skill Synthesis Initiated:** '{args}' — Ingesting knowledge into `~/.athena/skills/`..."
 
@@ -520,7 +520,7 @@ class _Handler(BaseHTTPRequestHandler):
             def _scan_thread():
                 out = run_full_vulnerability_scan(args)
                 bus.set(phase="standby", reply=out)
-                bus.event("reply", text=out)
+                bus.event("reply", text=out, client_tts=True)
             threading.Thread(target=_scan_thread, daemon=True).start()
             return True, f"🛡️ **DAST Reconnaissance Initiated for `{args}`** — Running multi-vector probe..."
 
@@ -659,7 +659,7 @@ class _Handler(BaseHTTPRequestHandler):
                 vision_reply = self._analyze_multimodal_vision(prompt, image_b64)
                 sm.add_message(session_id, "assistant", vision_reply)
                 bus.set(phase="speaking", reply=vision_reply)
-                bus.event("reply", text=vision_reply)
+                bus.event("reply", text=vision_reply, client_tts=True)
                 self._json({"ok": True, "prompt": prompt, "reply": vision_reply, "has_image": True, "session_id": session_id})
                 return
 
@@ -670,7 +670,7 @@ class _Handler(BaseHTTPRequestHandler):
                 if cmd_reply:
                     sm.add_message(session_id, "assistant", cmd_reply)
                     bus.set(phase="standby", reply=cmd_reply)
-                    bus.event("reply", text=cmd_reply)
+                    bus.event("reply", text=cmd_reply, client_tts=True)
                 self._json({"ok": True, "prompt": prompt, "handled_slash": True, "reply": cmd_reply, "session_id": session_id})
                 return
 
@@ -721,7 +721,7 @@ class _Handler(BaseHTTPRequestHandler):
                 }
                 sm.add_message(session_id, "assistant", vision_reply, tool_data=vision_tool)
                 bus.set(phase="speaking", reply=vision_reply)
-                bus.event("reply", text=vision_reply)
+                bus.event("reply", text=vision_reply, client_tts=True)
                 self._json({"ok": True, "reply": vision_reply, "has_image": True, "session_id": session_id, "tool_data": vision_tool})
                 return
 
@@ -749,7 +749,7 @@ class _Handler(BaseHTTPRequestHandler):
                 if cmd_reply:
                     sm.add_message(session_id, "assistant", cmd_reply, tool_data=cmd_tool)
                     bus.set(phase="standby", reply=cmd_reply)
-                    bus.event("reply", text=cmd_reply)
+                    bus.event("reply", text=cmd_reply, client_tts=True)
                 self._json({"ok": True, "reply": cmd_reply, "session_id": session_id, "handled_slash": True, "tool_data": cmd_tool})
                 return
 
@@ -764,12 +764,22 @@ class _Handler(BaseHTTPRequestHandler):
             reply_text = ""
             start_t = time.monotonic()
             try:
-                while time.monotonic() - start_t < 35.0:
+                while time.monotonic() - start_t < 65.0:
                     try:
                         line = q.get(timeout=0.25)
                         event = json.loads(line)
                         etype = event.get("type")
-                        if etype == "tool_start":
+                        if etype == "tool_cue":
+                            cue_text = str(event.get("text") or "").strip()
+                            if cue_text:
+                                executed_tools.append({
+                                    "name": cue_text,
+                                    "duration_ms": 0.0,
+                                    "status": "status",
+                                    "preview": cue_text,
+                                    "args": "status update",
+                                })
+                        elif etype == "tool_start":
                             t_name = str(event.get("name") or "tool")
                             t_args = event.get("args")
                             pending_tools[t_name] = json.dumps(t_args) if isinstance(t_args, (dict, list)) else str(t_args or "")
@@ -784,8 +794,9 @@ class _Handler(BaseHTTPRequestHandler):
                                 "args": args_str,
                             })
                         elif etype == "reply":
-                            reply_text = str(event.get("text", "")).strip()
-                            if reply_text:
+                            candidate = str(event.get("text", "")).strip()
+                            if candidate:
+                                reply_text = candidate
                                 break
                     except (queue.Empty, json.JSONDecodeError):
                         continue
@@ -809,7 +820,11 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json({"ok": True, "reply": reply_text, "session_id": session_id, "tool_data": tool_data})
             else:
                 last_reply = str(bus.get().get("reply", "")).strip()
-                final_reply = last_reply or "I processed your request."
+                cue_previews = {s.get("preview") for s in executed_tools if s.get("status") == "status"}
+                if last_reply and last_reply not in cue_previews:
+                    final_reply = last_reply
+                else:
+                    final_reply = "I processed your request."
                 sm.add_message(session_id, "assistant", final_reply, tool_data=tool_data)
                 self._json({"ok": bool(last_reply), "reply": final_reply, "timeout": True, "session_id": session_id, "tool_data": tool_data})
             return

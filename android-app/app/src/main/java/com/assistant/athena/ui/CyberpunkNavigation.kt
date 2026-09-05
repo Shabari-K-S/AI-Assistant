@@ -25,11 +25,10 @@ import com.assistant.athena.ui.screens.*
 import com.assistant.athena.ui.theme.*
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 5 Streamlined Perplexity Mobile Tabs
+// 4 Streamlined Perplexity Mobile Tabs (Search, Library, Tools, Settings)
 // ═════════════════════════════════════════════════════════════════════════════
 enum class CyberTab(val label: String, val icon: ImageVector) {
-    HOME("Home", Icons.Default.Explore),
-    CHAT("Chat", Icons.Default.Forum),
+    SEARCH("Search", Icons.Default.Search),
     LIBRARY("Library", Icons.Default.Bookmark),
     TOOLS("Tools", Icons.Default.Extension),
     SETTINGS("Settings", Icons.Default.Tune)
@@ -43,11 +42,12 @@ fun CyberpunkAppShell(
     onOpenSettings: () -> Unit,
     onOpenGuide: () -> Unit,
     onRefreshStatus: () -> Unit,
-    dashboardContent: @Composable (onNavigateToChat: (String?) -> Unit) -> Unit
+    dashboardContent: (@Composable (onNavigateToChat: (String?) -> Unit) -> Unit)? = null
 ) {
-    var currentTab by remember { mutableStateOf(CyberTab.HOME) }
+    var currentTab by remember { mutableStateOf(CyberTab.SEARCH) }
     var pendingChatPrompt by remember { mutableStateOf<String?>(null) }
-    var toolsSegment by remember { mutableStateOf(0) }
+    var pendingSessionId by remember { mutableStateOf<String?>(null) }
+    var toolsSegment by remember { mutableIntStateOf(0) }
 
     DotMatrixBackground {
         Scaffold(
@@ -107,20 +107,22 @@ fun CyberpunkAppShell(
             ) {
                 Crossfade(targetState = currentTab, label = "ScreenTransition") { tab ->
                     when (tab) {
-                        CyberTab.HOME -> dashboardContent { prompt ->
-                            if (!prompt.isNullOrBlank()) {
-                                pendingChatPrompt = prompt
-                            }
-                            currentTab = CyberTab.CHAT
-                        }
-                        CyberTab.CHAT -> SessionsChatScreen(
+                        CyberTab.SEARCH -> SessionsChatScreen(
                             networkClient = networkClient,
                             onLaunchOverlay = onOpenOverlay,
                             initialPrompt = pendingChatPrompt,
-                            onPromptConsumed = { pendingChatPrompt = null }
+                            initialSessionId = pendingSessionId,
+                            onPromptConsumed = { pendingChatPrompt = null },
+                            onSessionConsumed = { pendingSessionId = null },
+                            onNavigateToSettings = { currentTab = CyberTab.SETTINGS },
+                            onNavigateToLibrary = { currentTab = CyberTab.LIBRARY }
                         )
                         CyberTab.LIBRARY -> NotesVaultScreen(
-                            networkClient = networkClient
+                            networkClient = networkClient,
+                            onSelectSession = { sessionId ->
+                                pendingSessionId = sessionId
+                                currentTab = CyberTab.SEARCH
+                            }
                         )
                         CyberTab.TOOLS -> {
                             Column(modifier = Modifier.fillMaxSize()) {

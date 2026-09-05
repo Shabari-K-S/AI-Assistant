@@ -5,7 +5,7 @@
     android:id="@+id/rootOverlayLayout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#99000000"
+    android:background="@drawable/overlay_faded_scrim_bg"
     android:fitsSystemWindows="true">
 
     <!-- Entire Screen Dismiss Backdrop (Tap anywhere to dismiss overlay) -->
@@ -33,8 +33,8 @@
         <!-- 1. Floating Crystalline AI Orb -->
         <com.assistant.athena.ui.OrbView
             android:id="@+id/orbView"
-            android:layout_width="54dp"
-            android:layout_height="54dp"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
             android:layout_gravity="center_horizontal"
             android:layout_marginBottom="6dp" />
 
@@ -46,67 +46,55 @@
             android:layout_gravity="center_horizontal"
             android:text="athena"
             android:textColor="#F1F5F9"
-            android:textSize="18.5sp"
+            android:textSize="20sp"
             android:fontFamily="sans-serif-medium"
-            android:letterSpacing="0.03"
-            android:layout_marginBottom="12dp" />
+            android:letterSpacing="0.02"
+            android:layout_marginBottom="10dp" />
 
-        <!-- Screen Context Attached Preview Badge / Card -->
+        <!-- Screen Context Attached Preview Badge / Compact Pill -->
         <LinearLayout
             android:id="@+id/cardScreenContextPreview"
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:background="@drawable/chip_background"
-            android:paddingStart="12dp"
-            android:paddingEnd="10dp"
-            android:paddingTop="6dp"
-            android:paddingBottom="6dp"
-            android:layout_marginBottom="10dp"
+            android:paddingStart="10dp"
+            android:paddingEnd="8dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp"
+            android:layout_marginBottom="8dp"
             android:visibility="gone"
             tools:visibility="visible">
 
             <!-- Small Rounded Thumbnail -->
             <ImageView
                 android:id="@+id/imgScreenThumbnail"
-                android:layout_width="32dp"
-                android:layout_height="44dp"
+                android:layout_width="20dp"
+                android:layout_height="26dp"
                 android:scaleType="centerCrop"
                 android:background="#1E293B"
                 android:contentDescription="Screen Context Thumbnail" />
 
-            <LinearLayout
-                android:layout_width="0dp"
+            <TextView
+                android:id="@+id/txtScreenContextTitle"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical"
-                android:layout_marginStart="10dp">
-
-                <TextView
-                    android:id="@+id/txtScreenContextTitle"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="📸 Screen Context Attached"
-                    android:textColor="#38BDF8"
-                    android:textSize="12sp"
-                    android:fontFamily="sans-serif-medium" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Tap to ask Athena about this screen"
-                    android:textColor="#94A3B8"
-                    android:textSize="10.5sp" />
-            </LinearLayout>
+                android:text="Screen context attached"
+                android:textColor="#38BDF8"
+                android:textSize="11.5sp"
+                android:layout_marginStart="8dp"
+                android:fontFamily="sans-serif-medium" />
 
             <ImageButton
                 android:id="@+id/btnRemoveScreenContext"
-                android:layout_width="28dp"
-                android:layout_height="28dp"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:layout_marginStart="6dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:src="@drawable/ic_close"
-                android:padding="5dp"
+                android:padding="4dp"
                 app:tint="#64748B"
                 android:contentDescription="Remove screenshot" />
         </LinearLayout>

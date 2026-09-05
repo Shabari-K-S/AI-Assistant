@@ -303,13 +303,19 @@ def _speak(tts, text: str, bus=None, muted: bool = False, mic=None, trigger=None
     if bus is not None:
         bus.set(phase="speaking")
 
-    # If ANDROID_TTS_MODE is enabled, dispatch reply to client and cleanly restore post_phase
-    is_android_tts = os.environ.get("ANDROID_TTS_MODE", "").strip().lower() in ("true", "1", "yes", "on") or os.environ.get("EV_ANDROID_TTS_MODE", "").strip().lower() in ("true", "1", "yes", "on")
+    # ANDROID_TTS_MODE enabled by default for mobile assistant companion backend
+    android_tts_env = os.environ.get("ANDROID_TTS_MODE", "").strip().lower()
+    is_android_tts = android_tts_env not in ("false", "0", "no", "off")
     if is_android_tts:
         if bus is not None:
-            bus.set(phase=post_phase, reply=text)
-            bus.event("reply", text=text, client_tts=True)
-            bus.log("INFO", "reply text dispatched to client (ANDROID_TTS_MODE=true: local speaker muted)")
+            bus.set(phase=post_phase)
+            if post_phase == "processing":
+                bus.event("tool_cue", text=text, client_tts=True)
+                bus.log("INFO", f"tool cue dispatched to client: {text}")
+            else:
+                bus.set(reply=text)
+                bus.event("reply", text=text, client_tts=True)
+                bus.log("INFO", "reply text dispatched to client (ANDROID_TTS_MODE=true: local speaker muted)")
         return
 
     if trigger is not None:
@@ -626,9 +632,9 @@ def _run_assistant(cfg, once: bool, text: str | None) -> int:
     def _tool_vocal_cue_speaker(cue_text: str) -> None:
         print(f"[EV] {cue_text}", flush=True)
         if bus is not None:
-            bus.set(reply=cue_text)
-            bus.log("INFO", f"🗣️ {cue_text}")
-            bus.event("reply", text=cue_text)
+            bus.set(status_text=cue_text)
+            bus.log("INFO", f"🗣️ [STATUS] {cue_text}")
+            bus.event("tool_cue", text=cue_text)
         tts_inst = context_holder.get("tts")
         mic_inst = context_holder.get("mic")
         trig_inst = context_holder.get("trigger")
@@ -884,7 +890,7 @@ def _run_assistant(cfg, once: bool, text: str | None) -> int:
             print(f"[EV] {reply}", flush=True)
             if bus is not None:
                 bus.set(reply=reply)
-                bus.event("reply", text=reply)
+                bus.event("reply", text=reply, client_tts=True)
             _speak(tts, reply, bus=bus, muted=muted["on"], mic=mic, trigger=trigger)
             if once or text is not None:
                 return 0

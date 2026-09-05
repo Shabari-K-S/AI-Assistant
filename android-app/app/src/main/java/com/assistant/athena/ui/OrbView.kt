@@ -111,30 +111,54 @@ class OrbView @JvmOverloads constructor(
         super.onDraw(canvas)
         val cx = width / 2f
         val cy = height / 2f
-        val baseRadius = (minOf(width, height) / 2f) * 0.78f
+        val baseRadius = (minOf(width, height) / 2f) * 0.88f
         if (baseRadius <= 0) return
 
-        val dynamicRadius = baseRadius * (pulseProgress + (audioAmplitude * 0.15f))
+        val glassRadius = baseRadius
+        val dynamicPrismRadius = baseRadius * 0.62f * (pulseProgress + (audioAmplitude * 0.12f))
 
-        // 1. Soft Circular Lens Glow / Halo
-        val haloGradient = RadialGradient(
-            cx, cy, dynamicRadius * 1.3f,
+        // 1. Outer Dark Glossy Glass Sphere (Perplexity Glass Orb)
+        val glassPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+        val glassGradient = RadialGradient(
+            cx - glassRadius * 0.15f, cy - glassRadius * 0.15f, glassRadius * 1.1f,
             intArrayOf(
-                Color.argb(90, 255, 255, 255),
-                Color.argb(45, 56, 189, 248),
-                Color.argb(20, 245, 158, 11),
+                Color.argb(240, 36, 38, 46),
+                Color.argb(250, 18, 19, 24),
+                Color.argb(255, 8, 9, 12)
+            ),
+            floatArrayOf(0f, 0.6f, 1f),
+            Shader.TileMode.CLAMP
+        )
+        glassPaint.shader = glassGradient
+        canvas.drawCircle(cx, cy, glassRadius, glassPaint)
+
+        // Delicate glass rim stroke
+        val rimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 1.2f
+            color = Color.argb(65, 255, 255, 255)
+        }
+        canvas.drawCircle(cx, cy, glassRadius - 0.6f, rimPaint)
+
+        // 2. Soft Internal Refractive Core Glow
+        val haloGradient = RadialGradient(
+            cx, cy, dynamicPrismRadius * 1.2f,
+            intArrayOf(
+                Color.argb(120, 255, 255, 255),
+                Color.argb(60, 56, 189, 248),
+                Color.argb(25, 245, 158, 11),
                 Color.TRANSPARENT
             ),
             floatArrayOf(0f, 0.45f, 0.75f, 1f),
             Shader.TileMode.CLAMP
         )
         glowPaint.shader = haloGradient
-        canvas.drawCircle(cx, cy, dynamicRadius * 1.3f, glowPaint)
+        canvas.drawCircle(cx, cy, dynamicPrismRadius * 1.2f, glowPaint)
 
-        // 2. Faceted Crystalline Starburst (Perplexity Asterism)
+        // 3. Faceted Crystalline Starburst (Enclosed within glass sphere)
         val numPoints = 8
-        val innerRadius = dynamicRadius * 0.28f
-        val outerRadius = dynamicRadius * 0.95f
+        val innerRadius = dynamicPrismRadius * 0.28f
+        val outerRadius = dynamicPrismRadius * 0.95f
 
         // Draw primary starburst cluster
         drawPrismLayer(canvas, cx, cy, numPoints, outerRadius, innerRadius, rotationAngle, 1.0f)
@@ -142,9 +166,9 @@ class OrbView @JvmOverloads constructor(
         // Draw secondary counter-rotating offset cluster for 3D depth
         drawPrismLayer(canvas, cx, cy, numPoints, outerRadius * 0.82f, innerRadius * 0.9f, -rotationAngle * 0.7f + 22.5f, 0.75f)
 
-        // 3. Central Luminous Diamond / Core
+        // 4. Central Luminous Core
         val coreGradient = RadialGradient(
-            cx - dynamicRadius * 0.1f, cy - dynamicRadius * 0.1f, dynamicRadius * 0.45f,
+            cx - dynamicPrismRadius * 0.08f, cy - dynamicPrismRadius * 0.08f, dynamicPrismRadius * 0.42f,
             intArrayOf(
                 Color.WHITE,
                 Color.argb(230, 248, 250, 252),
@@ -156,7 +180,22 @@ class OrbView @JvmOverloads constructor(
             Shader.TileMode.CLAMP
         )
         glowPaint.shader = coreGradient
-        canvas.drawCircle(cx, cy, dynamicRadius * 0.38f, glowPaint)
+        canvas.drawCircle(cx, cy, dynamicPrismRadius * 0.38f, glowPaint)
+
+        // 5. Specular Curved Lens Highlight on Top-Left Glass Crest (Authentic Glass Glint)
+        val specPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+        val specGradient = RadialGradient(
+            cx - glassRadius * 0.35f, cy - glassRadius * 0.38f, glassRadius * 0.52f,
+            intArrayOf(
+                Color.argb(110, 255, 255, 255),
+                Color.argb(35, 255, 255, 255),
+                Color.TRANSPARENT
+            ),
+            floatArrayOf(0f, 0.45f, 1f),
+            Shader.TileMode.CLAMP
+        )
+        specPaint.shader = specGradient
+        canvas.drawCircle(cx - glassRadius * 0.35f, cy - glassRadius * 0.38f, glassRadius * 0.52f, specPaint)
     }
 
     private fun drawPrismLayer(

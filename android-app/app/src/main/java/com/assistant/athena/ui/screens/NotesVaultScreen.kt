@@ -39,10 +39,15 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NotesVaultScreen(
-    networkClient: NetworkClient
+    networkClient: NetworkClient,
+    onSelectSession: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+
+    var libraryTab by remember { mutableIntStateOf(0) } // 0: Threads, 1: Notes
+    var sessions by remember { mutableStateOf<List<com.assistant.athena.data.SessionItem>>(emptyList()) }
+    var isSessionsLoading by remember { mutableStateOf(false) }
 
     var notes by remember { mutableStateOf<List<VaultNoteItem>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
@@ -70,7 +75,16 @@ fun NotesVaultScreen(
         }
     }
 
+    fun reloadSessions() {
+        coroutineScope.launch {
+            isSessionsLoading = true
+            sessions = networkClient.fetchSessions()
+            isSessionsLoading = false
+        }
+    }
+
     LaunchedEffect(Unit) {
+        reloadSessions()
         reloadNotes()
     }
 
@@ -323,11 +337,11 @@ fun NotesVaultScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // ═════ Header & Search Row ═════
+        // ═════ Header & Segment Row ═════
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            color = PanelDarkSolid,
-            border = BorderStroke(1.dp, PanelStroke)
+            color = VoidBlack,
+            border = BorderStroke(0.5.dp, PanelStroke)
         ) {
             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                 Row(
@@ -335,45 +349,113 @@ fun NotesVaultScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
-                        Text(
-                            text = "LIBRARY // KNOWLEDGE VAULT",
-                            color = NeonCyan,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
-                            letterSpacing = 1.sp
-                        )
-                        Text(
-                            text = "${notes.size} documents indexed // Local RAG",
-                            color = TextMuted,
-                            fontSize = 11.sp,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
+                    Text(
+                        text = "Library",
+                        color = TextPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp
+                    )
 
-                    Row {
-                        IconButton(
-                            onClick = { reloadNotes() },
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = NeonCyan)
-                        }
-
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(
                             onClick = {
-                                editTargetId = null
-                                editTitle = ""
-                                editCategory = "general"
-                                editTags = ""
-                                editContent = ""
-                                isEditingNote = true
+                                if (libraryTab == 0) reloadSessions() else reloadNotes()
                             },
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(NeonCyanDim)
+                            modifier = Modifier.size(36.dp)
                         ) {
-                            Icon(Icons.Default.Add, contentDescription = "New Note", tint = NeonCyan)
+                            Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = TextSecondary, modifier = Modifier.size(18.dp))
+                        }
+
+                        if (libraryTab == 1) {
+                            IconButton(
+                                onClick = {
+                                    editTargetId = null
+                                    editTitle = ""
+                                    editCategory = "general"
+                                    editTags = ""
+                                    editContent = ""
+                                    isEditingNote = true
+                                },
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF242424))
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = "New Note", tint = TextPrimary, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Perplexity Library Segment Switch: [ Threads (N) ] | [ Notes (N) ]
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = Color(0xFF1C1C1C),
+                    border = BorderStroke(1.dp, Color(0xFF282828)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(3.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(15.dp))
+                                .clickable { libraryTab = 0 },
+                            color = if (libraryTab == 0) Color(0xFF2C2C2C) else Color.Transparent,
+                            shape = RoundedCornerShape(15.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(vertical = 7.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Forum,
+                                    contentDescription = null,
+                                    tint = if (libraryTab == 0) TextPrimary else TextMuted,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Threads (${sessions.size})",
+                                    fontSize = 12.sp,
+                                    fontWeight = if (libraryTab == 0) FontWeight.SemiBold else FontWeight.Normal,
+                                    color = if (libraryTab == 0) TextPrimary else TextMuted
+                                )
+                            }
+                        }
+
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(15.dp))
+                                .clickable { libraryTab = 1 },
+                            color = if (libraryTab == 1) Color(0xFF2C2C2C) else Color.Transparent,
+                            shape = RoundedCornerShape(15.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(vertical = 7.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Book,
+                                    contentDescription = null,
+                                    tint = if (libraryTab == 1) TextPrimary else TextMuted,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Notes (${notes.size})",
+                                    fontSize = 12.sp,
+                                    fontWeight = if (libraryTab == 1) FontWeight.SemiBold else FontWeight.Normal,
+                                    color = if (libraryTab == 1) TextPrimary else TextMuted
+                                )
+                            }
                         }
                     }
                 }
@@ -383,87 +465,179 @@ fun NotesVaultScreen(
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    placeholder = { Text("Search notes, tags, or research...", color = TextMuted, fontSize = 13.sp) },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(18.dp)) },
+                    placeholder = {
+                        Text(
+                            text = if (libraryTab == 0) "Search past conversation threads..." else "Search notes, tags, or research...",
+                            color = TextMuted,
+                            fontSize = 13.sp
+                        )
+                    },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = TextMuted, modifier = Modifier.size(18.dp)) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(48.dp),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(14.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = NeonCyan,
+                        focusedBorderColor = Color(0xFF3F3F46),
                         unfocusedBorderColor = PanelStroke,
                         focusedTextColor = TextPrimary,
                         unfocusedTextColor = TextPrimary,
-                        focusedContainerColor = DeepNavy,
-                        unfocusedContainerColor = DeepNavy
+                        focusedContainerColor = Color(0xFF161616),
+                        unfocusedContainerColor = Color(0xFF161616)
                     )
                 )
 
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Category scroll row
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    categories.forEach { cat ->
-                        FilterChip(
-                            selected = selectedCategory == cat,
-                            onClick = { selectedCategory = cat },
-                            label = { Text(cat.uppercase(), fontSize = 11.sp) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = NeonCyan,
-                                selectedLabelColor = VoidBlack,
-                                containerColor = DeepNavy,
-                                labelColor = TextSecondary
+                if (libraryTab == 1) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        categories.forEach { cat ->
+                            FilterChip(
+                                selected = selectedCategory == cat,
+                                onClick = { selectedCategory = cat },
+                                label = { Text(cat.uppercase(), fontSize = 11.sp) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = Color(0xFF2C2C2C),
+                                    selectedLabelColor = TextPrimary,
+                                    containerColor = Color(0xFF181818),
+                                    labelColor = TextSecondary
+                                )
                             )
-                        )
+                        }
                     }
                 }
             }
         }
 
-        // ═════ Notes Feed ═════
+        // ═════ Feed Area (Threads or Notes) ═════
         Box(modifier = Modifier.weight(1f)) {
-            if (isLoading) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = NeonCyan)
+            if (libraryTab == 0) {
+                // ─── THREADS LIST ───
+                val filteredSessions = remember(sessions, searchQuery) {
+                    if (searchQuery.isBlank()) sessions
+                    else sessions.filter { it.title.contains(searchQuery, ignoreCase = true) }
                 }
-            } else if (filteredNotes.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(
-                        text = if (searchQuery.isNotBlank()) "No notes match query" else "No notes in this category",
-                        color = TextMuted
-                    )
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    items(filteredNotes, key = { it.id }) { note ->
-                        NoteCardItem(
-                            note = note,
-                            onClick = {
-                                coroutineScope.launch {
-                                    val detail = networkClient.readNote(note.id)
-                                    if (detail != null) {
-                                        activeNoteDetail = detail
-                                        isReadingNote = true
+
+                if (isSessionsLoading) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = TextPrimary, modifier = Modifier.size(32.dp))
+                    }
+                } else if (filteredSessions.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.Forum, contentDescription = null, tint = TextMuted, modifier = Modifier.size(40.dp))
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text(
+                                text = if (searchQuery.isNotBlank()) "No threads match '$searchQuery'" else "No conversation threads yet",
+                                color = TextMuted,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(filteredSessions, key = { it.id }) { session ->
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onSelectSession(session.id) },
+                                color = Color(0xFF1A1A1A),
+                                shape = RoundedCornerShape(14.dp),
+                                border = BorderStroke(1.dp, Color(0xFF282828))
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = session.title,
+                                            color = TextPrimary,
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 14.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Spacer(modifier = Modifier.height(3.dp))
+                                        Text(
+                                            text = "${session.messageCount} messages • Tap to open",
+                                            color = TextMuted,
+                                            fontSize = 11.sp
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            coroutineScope.launch {
+                                                networkClient.deleteSession(session.id)
+                                                reloadSessions()
+                                            }
+                                        },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.DeleteOutline,
+                                            contentDescription = "Delete",
+                                            tint = TextMuted,
+                                            modifier = Modifier.size(18.dp)
+                                        )
                                     }
                                 }
-                            },
-                            onDelete = {
-                                coroutineScope.launch {
-                                    val ok = networkClient.deleteNote(note.id)
-                                    if (ok) reloadNotes()
-                                }
                             }
+                        }
+                    }
+                }
+            } else {
+                // ─── NOTES LIST ───
+                if (isLoading) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = TextPrimary, modifier = Modifier.size(32.dp))
+                    }
+                } else if (filteredNotes.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(
+                            text = if (searchQuery.isNotBlank()) "No notes match query" else "No notes in this category",
+                            color = TextMuted
                         )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(filteredNotes, key = { it.id }) { note ->
+                            NoteCardItem(
+                                note = note,
+                                onClick = {
+                                    coroutineScope.launch {
+                                        val detail = networkClient.readNote(note.id)
+                                        if (detail != null) {
+                                            activeNoteDetail = detail
+                                            isReadingNote = true
+                                        }
+                                    }
+                                },
+                                onDelete = {
+                                    coroutineScope.launch {
+                                        val ok = networkClient.deleteNote(note.id)
+                                        if (ok) reloadNotes()
+                                    }
+                                }
+                            )
+                        }
                     }
                 }
             }

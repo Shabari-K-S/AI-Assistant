@@ -63,7 +63,11 @@ fun SessionsChatScreen(
     networkClient: NetworkClient,
     onLaunchOverlay: () -> Unit,
     initialPrompt: String? = null,
-    onPromptConsumed: () -> Unit = {}
+    initialSessionId: String? = null,
+    onPromptConsumed: () -> Unit = {},
+    onSessionConsumed: () -> Unit = {},
+    onNavigateToSettings: () -> Unit = {},
+    onNavigateToLibrary: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -78,6 +82,7 @@ fun SessionsChatScreen(
     var isSending by remember { mutableStateOf(false) }
 
     var inputText by remember { mutableStateOf("") }
+    var selectedTopMode by remember { mutableIntStateOf(0) } // 0: Search, 1: Assistant
     var isHistoryDrawerOpen by remember { mutableStateOf(false) }
 
     // Dialog for renaming session
@@ -121,7 +126,15 @@ fun SessionsChatScreen(
     }
 
     LaunchedEffect(Unit) {
-        reloadSessions(selectFirst = true)
+        reloadSessions(selectFirst = false)
+    }
+
+    LaunchedEffect(initialSessionId) {
+        if (!initialSessionId.isNullOrBlank()) {
+            activeSessionId = initialSessionId
+            reloadActiveSession(initialSessionId)
+            onSessionConsumed()
+        }
     }
 
     LaunchedEffect(activeSessionId) {
@@ -279,86 +292,192 @@ fun SessionsChatScreen(
             // ═════════════════════════════════════════════════════════════════
             // 1. Tactical HUD Header Bar
             // ═════════════════════════════════════════════════════════════════
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = VoidBlack,
-                border = BorderStroke(0.5.dp, Color(0xFF262626))
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+            if (localMessages.isEmpty() && !isLoadingChat) {
+                // ═══ 1. Minimalist Perplexity Landing Header (Matching Screenshot 1) ═══
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = VoidBlack,
+                    border = BorderStroke(0.5.dp, PanelStroke)
                 ) {
-                    // History Drawer Trigger
-                    IconButton(
-                        onClick = { isHistoryDrawerOpen = true },
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Menu,
-                            contentDescription = "Conversations",
-                            tint = TextSecondary,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(6.dp))
-
-                    // Active Session Title
-                    Column(
+                    Row(
                         modifier = Modifier
-                            .weight(1f)
-                            .clickable { isHistoryDrawerOpen = true }
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = activeSessionDetail?.title ?: "Chat",
-                            color = TextPrimary,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 15.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = if (localMessages.isNotEmpty()) "${localMessages.size} messages" else "New thread",
-                            color = TextMuted,
-                            fontSize = 11.sp
-                        )
-                    }
+                        // Profile circular avatar
+                        Surface(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .clickable { onNavigateToSettings() },
+                            color = Color(0xFF202020),
+                            shape = CircleShape,
+                            border = BorderStroke(1.dp, Color(0xFF2E2E2E))
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Person,
+                                    contentDescription = "Settings",
+                                    tint = TextSecondary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
 
-                    // + New Session Button
-                    IconButton(
-                        onClick = {
-                            coroutineScope.launch {
-                                val newSession = networkClient.createSession()
-                                if (newSession != null) {
-                                    activeSessionId = newSession.id
-                                    localMessages = emptyList()
-                                    reloadSessions()
+                        // Center Pill Mode Switch: [ 🔍 Search ] | [ 💻 Assistant ]
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = Color(0xFF1C1C1C),
+                            border = BorderStroke(1.dp, Color(0xFF282828))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(3.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .clickable { selectedTopMode = 0 },
+                                    color = if (selectedTopMode == 0) Color(0xFF2C2C2C) else Color.Transparent,
+                                    shape = RoundedCornerShape(16.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Search,
+                                            contentDescription = null,
+                                            tint = if (selectedTopMode == 0) TextPrimary else TextMuted,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(5.dp))
+                                        Text(
+                                            text = "Search",
+                                            fontSize = 12.sp,
+                                            fontWeight = if (selectedTopMode == 0) FontWeight.SemiBold else FontWeight.Normal,
+                                            color = if (selectedTopMode == 0) TextPrimary else TextMuted
+                                        )
+                                    }
+                                }
+
+                                Surface(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .clickable { selectedTopMode = 1 },
+                                    color = if (selectedTopMode == 1) Color(0xFF2C2C2C) else Color.Transparent,
+                                    shape = RoundedCornerShape(16.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Computer,
+                                            contentDescription = null,
+                                            tint = if (selectedTopMode == 1) TextPrimary else TextMuted,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(5.dp))
+                                        Text(
+                                            text = "Assistant",
+                                            fontSize = 12.sp,
+                                            fontWeight = if (selectedTopMode == 1) FontWeight.SemiBold else FontWeight.Normal,
+                                            color = if (selectedTopMode == 1) TextPrimary else TextMuted
+                                        )
+                                    }
                                 }
                             }
-                        },
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "New Session",
-                            tint = TextSecondary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
+                        }
 
-                    // Floating Assistant Overlay Launcher
-                    IconButton(
-                        onClick = onLaunchOverlay,
-                        modifier = Modifier.size(36.dp)
+                        // Right: Library button
+                        Surface(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .clickable { onNavigateToLibrary() },
+                            color = Color(0xFF202020),
+                            shape = CircleShape,
+                            border = BorderStroke(1.dp, Color(0xFF2E2E2E))
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.BookmarkBorder,
+                                    contentDescription = "Library",
+                                    tint = TextSecondary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
+                // ═══ 1. Active Conversation Header Bar ═══
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = VoidBlack,
+                    border = BorderStroke(0.5.dp, Color(0xFF262626))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Bolt,
-                            contentDescription = "Assistant HUD",
-                            tint = TextSecondary,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        // New Thread Button (Returns to Minimalist Landing Screen)
+                        IconButton(
+                            onClick = {
+                                activeSessionId = null
+                                localMessages = emptyList()
+                                inputText = ""
+                            },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "New Thread",
+                                tint = TextPrimary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(6.dp))
+
+                        // Active Session Title
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { onNavigateToLibrary() }
+                        ) {
+                            Text(
+                                text = activeSessionDetail?.title ?: "Conversation",
+                                color = TextPrimary,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 15.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "${localMessages.size} messages",
+                                color = TextMuted,
+                                fontSize = 11.sp
+                            )
+                        }
+
+                        // Floating Assistant Overlay Launcher
+                        IconButton(
+                            onClick = onLaunchOverlay,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Bolt,
+                                contentDescription = "Assistant HUD",
+                                tint = TextSecondary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -374,19 +493,19 @@ fun SessionsChatScreen(
                 if (isLoadingChat && localMessages.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator(color = NeonCyan, modifier = Modifier.size(36.dp))
+                            CircularProgressIndicator(color = TextPrimary, modifier = Modifier.size(32.dp))
                             Spacer(modifier = Modifier.height(12.dp))
                             Text(
-                                text = "SYNCHRONIZING THOUGHT STREAM...",
+                                text = "Loading conversation...",
                                 color = TextMuted,
-                                fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace
+                                fontSize = 12.sp
                             )
                         }
                     }
                 } else if (localMessages.isEmpty()) {
-                    // Empty Session Slate (Tactical Holographic Intro)
-                    CyberEmptyState(
+                    // Minimalist Perplexity Landing Center (Matching Screenshot 1)
+                    PerplexityLandingCenter(
+                        selectedMode = selectedTopMode,
                         onSelectSample = { sample ->
                             inputText = sample
                             executeSendPrompt()
@@ -434,50 +553,107 @@ fun SessionsChatScreen(
                     .background(VoidBlack)
                     .padding(horizontal = 14.dp, vertical = 6.dp)
             ) {
-                // Focus Mode / Quick Action Chips Row
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(bottom = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    CyberQuickChip(
-                        text = if (com.assistant.athena.data.ScreenCaptureHolder.hasFreshScreenshot()) "📸 Screen Context" else "📸 Ask Screen",
-                        icon = Icons.Default.Search
+                if (localMessages.isEmpty()) {
+                    // Contextual Action Pill (Matching Screenshot 1)
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable {
+                                if (selectedTopMode == 1) {
+                                    inputText = "Inspect active screen and assist with current application"
+                                } else {
+                                    inputText = "Put Computer to work: Run deep research on the current project"
+                                }
+                                executeSendPrompt()
+                            },
+                        color = Color(0xFF1A1A1A),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, Color(0xFF262626))
                     ) {
-                        if (com.assistant.athena.data.ScreenCaptureHolder.hasFreshScreenshot()) {
-                            inputText = "Analyze the attached screen context and summarize key insights."
-                            executeSendPrompt()
-                        } else {
-                            inputText = "What's on my screen? (Hold Home/Power button or swipe corner to capture screen)"
-                            executeSendPrompt()
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "Put Computer to work",
+                                    color = Color(0xFFE4E4E7),
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 13.sp
+                                )
+                                Text(
+                                    text = "Hand off any project or task",
+                                    color = Color(0xFF71717A),
+                                    fontSize = 11.sp
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF2A2A2A)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ArrowUpward,
+                                    contentDescription = null,
+                                    tint = Color(0xFFD4D4D8),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
                         }
                     }
-                    CyberQuickChip(text = "⚡ Pro Research", icon = Icons.Default.Search) {
-                        inputText = "/research "
-                    }
-                    CyberQuickChip(text = "🛡️ Recon Scan", icon = Icons.Default.Security) {
-                        inputText = "/recon "
-                    }
-                    CyberQuickChip(text = "☀️ Daily Briefing", icon = Icons.Default.WbSunny) {
-                        inputText = "/briefing"
-                        executeSendPrompt()
-                    }
-                    CyberQuickChip(text = "📚 Vault Notes", icon = Icons.Default.Book) {
-                        inputText = "List my recent notes in the vault"
-                        executeSendPrompt()
-                    }
-                    CyberQuickChip(text = "❓ /help", icon = Icons.Default.HelpOutline) {
-                        inputText = "/help"
-                        executeSendPrompt()
+                } else {
+                    // Focus Mode / Quick Action Chips Row
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        CyberQuickChip(
+                            text = if (com.assistant.athena.data.ScreenCaptureHolder.hasFreshScreenshot()) "📸 Screen Context" else "📸 Ask Screen",
+                            icon = Icons.Default.Search
+                        ) {
+                            if (com.assistant.athena.data.ScreenCaptureHolder.hasFreshScreenshot()) {
+                                inputText = "Analyze the attached screen context and summarize key insights."
+                                executeSendPrompt()
+                            } else {
+                                inputText = "What's on my screen? (Hold Home/Power button or swipe corner to capture screen)"
+                                executeSendPrompt()
+                            }
+                        }
+                        CyberQuickChip(text = "⚡ Pro Research", icon = Icons.Default.Search) {
+                            inputText = "/research "
+                        }
+                        CyberQuickChip(text = "🛡️ Recon Scan", icon = Icons.Default.Security) {
+                            inputText = "/recon "
+                        }
+                        CyberQuickChip(text = "☀️ Daily Briefing", icon = Icons.Default.WbSunny) {
+                            inputText = "/briefing"
+                            executeSendPrompt()
+                        }
+                        CyberQuickChip(text = "📚 Vault Notes", icon = Icons.Default.Book) {
+                            inputText = "List my recent notes in the vault"
+                            executeSendPrompt()
+                        }
+                        CyberQuickChip(text = "❓ /help", icon = Icons.Default.HelpOutline) {
+                            inputText = "/help"
+                            executeSendPrompt()
+                        }
                     }
                 }
 
                 // Perplexity Floating Pill Input Capsule (Matching Screenshot 1)
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(24.dp),
+                    shape = RoundedCornerShape(22.dp),
                     color = Color(0xFF1E1E1E),
                     border = BorderStroke(1.dp, Color(0xFF2B2B2B))
                 ) {
@@ -513,7 +689,9 @@ fun SessionsChatScreen(
                             onValueChange = { inputText = it },
                             placeholder = {
                                 Text(
-                                    text = "Ask anything or follow-up...",
+                                    text = if (localMessages.isEmpty()) {
+                                        if (selectedTopMode == 0) "Do anything..." else "Ask Assistant to do anything..."
+                                    } else "Ask anything or follow-up...",
                                     color = Color(0xFF71717A),
                                     fontSize = 14.sp
                                 )
@@ -963,30 +1141,32 @@ fun PerplexityFollowUpSection(onSelectPrompt: (String) -> Unit) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// Continuous Multi-Step Tool Execution Chain Accordion (Gemini/Claude Style)
+// Antigravity-Style Connected Tool Timeline (Vertical Track with Node Badges)
 // ═════════════════════════════════════════════════════════════════════════════
 @Composable
-fun CyberToolChainAccordion(toolData: ToolData, onCopy: (String) -> Unit) {
+fun AntigravityToolTimeline(toolData: ToolData, onCopy: (String) -> Unit) {
     var isExpanded by remember { mutableStateOf(false) }
     val steps = toolData.steps
     val stepCount = steps.size
     val isError = toolData.status == "error" || steps.any { it.status == "error" }
-    val accentColor = if (isError) NeonRed else NeonAmber
+    val totalDuration = toolData.durationMs.toInt()
 
     Surface(
-        color = VoidBlack.copy(alpha = 0.75f),
-        shape = RoundedCornerShape(8.dp),
-        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.5f)),
-        modifier = Modifier.fillMaxWidth()
+        color = Color(0xFF131416),
+        shape = RoundedCornerShape(10.dp),
+        border = BorderStroke(1.dp, if (isError) Color(0xFFEF4444).copy(alpha = 0.4f) else Color(0xFF27272A)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
     ) {
-        Column(modifier = Modifier.padding(8.dp)) {
-            // Header Toggle Bar
+        Column(modifier = Modifier.padding(10.dp)) {
+            // Antigravity Timeline Collapsible Header
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(6.dp))
                     .clickable { isExpanded = !isExpanded }
-                    .padding(horizontal = 4.dp, vertical = 3.dp),
+                    .padding(vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -994,45 +1174,47 @@ fun CyberToolChainAccordion(toolData: ToolData, onCopy: (String) -> Unit) {
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text(text = "⚡", fontSize = 12.sp)
-                    Spacer(modifier = Modifier.width(6.dp))
+                    // Timeline Checkmark Badge
+                    Box(
+                        modifier = Modifier
+                            .size(20.dp)
+                            .background(
+                                color = if (isError) Color(0x33EF4444) else Color(0x2210B981),
+                                shape = CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (isError) "!" else "✓",
+                            color = if (isError) Color(0xFFEF4444) else Color(0xFF10B981),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = if (stepCount > 1) {
-                                    "CHAIN: $stepCount TOOLS EXECUTED"
-                                } else {
-                                    "TOOL: ${toolData.name.uppercase()}"
-                                },
-                                color = accentColor,
-                                fontSize = 10.5.sp,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 0.8.sp
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Surface(
-                                color = if (isError) NeonRed.copy(alpha = 0.2f) else NeonGreen.copy(alpha = 0.2f),
-                                shape = RoundedCornerShape(4.dp),
-                                border = BorderStroke(0.8.dp, if (isError) NeonRed.copy(alpha = 0.5f) else NeonGreen.copy(alpha = 0.5f))
-                            ) {
-                                Text(
-                                    text = if (isError) "ERR" else "OK",
-                                    color = if (isError) NeonRed else NeonGreen,
-                                    fontSize = 8.5.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                )
+                            val headerTitle = when {
+                                stepCount > 1 -> "Executed $stepCount tools"
+                                stepCount == 1 -> "Tool: ${steps.first().name.replace('_', ' ').replaceFirstChar { it.uppercase() }}"
+                                else -> "Tool Execution"
                             }
-                        }
-                        if (stepCount > 1 && !isExpanded) {
-                            val namesSummary = steps.joinToString(" ➔ ") { it.name.replace('_', ' ') }
                             Text(
-                                text = namesSummary,
-                                color = TextMuted,
-                                fontSize = 9.5.sp,
-                                fontFamily = FontFamily.Monospace,
+                                text = headerTitle,
+                                color = Color(0xFFE4E4E7),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                letterSpacing = 0.2.sp
+                            )
+                        }
+                        if (!isExpanded && steps.isNotEmpty()) {
+                            val summary = steps.joinToString(" • ") { it.name.replace('_', ' ') }
+                            Text(
+                                text = summary,
+                                color = Color(0xFF71717A),
+                                fontSize = 10.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -1041,23 +1223,32 @@ fun CyberToolChainAccordion(toolData: ToolData, onCopy: (String) -> Unit) {
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "${toolData.durationMs.toInt()}ms",
-                        color = TextMuted,
-                        fontSize = 9.5.sp,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
+                    if (totalDuration > 0) {
+                        Surface(
+                            color = Color(0xFF1E1E22),
+                            shape = RoundedCornerShape(4.dp),
+                            border = BorderStroke(0.5.dp, Color(0xFF2E2E34))
+                        ) {
+                            Text(
+                                text = "${totalDuration}ms",
+                                color = Color(0xFFA1A1AA),
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
                     Icon(
                         imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = if (isExpanded) "Collapse Tool Steps" else "Expand Tool Steps",
-                        tint = accentColor,
+                        contentDescription = if (isExpanded) "Collapse Steps" else "Expand Steps",
+                        tint = Color(0xFF71717A),
                         modifier = Modifier.size(18.dp)
                     )
                 }
             }
 
-            // Expandable Step-by-Step Breakdown
+            // Expanded Antigravity Vertical Connected Timeline
             AnimatedVisibility(
                 visible = isExpanded,
                 enter = fadeIn(),
@@ -1066,93 +1257,137 @@ fun CyberToolChainAccordion(toolData: ToolData, onCopy: (String) -> Unit) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                        .padding(top = 10.dp, start = 4.dp, end = 4.dp)
                 ) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(1.dp)
-                            .background(PanelStrokeActive.copy(alpha = 0.3f))
+                            .background(Color(0xFF27272A))
                     )
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     steps.forEachIndexed { index, step ->
+                        val isLast = index == steps.size - 1
                         val isStepErr = step.status == "error"
-                        Surface(
-                            color = PanelDarkSolid,
-                            shape = RoundedCornerShape(6.dp),
-                            border = BorderStroke(1.dp, if (isStepErr) NeonRed.copy(alpha = 0.4f) else PanelStroke),
-                            modifier = Modifier.fillMaxWidth()
+                        val isStatusOnly = step.status == "status"
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.Top
                         ) {
-                            Column(modifier = Modifier.padding(8.dp)) {
-                                // Step Header
+                            // Timeline Node & Track Column
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.width(22.dp)
+                            ) {
+                                // Step circular indicator badge
+                                Box(
+                                    modifier = Modifier
+                                        .size(16.dp)
+                                        .background(
+                                            color = when {
+                                                isStepErr -> Color(0x33EF4444)
+                                                isStatusOnly -> Color(0x2238BDF8)
+                                                else -> Color(0x2210B981)
+                                            },
+                                            shape = CircleShape
+                                        )
+                                        .border(
+                                            width = 1.dp,
+                                            color = when {
+                                                isStepErr -> Color(0xFFEF4444)
+                                                isStatusOnly -> Color(0xFF38BDF8)
+                                                else -> Color(0xFF10B981)
+                                            },
+                                            shape = CircleShape
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = when {
+                                            isStepErr -> "!"
+                                            isStatusOnly -> "•"
+                                            else -> "✓"
+                                        },
+                                        color = when {
+                                            isStepErr -> Color(0xFFEF4444)
+                                            isStatusOnly -> Color(0xFF38BDF8)
+                                            else -> Color(0xFF10B981)
+                                        },
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+
+                                // Vertical Connecting Track Line
+                                if (!isLast) {
+                                    Box(
+                                        modifier = Modifier
+                                            .width(1.5.dp)
+                                            .height(if (step.preview.isNotBlank() || step.args.isNotBlank()) 54.dp else 28.dp)
+                                            .background(Color(0xFF27272A))
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.width(10.dp))
+
+                            // Step Details
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(bottom = if (isLast) 2.dp else 12.dp)
+                            ) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            text = "[STEP ${index + 1}]",
-                                            color = NeonCyan,
-                                            fontSize = 9.5.sp,
-                                            fontFamily = FontFamily.Monospace,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = step.name,
-                                            color = TextPrimary,
-                                            fontSize = 10.5.sp,
-                                            fontFamily = FontFamily.Monospace,
-                                            fontWeight = FontWeight.Medium
-                                        )
-                                    }
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = step.name.replace('_', ' ').replaceFirstChar { it.uppercase() },
+                                        color = Color(0xFFE4E4E7),
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    if (step.durationMs > 0) {
                                         Text(
                                             text = "${step.durationMs.toInt()}ms",
-                                            color = TextMuted,
-                                            fontSize = 9.sp,
+                                            color = Color(0xFF71717A),
+                                            fontSize = 9.5.sp,
                                             fontFamily = FontFamily.Monospace
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = if (isStepErr) "[FAIL]" else "[PASS]",
-                                            color = if (isStepErr) NeonRed else NeonGreen,
-                                            fontSize = 8.5.sp,
-                                            fontFamily = FontFamily.Monospace,
-                                            fontWeight = FontWeight.Bold
                                         )
                                     }
                                 }
 
-                                // Tool Arguments (if present)
-                                if (step.args.isNotBlank()) {
+                                // Parameters / Args preview
+                                if (step.args.isNotBlank() && step.args != "status update") {
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Surface(
-                                        color = VoidBlack,
+                                        color = Color(0xFF090A0C),
                                         shape = RoundedCornerShape(4.dp),
+                                        border = BorderStroke(0.5.dp, Color(0xFF27272A)),
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
                                         Text(
-                                            text = "INPUT // ${step.args}",
-                                            color = NeonCyanLight.copy(alpha = 0.85f),
-                                            fontSize = 9.sp,
+                                            text = step.args,
+                                            color = Color(0xFF38BDF8),
+                                            fontSize = 9.5.sp,
                                             fontFamily = FontFamily.Monospace,
                                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
-                                            maxLines = 3,
+                                            maxLines = 2,
                                             overflow = TextOverflow.Ellipsis
                                         )
                                     }
                                 }
 
-                                // Tool Result / Observation Preview (if present)
-                                if (step.preview.isNotBlank()) {
+                                // Result Preview
+                                if (step.preview.isNotBlank() && step.preview != step.name) {
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Surface(
-                                        color = VoidBlack.copy(alpha = 0.9f),
+                                        color = Color(0xFF090A0C),
                                         shape = RoundedCornerShape(4.dp),
-                                        border = BorderStroke(0.5.dp, PanelStroke),
+                                        border = BorderStroke(0.5.dp, Color(0xFF27272A)),
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
                                         Row(
@@ -1161,23 +1396,23 @@ fun CyberToolChainAccordion(toolData: ToolData, onCopy: (String) -> Unit) {
                                             horizontalArrangement = Arrangement.SpaceBetween
                                         ) {
                                             Text(
-                                                text = "OUTPUT // ${step.preview}",
-                                                color = TextSecondary,
-                                                fontSize = 9.sp,
+                                                text = step.preview,
+                                                color = Color(0xFFA1A1AA),
+                                                fontSize = 9.5.sp,
                                                 fontFamily = FontFamily.Monospace,
                                                 modifier = Modifier.weight(1f),
-                                                maxLines = 4,
+                                                maxLines = 3,
                                                 overflow = TextOverflow.Ellipsis
                                             )
                                             IconButton(
                                                 onClick = { onCopy(step.preview) },
-                                                modifier = Modifier.size(18.dp)
+                                                modifier = Modifier.size(16.dp)
                                             ) {
                                                 Icon(
                                                     imageVector = Icons.Default.ContentCopy,
                                                     contentDescription = "Copy Output",
-                                                    tint = TextMuted,
-                                                    modifier = Modifier.size(11.dp)
+                                                    tint = Color(0xFF71717A),
+                                                    modifier = Modifier.size(10.dp)
                                                 )
                                             }
                                         }
@@ -1190,6 +1425,12 @@ fun CyberToolChainAccordion(toolData: ToolData, onCopy: (String) -> Unit) {
             }
         }
     }
+}
+
+// Backward-compatible alias for existing call sites
+@Composable
+fun CyberToolChainAccordion(toolData: ToolData, onCopy: (String) -> Unit) {
+    AntigravityToolTimeline(toolData = toolData, onCopy = onCopy)
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1374,25 +1615,25 @@ fun formatInlineMarkdown(text: String): androidx.compose.ui.text.AnnotatedString
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// Animated Cyberpunk Quantum Reasoning Bar
+// Antigravity Live Reasoning & Tool Status Card
 // ═════════════════════════════════════════════════════════════════════════════
 @Composable
 fun CyberThinkingIndicator() {
-    val infiniteTransition = rememberInfiniteTransition(label = "PulseTransition")
+    val infiniteTransition = rememberInfiniteTransition(label = "ThinkingPulse")
     val alphaAnim by infiniteTransition.animateFloat(
-        initialValue = 0.35f,
+        initialValue = 0.4f,
         targetValue = 1.0f,
         animationSpec = infiniteRepeatable(
-            animation = tween(900, easing = LinearEasing),
+            animation = tween(800, easing = LinearEasing),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "AlphaPulse"
+        label = "ThinkingAlpha"
     )
 
     Surface(
-        color = PanelDarkSolid,
-        shape = RoundedCornerShape(8.dp),
-        border = BorderStroke(1.dp, NeonCyan.copy(alpha = alphaAnim)),
+        color = Color(0xFF131416),
+        shape = RoundedCornerShape(10.dp),
+        border = BorderStroke(1.dp, Color(0xFF27272A)),
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
@@ -1401,86 +1642,77 @@ fun CyberThinkingIndicator() {
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            CircularProgressIndicator(
-                color = NeonCyan,
-                modifier = Modifier.size(16.dp),
-                strokeWidth = 2.dp
-            )
+            Box(
+                modifier = Modifier
+                    .size(20.dp)
+                    .background(Color(0x2238BDF8), CircleShape)
+                    .border(1.dp, Color(0xFF38BDF8).copy(alpha = alphaAnim), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(
+                    color = Color(0xFF38BDF8),
+                    modifier = Modifier.size(12.dp),
+                    strokeWidth = 1.5.dp
+                )
+            }
             Spacer(modifier = Modifier.width(12.dp))
-            Text(
-                text = "ATHENA IS REASONING // DISPATCHING NEURAL TOOLS...",
-                color = NeonCyan.copy(alpha = alphaAnim),
-                fontSize = 11.5.sp,
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.SemiBold,
-                letterSpacing = 0.8.sp
-            )
+            Column {
+                Text(
+                    text = "ATHENA is processing...",
+                    color = Color(0xFFE4E4E7),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    letterSpacing = 0.2.sp
+                )
+                Text(
+                    text = "Running tools & awaiting response",
+                    color = Color(0xFF71717A).copy(alpha = alphaAnim),
+                    fontSize = 10.sp
+                )
+            }
         }
     }
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// Empty State Slate (Perplexity Discovery Greeting)
-// ═════════════════════════════════════════════════════════════════
+// Minimalist Perplexity Landing Center (Matching Screenshot 1)
+// ═════════════════════════════════════════════════════════════════════════════
 @Composable
-fun CyberEmptyState(onSelectSample: (String) -> Unit) {
+fun PerplexityLandingCenter(
+    selectedMode: Int,
+    onSelectSample: (String) -> Unit
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp),
+            .padding(horizontal = 24.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Surface(
-            modifier = Modifier.size(64.dp),
-            shape = CircleShape,
-            color = NeonCyanDim,
-            border = BorderStroke(1.5.dp, NeonCyan.copy(alpha = 0.6f))
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Text(
-                    text = "✳️",
-                    fontSize = 28.sp
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
+        // Clean minimal ATHENA branding centered
         Text(
-            text = "Where knowledge begins",
-            color = TextPrimary,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 0.5.sp,
-            fontSize = 18.sp,
+            text = "ATHENA",
+            color = Color(0xFFE4E4E7),
+            fontSize = 32.sp,
+            fontWeight = FontWeight.Light,
+            letterSpacing = 6.sp,
             fontFamily = FontFamily.SansSerif
         )
 
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(26.dp))
 
-        Text(
-            text = "Ask anything, search deep academic intelligence, or analyze your current screen context.",
-            color = TextSecondary,
-            fontSize = 12.5.sp,
-            textAlign = TextAlign.Center,
-            lineHeight = 18.sp,
-            modifier = Modifier.padding(horizontal = 20.dp)
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // Perplexity-Style Discovery Starter Cards
+        // Discovery starter cards
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            SampleStarterChip("⚡ Run deep research on Quantum Computing 2026") {
+            SampleStarterChip("⚡ Pro Research: Quantum Breakthroughs 2026") {
                 onSelectSample("/research Quantum Computing 2026 breakthroughs")
             }
-            SampleStarterChip("🛡️ Run automated DAST security reconnaissance on localhost") {
-                onSelectSample("/recon 127.0.0.1")
+            SampleStarterChip("📸 Analyze Screen: Inspect current display") {
+                onSelectSample("Analyze the attached screen context and summarize key insights.")
             }
-            SampleStarterChip("☀️ Synthesize morning executive intelligence briefing") {
+            SampleStarterChip("☀️ Morning Briefing: Synthesize executive summary") {
                 onSelectSample("/briefing")
             }
         }

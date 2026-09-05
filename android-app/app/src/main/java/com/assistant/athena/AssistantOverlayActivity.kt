@@ -10,6 +10,7 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.media.AudioAttributes
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
@@ -125,6 +126,7 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
     // Android TTS & Echo Guard
     private var tts: TextToSpeech? = null
     private var isTtsReady = false
+    private var pendingSpeechText: String? = null
     @Volatile private var isTtsSpeaking = false
     @Volatile private var ttsQuietUntil = 0L
 
@@ -356,25 +358,8 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
                         showAssistantResponse(replyText)
                         triggerHaptic(VibrationEffect.EFFECT_TICK)
 
-                        val hasTamil = replyText.any { it in '\u0B80'..'\u0BFF' }
-                        val shouldSpeakOnAndroid = json.optBoolean("client_tts", false) || hasTamil
-
-                        if (shouldSpeakOnAndroid) {
-                            speakText(replyText)
-                        } else {
-                            // Backend audio or text-only: show speaking state then seamlessly settle back to listening
-                            orbView.setState(OrbView.STATE_SPEAKING)
-                            waveformVisualizer.setMode(listening = false, thinking = false, speaking = true)
-                            handler.postDelayed({
-                                if (!isFinishing) {
-                                    orbView.setState(OrbView.STATE_LISTENING)
-                                    waveformVisualizer.setMode(listening = true, thinking = false, speaking = false)
-                                    if (!isRecording) {
-                                        startAudioRecording()
-                                    }
-                                }
-                            }, 3200)
-                        }
+                        // Default voice output: Always speak assistant responses
+                        speakText(replyText)
                     }
                 }
 
@@ -501,6 +486,7 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
                             orbView.setState(OrbView.STATE_SPEAKING)
                             waveformVisualizer.setMode(listening = false, thinking = false, speaking = true)
                             showAssistantResponse(directReply)
+                            speakText(directReply)
                         }
                     } catch (_: Exception) {}
                 }
@@ -867,16 +853,34 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
                 }
             })
             isTtsReady = true
+            pendingSpeechText?.let { pending ->
+                pendingSpeechText = null
+                speakText(pending)
+            }
         }
     }
 
     private fun speakText(text: String) {
-        if (!isTtsReady || text.isEmpty()) return
+        if (text.isBlank()) return
+        if (!isTtsReady || tts == null) {
+            pendingSpeechText = text
+            return
+        }
         stopAudioRecording()
         isTtsSpeaking = true
         ttsQuietUntil = SystemClock.uptimeMillis() + 60000L
         try {
-            val hasTamil = text.any { it in '\u0B80'..'\u0BFF' }
+            // Clean markdown syntax for natural speech synthesis
+            val cleanText = text
+                .replace(Regex("```[\\s\\S]*?```"), " ")
+                .replace(Regex("`[^`]*`"), " ")
+                .replace(Regex("\\[([^\\]]+)\\]\\([^\\)]+\\)"), "$1")
+                .replace(Regex("[*#_~]"), " ")
+                .replace(Regex("\\s+"), " ")
+                .trim()
+            val toSpeak = cleanText.ifEmpty { text }
+
+            val hasTamil = toSpeak.any { it in '\u0B80'..'\u0BFF' }
             if (hasTamil) {
                 val tamilLocale = Locale("ta", "IN")
                 val res = tts?.setLanguage(tamilLocale)
@@ -886,7 +890,10 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
             } else {
                 tts?.language = Locale.US
             }
-            tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "AthenaReply")
+            val params = Bundle().apply {
+                putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC)
+            }
+            tts?.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, params, "AthenaReply")
         } catch (e: Exception) {
             isTtsSpeaking = false
             ttsQuietUntil = SystemClock.uptimeMillis() + 500L
