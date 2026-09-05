@@ -34,6 +34,7 @@ enum class CyberTab(val label: String, val icon: ImageVector) {
     SETTINGS("Settings", Icons.Default.Tune)
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun CyberpunkAppShell(
     networkClient: NetworkClient,
@@ -48,18 +49,20 @@ fun CyberpunkAppShell(
     var pendingChatPrompt by remember { mutableStateOf<String?>(null) }
     var pendingSessionId by remember { mutableStateOf<String?>(null) }
     var toolsSegment by remember { mutableIntStateOf(0) }
+    val isImeVisible = WindowInsets.isImeVisible
 
     DotMatrixBackground {
         Scaffold(
             containerColor = Color.Transparent,
             bottomBar = {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = VoidBlack,
-                    shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
-                    border = BorderStroke(0.5.dp, PanelStroke),
-                    shadowElevation = 8.dp
-                ) {
+                if (!isImeVisible) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = VoidBlack,
+                        shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+                        border = BorderStroke(0.5.dp, PanelStroke),
+                        shadowElevation = 8.dp
+                    ) {
                     NavigationBar(
                         containerColor = Color.Transparent,
                         contentColor = TextPrimary,
@@ -99,6 +102,7 @@ fun CyberpunkAppShell(
                     }
                 }
             }
+        }
         ) { paddingValues ->
             Box(
                 modifier = Modifier

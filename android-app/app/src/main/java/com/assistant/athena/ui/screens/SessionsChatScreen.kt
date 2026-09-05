@@ -20,6 +20,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -31,10 +33,14 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
@@ -46,6 +52,7 @@ import com.assistant.athena.data.SessionDetail
 import com.assistant.athena.data.SessionItem
 import com.assistant.athena.data.ToolData
 import com.assistant.athena.data.ToolExecutionStep
+import com.assistant.athena.ui.components.CyberMarkdownView
 import com.assistant.athena.ui.components.HudCard
 import com.assistant.athena.ui.theme.*
 import kotlinx.coroutines.launch
@@ -57,7 +64,7 @@ import java.util.*
  * Implements real-time neural streaming, Markdown code blocks, tool feedback,
  * and optimistic turns via /ask bridge protocol.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun SessionsChatScreen(
     networkClient: NetworkClient,
@@ -72,6 +79,8 @@ fun SessionsChatScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
 
     var sessions by remember { mutableStateOf<List<SessionItem>>(emptyList()) }
     var activeSessionId by remember { mutableStateOf<String?>(null) }
@@ -146,10 +155,21 @@ fun SessionsChatScreen(
         }
     }
 
+    val isImeVisible = WindowInsets.isImeVisible
+    LaunchedEffect(isImeVisible) {
+        if (isImeVisible && localMessages.isNotEmpty()) {
+            listState.animateScrollToItem(localMessages.size - 1)
+        }
+    }
+
     // Handle Send Action
     fun executeSendPrompt() {
         val query = inputText.trim()
         if (query.isBlank() || isSending) return
+
+        // Immediately send keyboard down and release focus
+        keyboardController?.hide()
+        focusManager.clearFocus()
 
         inputText = ""
         coroutineScope.launch {
@@ -707,6 +727,17 @@ fun SessionsChatScreen(
                                 .weight(1f)
                                 .heightIn(min = 42.dp, max = 130.dp),
                             shape = RoundedCornerShape(20.dp),
+                            singleLine = false,
+                            maxLines = 4,
+                            keyboardOptions = KeyboardOptions(
+                                capitalization = KeyboardCapitalization.Sentences,
+                                imeAction = ImeAction.Send
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onSend = {
+                                    executeSendPrompt()
+                                }
+                            ),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = Color.Transparent,
                                 unfocusedBorderColor = Color.Transparent,
@@ -743,7 +774,11 @@ fun SessionsChatScreen(
                                     .size(34.dp)
                                     .clip(CircleShape)
                                     .background(TextPrimary)
-                                    .clickable { executeSendPrompt() },
+                                    .clickable {
+                                        keyboardController?.hide()
+                                        focusManager.clearFocus()
+                                        executeSendPrompt()
+                                    },
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
@@ -1544,184 +1579,14 @@ fun CyberToolChainAccordion(toolData: ToolData, onCopy: (String) -> Unit) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// In-Bubble Markdown Text Renderer (Code Blocks, Inline Code, Bolds, Lists)
+// In-Bubble Markdown Text Renderer (Headings, Tables, Blockquotes, Code, Lists)
 // ═════════════════════════════════════════════════════════════════════════════
 @Composable
 fun CyberMarkdownText(text: String, onCopyCode: (String) -> Unit) {
-    val blocks = remember(text) { parseMarkdownBlocks(text) }
-
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        blocks.forEach { block ->
-            when (block) {
-                is MarkdownBlock.CodeBlock -> {
-                    // Terminal Code Card
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        color = VoidBlack,
-                        shape = RoundedCornerShape(8.dp),
-                        border = BorderStroke(1.dp, PanelStroke)
-                    ) {
-                        Column {
-                            // Header bar with language & copy button
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(PanelDarkSolid)
-                                    .padding(horizontal = 10.dp, vertical = 4.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = block.language.ifBlank { "CODE" }.uppercase(),
-                                    color = NeonCyan,
-                                    fontSize = 10.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.Bold
-                                )
-
-                                Row(
-                                    modifier = Modifier
-                                        .clickable { onCopyCode(block.code) }
-                                        .padding(4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.ContentCopy,
-                                        contentDescription = "Copy code",
-                                        tint = TextMuted,
-                                        modifier = Modifier.size(12.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = "COPY",
-                                        color = TextMuted,
-                                        fontSize = 10.sp,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                }
-                            }
-
-                            // Code content
-                            Text(
-                                text = block.code,
-                                color = NeonCyanLight,
-                                fontSize = 12.sp,
-                                fontFamily = FontFamily.Monospace,
-                                lineHeight = 17.sp,
-                                modifier = Modifier.padding(10.dp)
-                            )
-                        }
-                    }
-                }
-                is MarkdownBlock.Paragraph -> {
-                    val annotatedString = remember(block.content) {
-                        formatInlineMarkdown(block.content)
-                    }
-                    Text(
-                        text = annotatedString,
-                        color = TextPrimary,
-                        fontSize = 13.5.sp,
-                        lineHeight = 20.sp
-                    )
-                }
-            }
-        }
-    }
-}
-
-sealed class MarkdownBlock {
-    data class Paragraph(val content: String) : MarkdownBlock()
-    data class CodeBlock(val language: String, val code: String) : MarkdownBlock()
-}
-
-fun parseMarkdownBlocks(rawText: String): List<MarkdownBlock> {
-    val result = mutableListOf<MarkdownBlock>()
-    val lines = rawText.lines()
-    var inCodeBlock = false
-    var codeLang = ""
-    val currentCodeLines = mutableListOf<String>()
-    val currentParaLines = mutableListOf<String>()
-
-    fun flushParagraph() {
-        if (currentParaLines.isNotEmpty()) {
-            val content = currentParaLines.joinToString("\n").trim()
-            if (content.isNotEmpty()) {
-                result.add(MarkdownBlock.Paragraph(content))
-            }
-            currentParaLines.clear()
-        }
-    }
-
-    for (line in lines) {
-        if (line.trimStart().startsWith("```")) {
-            if (inCodeBlock) {
-                // End code block
-                result.add(MarkdownBlock.CodeBlock(codeLang, currentCodeLines.joinToString("\n")))
-                currentCodeLines.clear()
-                codeLang = ""
-                inCodeBlock = false
-            } else {
-                // Start code block
-                flushParagraph()
-                inCodeBlock = true
-                codeLang = line.trimStart().removePrefix("```").trim()
-            }
-        } else if (inCodeBlock) {
-            currentCodeLines.add(line)
-        } else {
-            currentParaLines.add(line)
-        }
-    }
-
-    if (inCodeBlock && currentCodeLines.isNotEmpty()) {
-        result.add(MarkdownBlock.CodeBlock(codeLang, currentCodeLines.joinToString("\n")))
-    } else {
-        flushParagraph()
-    }
-
-    return result
-}
-
-fun formatInlineMarkdown(text: String): androidx.compose.ui.text.AnnotatedString {
-    return buildAnnotatedString {
-        var cursor = 0
-        // Match bold **text** or inline code `code`
-        val regex = Regex("(\\*(.*?)\\*|`([^`]+)`)")
-        val matches = regex.findAll(text)
-
-        for (match in matches) {
-            val range = match.range
-            if (range.first > cursor) {
-                append(text.substring(cursor, range.first))
-            }
-
-            val matchedValue = match.value
-            if (matchedValue.startsWith("**") && matchedValue.endsWith("**")) {
-                val boldContent = matchedValue.removePrefix("**").removeSuffix("**")
-                withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = TextPrimary)) {
-                    append(boldContent)
-                }
-            } else if (matchedValue.startsWith("`") && matchedValue.endsWith("`")) {
-                val codeContent = matchedValue.removePrefix("`").removeSuffix("`")
-                withStyle(
-                    SpanStyle(
-                        fontFamily = FontFamily.Monospace,
-                        color = NeonCyan,
-                        background = NeonCyanDim
-                    )
-                ) {
-                    append(" $codeContent ")
-                }
-            } else {
-                append(matchedValue)
-            }
-            cursor = range.last + 1
-        }
-
-        if (cursor < text.length) {
-            append(text.substring(cursor))
-        }
-    }
+    CyberMarkdownView(
+        text = text,
+        onCopyCode = onCopyCode
+    )
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

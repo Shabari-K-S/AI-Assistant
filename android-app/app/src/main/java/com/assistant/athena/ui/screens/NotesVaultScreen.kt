@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import com.assistant.athena.data.NetworkClient
 import com.assistant.athena.data.VaultNoteDetail
 import com.assistant.athena.data.VaultNoteItem
+import com.assistant.athena.ui.components.CyberMarkdownView
 import com.assistant.athena.ui.components.HudCard
 import com.assistant.athena.ui.theme.*
 import kotlinx.coroutines.launch
@@ -323,12 +324,13 @@ fun NotesVaultScreen(
                 Spacer(modifier = Modifier.height(16.dp))
                 HorizontalDivider(color = PanelStroke)
                 Spacer(modifier = Modifier.height(16.dp))
-
-                Text(
+                CyberMarkdownView(
                     text = note.content,
-                    color = TextHighlight,
-                    fontSize = 14.sp,
-                    lineHeight = 22.sp
+                    onCopyCode = { code ->
+                        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        cm.setPrimaryClip(ClipData.newPlainText("ATHENA Code", code))
+                        Toast.makeText(context, "Copied code snippet", Toast.LENGTH_SHORT).show()
+                    }
                 )
 
                 Spacer(modifier = Modifier.height(32.dp))
