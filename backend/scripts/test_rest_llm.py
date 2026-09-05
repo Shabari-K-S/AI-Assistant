@@ -21,7 +21,7 @@ def test_rest_llm():
     cfg = LLMConfig(
         provider="rest",
         api_key=os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY") or "test_key",
-        model="gemini-2.5-flash",
+        model="gemini-3.5-flash-lite",
     )
 
     print("\n1. Testing GeminiRestLLM class initialization...")

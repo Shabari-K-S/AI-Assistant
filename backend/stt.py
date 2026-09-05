@@ -109,15 +109,15 @@ class STTEngine:
         )
 
         candidate_models = []
-        if "gemini" in self._config.model:
+        if "gemini" in self._config.model and self._config.model in {
+            "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash"
+        }:
             candidate_models.append(self._config.model)
         candidate_models.extend([
-            "gemini-2.5-flash",
+            "gemini-3.8-flash",
+            "gemini-3.7-flash",
+            "gemini-3.6-flash",
             "gemini-3.5-flash",
-            "gemini-3.1-flash-lite",
-            "gemini-3.5-flash-lite",
-            "gemini-flash-latest",
-            "gemini-flash-lite-latest",
         ])
         unique_candidates = []
         for m in candidate_models:

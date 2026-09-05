@@ -678,11 +678,10 @@ class _Handler(BaseHTTPRequestHandler):
                 }
                 transcribed_text = ""
                 models_to_try = [
-                    "gemini-2.0-flash",
-                    "gemini-2.0-flash-lite",
-                    "gemini-2.5-flash",
-                    "gemini-1.5-flash",
-                    "gemini-1.5-flash-8b",
+                    "gemini-3.8-flash",
+                    "gemini-3.7-flash",
+                    "gemini-3.6-flash",
+                    "gemini-3.5-flash",
                 ]
 
                 for model_name in models_to_try:

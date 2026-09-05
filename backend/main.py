@@ -858,7 +858,7 @@ def _run_assistant(cfg, once: bool, text: str | None) -> int:
             try:
                 tools = (
                     registry.schemas(
-                        format="gemini" if cfg.llm.provider == "gemini" else "openai"
+                        format="gemini" if cfg.llm.provider in ("gemini", "rest") else "openai"
                     )
                     if cfg.tools.enabled
                     else []

@@ -308,16 +308,12 @@ Article Structure to Follow:
         # System instruction
         system_prompt = "You are a world-class technology journalist, staff engineer, and technical author writing high-density, captivating deep-dive articles and tech guides."
 
-        # Model cascade candidates for Google GenAI
+        # Model cascade candidates for Google GenAI (strictly approved models)
         gemini_cascade = [
+            "gemini-3.8-flash",
             "gemini-3.7-flash",
             "gemini-3.6-flash",
             "gemini-3.5-flash",
-            "gemini-2.5-flash",
-            "gemini-3.5-flash-lite",
-            "gemini-3.1-flash-lite",
-            "gemma-4-31b-it",
-            "gemma-4-26b-a4b-it",
         ]
 
         # ------------------------------------------------------------- #

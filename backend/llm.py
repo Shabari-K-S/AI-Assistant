@@ -271,9 +271,18 @@ class GeminiGemmaLLM(LLMEngine):
         if system_prompt:
             cfg["system_instruction"] = system_prompt
         if tools:
-            if isinstance(tools, list) and tools and isinstance(tools[0], dict) and "name" in tools[0] and "function_declarations" not in tools[0]:
-                cfg["tools"] = [{"function_declarations": tools}]
-            else:
+            from tools import _sanitize_schema_for_gemini
+            sanitized_tools = []
+            for t in tools:
+                if isinstance(t, dict) and "name" in t:
+                    sanitized_tools.append({
+                        "name": t.get("name", ""),
+                        "description": t.get("description", ""),
+                        "parameters": _sanitize_schema_for_gemini(t.get("parameters", t.get("input_schema", {})))
+                    })
+            if sanitized_tools:
+                cfg["tools"] = [{"function_declarations": sanitized_tools}]
+            elif isinstance(tools, list) and tools and isinstance(tools[0], dict) and "function_declarations" in tools[0]:
                 cfg["tools"] = tools
         return types.GenerateContentConfig(**cfg)
 
@@ -283,22 +292,19 @@ class GeminiGemmaLLM(LLMEngine):
         tools: list[dict],
         system_prompt: str,
     ) -> Iterator[object]:
-        """Lazy chunk iterator; retries on 429 rate limit and cascades across model tiers automatically."""
+        """Lazy chunk iterator; retries on 429 rate limit and cascades strictly across approved models."""
         from google.genai import errors
 
-        # Prioritize high-quota models (15-30 RPM, 500-14.4k RPD)
+        # Strictly allowed chat models per user requirement
         cascade_models = [
             "gemini-3.5-flash-lite",
             "gemini-3.1-flash-lite",
-            "gemini-flash-lite-latest",
             "gemma-4-31b-it",
             "gemma-4-26b-a4b-it",
-            "gemini-2.5-flash",
-            "gemini-3.5-flash",
-            "gemini-3.7-flash",
-            "gemini-flash-latest",
         ]
-        models_to_try = [self._config.model] if self._config.model else []
+        models_to_try = []
+        if self._config.model and self._config.model in cascade_models:
+            models_to_try.append(self._config.model)
         for m in cascade_models:
             if m not in models_to_try:
                 models_to_try.append(m)
@@ -641,11 +647,26 @@ class GeminiRestLLM(LLMEngine):
                 "parts": [{"text": system_prompt}]
             }
         if tools:
-            payload["tools"] = [
-                {
-                    "function_declarations": tools
-                }
-            ]
+            from tools import _sanitize_schema_for_gemini
+            sanitized_tools = []
+            for t in tools:
+                if not isinstance(t, dict):
+                    continue
+                if "type" in t and "function" in t and isinstance(t["function"], dict):
+                    fn = t["function"]
+                    sanitized_tools.append({
+                        "name": fn.get("name", ""),
+                        "description": fn.get("description", ""),
+                        "parameters": _sanitize_schema_for_gemini(fn.get("parameters", {}))
+                    })
+                elif "name" in t:
+                    sanitized_tools.append({
+                        "name": t.get("name", ""),
+                        "description": t.get("description", ""),
+                        "parameters": _sanitize_schema_for_gemini(t.get("parameters", t.get("input_schema", {})))
+                    })
+            if sanitized_tools:
+                payload["tools"] = [{"function_declarations": sanitized_tools}]
         return payload
 
     def _stream_model(self, model_name: str, payload: dict) -> Iterator[dict]:
@@ -684,25 +705,19 @@ class GeminiRestLLM(LLMEngine):
         t0 = time.perf_counter()
         ttft: float | None = None
 
-        # Prioritize high-quota models (15-30 RPM, 500-14.4k RPD) to avoid 429 cascades
+        # Strictly allowed chat models per user requirement
         preferred_cascade = [
-            "gemini-3.5-flash-lite",      # 15 RPM / 500 RPD (fastest & high quota)
-            "gemini-3.1-flash-lite",      # 15 RPM / 500 RPD
-            "gemini-flash-lite-latest",   # 15 RPM / 500 RPD
-            "gemma-4-31b-it",             # 30 RPM / 14,400 RPD
-            "gemma-4-26b-a4b-it",         # 30 RPM / 14,400 RPD
-            "gemini-2.5-flash",           # 5 RPM / 20 RPD (fallback)
-            "gemini-3.5-flash",           # 5 RPM / 20 RPD (fallback)
-            "gemini-3.7-flash",           # 5 RPM / 20 RPD (fallback)
-            "gemini-flash-latest",
+            "gemini-3.5-flash-lite",
+            "gemini-3.1-flash-lite",
+            "gemma-4-31b-it",
+            "gemma-4-26b-a4b-it",
         ]
-        if self._config.model and self._config.model not in preferred_cascade:
-            preferred_cascade.insert(0, self._config.model)
-
         unique_models: list[str] = []
+        if self._config.model and self._config.model in preferred_cascade:
+            unique_models.append(self._config.model)
         for m in preferred_cascade:
-            if m and isinstance(m, str) and m.strip() and m.strip() not in unique_models:
-                unique_models.append(m.strip())
+            if m not in unique_models:
+                unique_models.append(m)
 
         for iteration in range(self._max_tool_iterations + 1):
             contents = conversation.messages()

@@ -425,20 +425,52 @@ def _make_web_search() -> Callable[[dict], str]:
 
 
 def _sanitize_schema_for_gemini(param_dict: Any) -> Any:
-    """Recursively ensure all enums are string lists and types are compliant with Gemini Pydantic schema."""
+    """Recursively sanitize JSON schema for Google Gemini API compliance.
+
+    Strips unsupported fields ($schema, $id, $defs, definitions, additionalProperties)
+    and ensures enums and types strictly adhere to Gemini's FunctionDeclaration schema.
+    """
     if not isinstance(param_dict, dict):
         return param_dict
 
-    clean = dict(param_dict)
-    if "enum" in clean and isinstance(clean["enum"], (list, tuple)):
+    # Strip forbidden keys that cause Gemini API HTTP 400 Invalid Argument errors
+    forbidden_keys = {
+        "$schema", "$id", "$defs", "definitions", "$comment", "$ref",
+        "additionalProperties"
+    }
+    clean = {
+        str(k): v for k, v in param_dict.items()
+        if k not in forbidden_keys and not str(k).startswith("$")
+    }
+
+    # Ensure required is a list of strings matching properties
+    if "required" in clean:
+        if isinstance(clean["required"], (list, tuple, set)):
+            props = clean.get("properties", {})
+            if isinstance(props, dict) and props:
+                clean["required"] = [str(x) for x in clean["required"] if str(x) in props]
+            else:
+                clean["required"] = [str(x) for x in clean["required"]]
+        else:
+            clean.pop("required", None)
+
+    # Ensure enum elements are all strings
+    if "enum" in clean and isinstance(clean["enum"], (list, tuple, set)):
         clean["enum"] = [str(item) for item in clean["enum"]]
 
+    # Recursively sanitize nested properties
     if "properties" in clean and isinstance(clean["properties"], dict):
         clean["properties"] = {
-            k: _sanitize_schema_for_gemini(v) for k, v in clean["properties"].items()
+            str(k): _sanitize_schema_for_gemini(v)
+            for k, v in clean["properties"].items()
         }
-    if "items" in clean and isinstance(clean["items"], dict):
-        clean["items"] = _sanitize_schema_for_gemini(clean["items"])
+
+    # Recursively sanitize array items
+    if "items" in clean:
+        if isinstance(clean["items"], dict):
+            clean["items"] = _sanitize_schema_for_gemini(clean["items"])
+        elif isinstance(clean["items"], list) and clean["items"] and isinstance(clean["items"][0], dict):
+            clean["items"] = _sanitize_schema_for_gemini(clean["items"][0])
 
     return clean
 

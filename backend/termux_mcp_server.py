@@ -669,18 +669,14 @@ def handle_camera_vision(args: dict[str, Any]) -> str:
                 },
             }
 
+            allowed_vision = {"gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash"}
             custom_vision_model = os.environ.get("EV_VISION_MODEL", "").strip()
-            vision_models = [
-                m for m in [
-                    custom_vision_model,
-                    "gemini-flash-lite-latest",
-                    "gemini-3.1-flash-lite",
-                    "gemini-3.5-flash-lite",
-                    "gemini-flash-latest",
-                    "gemini-3-flash-preview",
-                    "gemini-2.5-flash",
-                ] if m
-            ]
+            vision_models = []
+            if custom_vision_model and custom_vision_model in allowed_vision:
+                vision_models.append(custom_vision_model)
+            for m in ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash"]:
+                if m not in vision_models:
+                    vision_models.append(m)
             analysis = None
             last_err = None
 
