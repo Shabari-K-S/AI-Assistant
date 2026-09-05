@@ -12,20 +12,20 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.assistant.athena.ui.theme.PanelDark
-import com.assistant.athena.ui.theme.PanelStroke
+import com.assistant.athena.ui.theme.PerplexityPillBorder
+import com.assistant.athena.ui.theme.PerplexitySurfaceElevated
 
 /**
- * Translucent Cyberpunk Glassmorphism HUD Card container.
- * Features 16.dp rounded corners, dark frosted backdrop (0xBF0C131F),
- * and 1.dp neon cyan stroke border.
+ * Authentic Perplexity Elevated Surface Card container.
+ * Features 16.dp rounded corners, elevated obsidian surface (#1F2633),
+ * and subtle slate border stroke (#2E3848).
  */
 @Composable
 fun HudCard(
     modifier: Modifier = Modifier,
     cornerRadius: Dp = 16.dp,
-    borderColor: Color = PanelStroke,
-    backgroundColor: Color = PanelDark,
+    borderColor: Color = PerplexityPillBorder,
+    backgroundColor: Color = PerplexitySurfaceElevated,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Surface(

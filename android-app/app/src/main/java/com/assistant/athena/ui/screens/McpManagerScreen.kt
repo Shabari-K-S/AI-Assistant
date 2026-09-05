@@ -366,9 +366,9 @@ fun McpManagerScreen(
                         val isInstalled = servers.any { it.name == catItem.name || it.name == catItem.id }
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
-                            color = PanelDarkSolid,
-                            shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, PanelStroke)
+                            color = PerplexitySurfaceElevated,
+                            shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(1.dp, PerplexityPillBorder)
                         ) {
                             Row(
                                 modifier = Modifier.padding(14.dp),
@@ -458,9 +458,9 @@ fun McpServerCard(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = PanelDarkSolid,
+        color = PerplexitySurfaceElevated,
         shape = RoundedCornerShape(14.dp),
-        border = BorderStroke(1.dp, if (server.running) NeonCyan.copy(alpha = 0.5f) else PanelStroke)
+        border = BorderStroke(1.dp, if (server.running) PerplexityTeal.copy(alpha = 0.5f) else PerplexityPillBorder)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(
@@ -550,7 +550,7 @@ fun McpServerCard(
                             modifier = Modifier.fillMaxWidth(),
                             color = DeepNavy,
                             shape = RoundedCornerShape(8.dp),
-                            border = BorderStroke(1.dp, PanelStroke)
+                            border = BorderStroke(1.dp, PerplexityPillBorder)
                         ) {
                             Column(modifier = Modifier.padding(10.dp)) {
                                 Text(

@@ -481,9 +481,9 @@ fun NoteCardItem(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        color = PanelDarkSolid,
+        color = PerplexitySurfaceElevated,
         shape = RoundedCornerShape(14.dp),
-        border = BorderStroke(1.dp, PanelStroke)
+        border = BorderStroke(1.dp, PerplexityPillBorder)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(

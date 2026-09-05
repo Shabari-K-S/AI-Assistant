@@ -162,7 +162,7 @@ class MainActivity : ComponentActivity() {
 data class BackendStatus(
     val isOnline: Boolean = false,
     val phase: String = "checking",
-    val model: String = "Gemini 2.5 Flash"
+    val model: String = "Gemini 3.5 Flash Lite"
 )
 
 @Composable
