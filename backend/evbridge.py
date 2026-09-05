@@ -546,6 +546,86 @@ class _Handler(BaseHTTPRequestHandler):
 
         return False, ""
 
+    def _analyze_multimodal_vision(self, prompt: str, image_b64: str) -> str:
+        """Analyzes an attached screenshot using Google Gemini Multimodal Vision.
+
+        Strictly follows model whitelist: gemini-3.8-flash, gemini-3.7-flash, gemini-3.6-flash, gemini-3.5-flash.
+        """
+        api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            return "❌ Gemini API Key is not configured in backend/.env for Multimodal Vision analysis."
+
+        system_instruction = (
+            "You are A.T.H.E.N.A., an advanced autonomous AI digital assistant analyzing the user's active Android screen. "
+            "Inspect all visible UI components, text, codes, images, buttons, and state details. "
+            "Provide direct, insightful, and helpful answers. If answering questions or explaining errors, "
+            "be precise and actionable. Keep responses concise and easy to read."
+        )
+
+        user_prompt = prompt if prompt.strip() else "Analyze what is currently on my screen, summarize key content, and provide relevant insights."
+
+        payload = {
+            "system_instruction": {
+                "parts": [{"text": system_instruction}]
+            },
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [
+                        {
+                            "inline_data": {
+                                "mime_type": "image/jpeg",
+                                "data": image_b64
+                            }
+                        },
+                        {
+                            "text": user_prompt
+                        }
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.4,
+                "maxOutputTokens": 1024
+            }
+        }
+
+        models_to_try = [
+            "gemini-3.8-flash",
+            "gemini-3.7-flash",
+            "gemini-3.6-flash",
+            "gemini-3.5-flash",
+        ]
+
+        last_err = ""
+        for model_name in models_to_try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"}
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=20.0) as resp:
+                    res_data = json.loads(resp.read().decode("utf-8"))
+                candidates = res_data.get("candidates", [])
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    reply_text = "".join(p.get("text", "") for p in parts).strip()
+                    if reply_text:
+                        return reply_text
+            except urllib.error.HTTPError as e:
+                err_content = e.read().decode("utf-8", errors="ignore")
+                log.warning("Vision analysis failed with %s: %s (%s)", model_name, e.code, err_content[:150])
+                last_err = f"HTTP {e.code}: {err_content[:100]}"
+                continue
+            except Exception as e:
+                log.warning("Vision analysis exception with %s: %s", model_name, e)
+                last_err = str(e)
+                continue
+
+        return f"⚠️ Multimodal Screen Analysis encountered an error: {last_err or 'No valid response from vision models'}"
+
     def do_POST(self) -> None:  # noqa: N802 - http.server API
         bus = self._bus
         path = self.path.rstrip("/")
@@ -558,8 +638,9 @@ class _Handler(BaseHTTPRequestHandler):
 
         if path == "/prompt":
             prompt = str(body.get("text") or "").strip()
+            image_b64 = str(body.get("image_b64") or "").strip()
             session_id = str(body.get("session_id") or "").strip() or None
-            if not prompt:
+            if not prompt and not image_b64:
                 self._json({"ok": False, "error": "empty prompt"}, 400)
                 return
 
@@ -569,7 +650,18 @@ class _Handler(BaseHTTPRequestHandler):
                 sm.set_active_session_id(session_id)
             else:
                 session_id = sm.get_active_session_id()
-            sm.add_message(session_id, "user", prompt)
+            sm.add_message(session_id, "user", prompt or "[Screen Context Query]")
+
+            # If image is attached, run Gemini Multimodal Vision immediately
+            if image_b64:
+                bus.log("INFO", f"multimodal screen query via /prompt: {prompt[:60]}")
+                bus.set(phase="thinking", transcript=prompt or "Analyzing screen...")
+                vision_reply = self._analyze_multimodal_vision(prompt, image_b64)
+                sm.add_message(session_id, "assistant", vision_reply)
+                bus.set(phase="speaking", reply=vision_reply)
+                bus.event("reply", text=vision_reply)
+                self._json({"ok": True, "prompt": prompt, "reply": vision_reply, "has_image": True, "session_id": session_id})
+                return
 
             # Check for direct slash command execution
             handled, cmd_reply = self._execute_slash_command(prompt, bus)
@@ -588,10 +680,11 @@ class _Handler(BaseHTTPRequestHandler):
             self._json({"ok": True, "prompt": prompt, "session_id": session_id})
             return
 
-        if path == "/ask":
+        if path in ("/ask", "/screen_context"):
             prompt = str(body.get("text") or "").strip()
+            image_b64 = str(body.get("image_b64") or "").strip()
             session_id = str(body.get("session_id") or "").strip() or None
-            if not prompt:
+            if not prompt and not image_b64:
                 self._json({"ok": False, "error": "empty prompt"}, 400)
                 return
 
@@ -601,7 +694,18 @@ class _Handler(BaseHTTPRequestHandler):
                 sm.set_active_session_id(session_id)
             else:
                 session_id = sm.get_active_session_id()
-            sm.add_message(session_id, "user", prompt)
+            sm.add_message(session_id, "user", prompt or "[Screen Context Query]")
+
+            # Direct multimodal vision processing when screenshot is provided
+            if image_b64:
+                bus.log("INFO", f"multimodal screen query via {path}: {prompt[:60]}")
+                bus.set(phase="thinking", transcript=prompt or "Analyzing screen...")
+                vision_reply = self._analyze_multimodal_vision(prompt, image_b64)
+                sm.add_message(session_id, "assistant", vision_reply)
+                bus.set(phase="speaking", reply=vision_reply)
+                bus.event("reply", text=vision_reply)
+                self._json({"ok": True, "reply": vision_reply, "has_image": True, "session_id": session_id})
+                return
 
             # Check for direct slash command execution
             handled, cmd_reply = self._execute_slash_command(prompt, bus)

@@ -147,8 +147,18 @@ fun SessionsChatScreen(
                 listState.animateScrollToItem(localMessages.size - 1)
             }
 
-            // 2. Transmit via synchronous /ask bridge endpoint
-            val result = networkClient.askAssistant(query, activeSessionId)
+            // 2. Transmit via synchronous /ask bridge endpoint (with screen context if available)
+            val isScreenQuery = query.contains("screen", ignoreCase = true)
+            val result = if (isScreenQuery && com.assistant.athena.data.ScreenCaptureHolder.hasFreshScreenshot()) {
+                val imgB64 = com.assistant.athena.data.ScreenCaptureHolder.toBase64Jpeg()
+                if (!imgB64.isNullOrEmpty()) {
+                    networkClient.askAssistantWithVision(query, imgB64, activeSessionId)
+                } else {
+                    networkClient.askAssistant(query, activeSessionId)
+                }
+            } else {
+                networkClient.askAssistant(query, activeSessionId)
+            }
 
             if (result != null) {
                 // If this was a new conversation, bind to the returned session ID
@@ -455,6 +465,18 @@ fun SessionsChatScreen(
                             .padding(bottom = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        CyberQuickChip(
+                            text = if (com.assistant.athena.data.ScreenCaptureHolder.hasFreshScreenshot()) "📸 Screen Context" else "📸 Ask Screen",
+                            icon = Icons.Default.Search
+                        ) {
+                            if (com.assistant.athena.data.ScreenCaptureHolder.hasFreshScreenshot()) {
+                                inputText = "Analyze the attached screen context and summarize key insights."
+                                executeSendPrompt()
+                            } else {
+                                inputText = "What's on my screen? (Hold Home/Power button or swipe corner to capture screen)"
+                                executeSendPrompt()
+                            }
+                        }
                         CyberQuickChip(text = "⚡ Deep Research", icon = Icons.Default.Search) {
                             inputText = "/research "
                         }

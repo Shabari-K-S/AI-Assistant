@@ -202,6 +202,28 @@ class NetworkClient(private val context: Context) {
             }
         }
 
+    suspend fun askAssistantWithVision(
+        text: String,
+        imageB64: String,
+        sessionId: String? = null
+    ): AskResult? = withContext(Dispatchers.IO) {
+        val payload = JSONObject()
+            .put("text", text)
+            .put("image_b64", imageB64)
+        if (!sessionId.isNullOrBlank()) payload.put("session_id", sessionId)
+        val raw = httpPostJson("/ask", payload) ?: return@withContext null
+        try {
+            val json = JSONObject(raw)
+            val reply = json.optString("reply", "")
+            val sid = json.optString("session_id", sessionId ?: "")
+            val ok = json.optBoolean("ok", true)
+            val handledSlash = json.optBoolean("handled_slash", false)
+            AskResult(reply = reply, sessionId = sid, ok = ok, handledSlash = handledSlash)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     // =========================================================================
     // Markdown Notes Vault
     // =========================================================================

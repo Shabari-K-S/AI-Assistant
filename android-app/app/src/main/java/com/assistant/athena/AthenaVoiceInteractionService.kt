@@ -40,11 +40,21 @@ class AthenaVoiceSessionService : VoiceInteractionSessionService() {
 }
 
 class AthenaVoiceSession(context: android.content.Context) : VoiceInteractionSession(context) {
+    override fun onHandleScreenshot(screenshot: android.graphics.Bitmap?) {
+        super.onHandleScreenshot(screenshot)
+        if (screenshot != null) {
+            com.assistant.athena.data.ScreenCaptureHolder.setScreenshot(screenshot)
+            Log.i("Athena.VoiceSession", "Received system screenshot: ${screenshot.width}x${screenshot.height}")
+        }
+    }
+
     override fun onHandleAssist(data: Bundle?, structure: android.app.assist.AssistStructure?, content: android.app.assist.AssistContent?) {
         super.onHandleAssist(data, structure, content)
+        val hasScreen = com.assistant.athena.data.ScreenCaptureHolder.hasFreshScreenshot()
         val intent = Intent(context, AssistantOverlayActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION
             putExtra("trigger_voice", true)
+            putExtra("has_screen_context", hasScreen)
         }
         context.startActivity(intent)
         finish()
