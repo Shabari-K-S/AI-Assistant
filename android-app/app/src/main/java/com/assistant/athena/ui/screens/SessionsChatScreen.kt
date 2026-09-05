@@ -281,81 +281,50 @@ fun SessionsChatScreen(
             // ═════════════════════════════════════════════════════════════════
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                color = PanelDarkSolid,
-                border = BorderStroke(1.dp, PanelStroke)
+                color = VoidBlack,
+                border = BorderStroke(0.5.dp, Color(0xFF262626))
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Session History Drawer Trigger Chip
-                    Surface(
-                        modifier = Modifier
-                            .clickable { isHistoryDrawerOpen = true }
-                            .clip(RoundedCornerShape(8.dp)),
-                        color = NeonCyanDim,
-                        border = BorderStroke(1.dp, PanelStrokeActive)
+                    // History Drawer Trigger
+                    IconButton(
+                        onClick = { isHistoryDrawerOpen = true },
+                        modifier = Modifier.size(36.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.FolderOpen,
-                                contentDescription = "History Drawer",
-                                tint = NeonCyan,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "SESSIONS",
-                                color = NeonCyan,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace,
-                                letterSpacing = 1.sp
-                            )
-                        }
+                        Icon(
+                            imageVector = Icons.Default.Menu,
+                            contentDescription = "Conversations",
+                            tint = TextSecondary,
+                            modifier = Modifier.size(22.dp)
+                        )
                     }
 
-                    Spacer(modifier = Modifier.width(10.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
 
-                    // Active Session Title & Status
+                    // Active Session Title
                     Column(
                         modifier = Modifier
                             .weight(1f)
                             .clickable { isHistoryDrawerOpen = true }
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            // Pulsing green/cyan online status dot
-                            Box(
-                                modifier = Modifier
-                                    .size(7.dp)
-                                    .clip(CircleShape)
-                                    .background(NeonGreen)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = activeSessionDetail?.title ?: "Select Conversation",
-                                color = TextPrimary,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
                         Text(
-                            text = "${localMessages.size} TURNS // PROTOCOL: SYS.READY",
+                            text = activeSessionDetail?.title ?: "Chat",
+                            color = TextPrimary,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 15.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = if (localMessages.isNotEmpty()) "${localMessages.size} messages" else "New thread",
                             color = TextMuted,
-                            fontSize = 10.sp,
-                            fontFamily = FontFamily.Monospace,
-                            letterSpacing = 0.8.sp
+                            fontSize = 11.sp
                         )
                     }
-
-                    Spacer(modifier = Modifier.width(8.dp))
 
                     // + New Session Button
                     IconButton(
@@ -369,36 +338,26 @@ fun SessionsChatScreen(
                                 }
                             }
                         },
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(NeonCyanDim)
-                            .border(BorderStroke(1.dp, PanelStroke), RoundedCornerShape(8.dp))
+                        modifier = Modifier.size(36.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Add,
                             contentDescription = "New Session",
-                            tint = NeonCyan,
-                            modifier = Modifier.size(18.dp)
+                            tint = TextSecondary,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(6.dp))
-
-                    // Floating HUD Overlay Launcher
+                    // Floating Assistant Overlay Launcher
                     IconButton(
                         onClick = onLaunchOverlay,
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(NeonCyanLight.copy(alpha = 0.15f))
-                            .border(BorderStroke(1.dp, NeonCyanLight.copy(alpha = 0.4f)), RoundedCornerShape(8.dp))
+                        modifier = Modifier.size(36.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Bolt,
-                            contentDescription = "Launch Overlay",
-                            tint = NeonCyanLight,
-                            modifier = Modifier.size(18.dp)
+                            contentDescription = "Assistant HUD",
+                            tint = TextSecondary,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
@@ -515,32 +474,38 @@ fun SessionsChatScreen(
                     }
                 }
 
-                // Perplexity Floating Pill Input Capsule
+                // Perplexity Floating Pill Input Capsule (Matching Screenshot 1)
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(26.dp),
-                    color = PerplexitySurfaceElevated,
-                    border = BorderStroke(
-                        1.dp,
-                        if (inputText.isNotBlank()) NeonCyan.copy(alpha = 0.65f) else PanelStroke
-                    ),
-                    shadowElevation = 4.dp
+                    shape = RoundedCornerShape(24.dp),
+                    color = Color(0xFF1E1E1E),
+                    border = BorderStroke(1.dp, Color(0xFF2B2B2B))
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 6.dp),
+                            .padding(horizontal = 12.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Focus spark indicator
-                        Icon(
-                            imageVector = Icons.Default.Bolt,
-                            contentDescription = "Focus",
-                            tint = if (inputText.isNotBlank()) NeonCyan else TextMuted,
-                            modifier = Modifier.size(18.dp)
-                        )
-
-                        Spacer(modifier = Modifier.width(8.dp))
+                        // Left + button (Screenshot 1)
+                        IconButton(
+                            onClick = {
+                                if (com.assistant.athena.data.ScreenCaptureHolder.hasFreshScreenshot()) {
+                                    inputText = "Analyze the current screen context."
+                                } else {
+                                    inputText = "What's on my screen?"
+                                }
+                                executeSendPrompt()
+                            },
+                            modifier = Modifier.size(34.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "Attach / Tools",
+                                tint = TextSecondary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
 
                         // High-legibility Perplexity Input
                         OutlinedTextField(
@@ -549,13 +514,13 @@ fun SessionsChatScreen(
                             placeholder = {
                                 Text(
                                     text = "Ask anything or follow-up...",
-                                    color = TextMuted,
-                                    fontSize = 13.5.sp
+                                    color = Color(0xFF71717A),
+                                    fontSize = 14.sp
                                 )
                             },
                             modifier = Modifier
                                 .weight(1f)
-                                .heightIn(min = 44.dp, max = 130.dp),
+                                .heightIn(min = 42.dp, max = 130.dp),
                             shape = RoundedCornerShape(20.dp),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = Color.Transparent,
@@ -564,7 +529,7 @@ fun SessionsChatScreen(
                                 unfocusedTextColor = TextPrimary,
                                 focusedContainerColor = Color.Transparent,
                                 unfocusedContainerColor = Color.Transparent,
-                                cursorColor = NeonCyan
+                                cursorColor = TextPrimary
                             ),
                             trailingIcon = {
                                 if (inputText.isNotEmpty()) {
@@ -583,31 +548,38 @@ fun SessionsChatScreen(
                             }
                         )
 
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
 
-                        // Perplexity Signature Circular Send Button with Upward Arrow
+                        // Perplexity Signature Circular Send / Mic Button
                         val isReadyToSend = inputText.isNotBlank() && !isSending
-                        IconButton(
-                            onClick = { executeSendPrompt() },
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(if (isReadyToSend) NeonCyan else NeonCyanDim)
-                                .border(
-                                    BorderStroke(
-                                        1.dp,
-                                        if (isReadyToSend) NeonCyanLight else Color.Transparent
-                                    ),
-                                    CircleShape
-                                ),
-                            enabled = isReadyToSend
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ArrowUpward,
-                                contentDescription = "Send Prompt",
-                                tint = if (isReadyToSend) VoidBlack else TextMuted,
-                                modifier = Modifier.size(19.dp)
-                            )
+                        if (isReadyToSend) {
+                            Box(
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .clip(CircleShape)
+                                    .background(TextPrimary)
+                                    .clickable { executeSendPrompt() },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ArrowUpward,
+                                    contentDescription = "Send",
+                                    tint = VoidBlack,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        } else {
+                            IconButton(
+                                onClick = onLaunchOverlay,
+                                modifier = Modifier.size(34.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Mic,
+                                    contentDescription = "Voice Assistant",
+                                    tint = TextSecondary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -753,40 +725,39 @@ fun CyberChatMessageBubble(
 
     val timeStr = remember(msg.timestamp) {
         val date = Date((msg.timestamp * 1000).toLong())
-        SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(date)
+        SimpleDateFormat("HH:mm", Locale.getDefault()).format(date)
     }
 
     Column(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
         horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
     ) {
-        // Main Unified Bubble Container (Perplexity Obsidian & Elevated Slate)
-        Surface(
-            color = when {
-                isSystem -> NeonRed.copy(alpha = 0.12f)
-                isUser -> PerplexitySurfaceElevated
-                else -> PanelDarkSolid
-            },
-            shape = RoundedCornerShape(
-                topStart = if (isUser) 18.dp else 4.dp,
-                topEnd = 18.dp,
-                bottomStart = 18.dp,
-                bottomEnd = if (isUser) 4.dp else 18.dp
-            ),
-            border = BorderStroke(
-                1.dp,
-                when {
-                    isSystem -> NeonRed.copy(alpha = 0.5f)
-                    isUser -> PerplexityPillBorder
-                    else -> PanelStroke.copy(alpha = 0.6f)
-                }
-            ),
-            shadowElevation = if (isUser) 1.dp else 3.dp,
-            modifier = Modifier.fillMaxWidth(if (isSystem) 1f else 0.92f)
-        ) {
-            Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-
-                // Role Header & Action Row
+        if (isUser) {
+            // User Message: Clean elevated rounded bubble on the right
+            Surface(
+                color = Color(0xFF242424),
+                shape = RoundedCornerShape(18.dp),
+                border = BorderStroke(1.dp, Color(0xFF333333)),
+                modifier = Modifier.widthIn(max = 300.dp)
+            ) {
+                Text(
+                    text = msg.text,
+                    color = TextPrimary,
+                    fontSize = 14.5.sp,
+                    lineHeight = 21.sp,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                )
+            }
+        } else {
+            // Assistant Message: Natural layout directly on the canvas without heavy box borders
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp, vertical = 4.dp)
+            ) {
+                // Subtle Header: Athena spark + time + copy action
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -794,60 +765,55 @@ fun CyberChatMessageBubble(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = when {
-                                isSystem -> "SYSTEM NOTICE"
-                                isUser -> "YOU"
-                                else -> "ATHENA // INTELLIGENCE"
-                            },
-                            color = when {
-                                isSystem -> NeonRed
-                                isUser -> TextPrimary
-                                else -> PerplexityTealVibrant
-                            },
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.8.sp,
-                            fontFamily = FontFamily.Monospace
+                            text = "✳",
+                            color = PerplexityTeal,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (isSystem) "System" else "Athena",
+                            color = TextPrimary,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = timeStr,
                             color = TextMuted,
-                            fontSize = 9.sp,
-                            fontFamily = FontFamily.Monospace
+                            fontSize = 10.sp
                         )
                     }
 
-                    if (!isUser) {
-                        IconButton(
-                            onClick = { onCopy(msg.text) },
-                            modifier = Modifier.size(22.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ContentCopy,
-                                contentDescription = "Copy message",
-                                tint = TextMuted,
-                                modifier = Modifier.size(13.dp)
-                            )
-                        }
+                    IconButton(
+                        onClick = { onCopy(msg.text) },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ContentCopy,
+                            contentDescription = "Copy message",
+                            tint = TextMuted,
+                            modifier = Modifier.size(15.dp)
+                        )
                     }
                 }
 
-                // Perplexity Sources & Citations Carousel
-                if (!isUser && msg.toolData != null && msg.toolData.steps.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(8.dp))
+                // Sources & Citations Carousel
+                if (msg.toolData != null && msg.toolData.steps.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(6.dp))
                     PerplexitySourcesRow(steps = msg.toolData.steps)
                     CyberToolChainAccordion(toolData = msg.toolData, onCopy = onCopy)
                 }
 
-                // Rich Markdown Response Body (Handles continuous multi-part text sections)
+                // Rich Markdown Body
                 if (msg.text.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
                     CyberMarkdownText(text = msg.text, onCopyCode = onCopy)
                 }
 
                 // Perplexity Interactive Follow-Up Prompts Section
-                if (!isUser && msg.text.isNotBlank() && !isSystem) {
+                if (msg.text.isNotBlank() && !isSystem) {
+                    Spacer(modifier = Modifier.height(8.dp))
                     PerplexityFollowUpSection(onSelectPrompt = onSelectFollowUp)
                 }
             }
@@ -866,24 +832,22 @@ fun PerplexitySourcesRow(steps: List<ToolExecutionStep>) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "SOURCES",
-                color = TextMuted,
-                fontSize = 9.5.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace,
-                letterSpacing = 0.9.sp
+                text = "Sources",
+                color = TextSecondary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold
             )
             Spacer(modifier = Modifier.width(6.dp))
             Surface(
-                color = NeonCyanDim,
-                shape = RoundedCornerShape(10.dp)
+                color = Color(0xFF202020),
+                shape = RoundedCornerShape(8.dp),
+                border = BorderStroke(1.dp, Color(0xFF2E2E2E))
             ) {
                 Text(
                     text = "${steps.size}",
-                    color = NeonCyan,
-                    fontSize = 9.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
+                    color = TextSecondary,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Medium,
                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
                 )
             }
@@ -899,21 +863,21 @@ fun PerplexitySourcesRow(steps: List<ToolExecutionStep>) {
         ) {
             steps.forEachIndexed { idx, step ->
                 Surface(
-                    color = PerplexitySurfaceElevated,
+                    color = Color(0xFF1E1E1E),
                     shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, PerplexityPillBorder)
+                    border = BorderStroke(1.dp, Color(0xFF2C2C2C))
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Surface(
-                            color = NeonCyanDim,
+                            color = Color(0xFF2A2A2A),
                             shape = CircleShape
                         ) {
                             Text(
                                 text = "${idx + 1}",
-                                color = NeonCyan,
+                                color = TextPrimary,
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
@@ -922,16 +886,15 @@ fun PerplexitySourcesRow(steps: List<ToolExecutionStep>) {
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = step.name.replace('_', ' '),
-                            color = TextHighlight,
-                            fontSize = 10.5.sp,
+                            color = TextPrimary,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Medium
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Spacer(modifier = Modifier.width(5.dp))
                         Text(
                             text = "${step.durationMs.toInt()}ms",
                             color = TextMuted,
-                            fontSize = 8.5.sp,
-                            fontFamily = FontFamily.Monospace
+                            fontSize = 9.sp
                         )
                     }
                 }
@@ -950,23 +913,12 @@ fun PerplexityFollowUpSection(onSelectPrompt: (String) -> Unit) {
             .fillMaxWidth()
             .padding(top = 10.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(0.5.dp)
-                .background(PanelStroke.copy(alpha = 0.4f))
+        Text(
+            text = "Follow-up",
+            color = TextSecondary,
+            fontSize = 11.5.sp,
+            fontWeight = FontWeight.SemiBold
         )
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = "RELATED // FOLLOW-UP",
-                color = TextMuted,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace,
-                letterSpacing = 0.8.sp
-            )
-        }
         Spacer(modifier = Modifier.height(6.dp))
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             val suggestions = listOf(
@@ -980,12 +932,12 @@ fun PerplexityFollowUpSection(onSelectPrompt: (String) -> Unit) {
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
                         .clickable { onSelectPrompt(suggestion) },
-                    color = PerplexitySurfaceElevated.copy(alpha = 0.6f),
+                    color = Color(0xFF1C1C1C),
                     shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(0.8.dp, PerplexityPillBorder)
+                    border = BorderStroke(1.dp, Color(0xFF2A2A2A))
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
@@ -993,15 +945,15 @@ fun PerplexityFollowUpSection(onSelectPrompt: (String) -> Unit) {
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.weight(1f)
                         ) {
-                            Text(text = "+", color = NeonCyan, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Text(text = "+", color = TextSecondary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text(text = suggestion, color = TextPrimary, fontSize = 11.5.sp)
+                            Text(text = suggestion, color = TextPrimary, fontSize = 12.sp)
                         }
                         Icon(
                             imageVector = Icons.Default.ArrowForward,
                             contentDescription = null,
                             tint = TextMuted,
-                            modifier = Modifier.size(13.dp)
+                            modifier = Modifier.size(14.dp)
                         )
                     }
                 }

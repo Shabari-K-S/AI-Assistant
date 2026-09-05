@@ -176,173 +176,223 @@ fun AthenaDashboardScreen(
     onNavigateToChat: (String?) -> Unit
 ) {
     var queryText by remember { mutableStateOf("") }
-    var recentSessions by remember { mutableStateOf<List<SessionItem>>(emptyList()) }
-
-    val infiniteTransition = rememberInfiniteTransition(label = "StatusPulse")
-    val ledAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.4f,
-        targetValue = 1.0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1200, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "ledAlpha"
-    )
-
-    LaunchedEffect(Unit) {
-        try {
-            val sessions = networkClient.fetchSessions()
-            recentSessions = sessions.take(3)
-        } catch (_: Exception) {}
-    }
+    var selectedTopMode by remember { mutableIntStateOf(0) } // 0: Search, 1: Computer/AI
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .background(VoidBlack)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.SpaceBetween
     ) {
-        // ═══ 1. Perplexity Brand & Telemetry Header Bar ═══
+        // ═══ 1. Top Bar (Matching Screenshot 1) ═══
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.clickable { onRefresh() }
+            // Profile circular avatar
+            Surface(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(CircleShape)
+                    .clickable { onOpenSettings() },
+                color = Color(0xFF202020),
+                shape = CircleShape,
+                border = BorderStroke(1.dp, Color(0xFF2E2E2E))
             ) {
-                Text(
-                    text = "✳",
-                    color = PerplexityTeal,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "ATHENA",
-                    color = TextPrimary,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.2.sp,
-                    fontFamily = FontFamily.SansSerif
-                )
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.Person,
+                        contentDescription = "Settings",
+                        tint = Color(0xFFA1A1AA),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
 
-            // Model & LED Status Capsule
+            // Center Pill Mode Switch: [ 🔍 Search ] | [ 💻 Assistant ]
             Surface(
                 shape = RoundedCornerShape(20.dp),
-                color = PerplexitySurfaceElevated,
-                border = BorderStroke(1.dp, PerplexityPillBorder),
-                modifier = Modifier.clickable { onRefresh() }
+                color = Color(0xFF1C1C1C),
+                border = BorderStroke(1.dp, Color(0xFF282828))
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    modifier = Modifier.padding(3.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    // Search mode icon
                     Box(
                         modifier = Modifier
-                            .size(7.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (status.isOnline) NeonGreen.copy(alpha = ledAlpha)
-                                else NeonAmber.copy(alpha = ledAlpha)
-                            )
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = if (status.isOnline) "ONLINE" else "STANDBY",
-                        color = if (status.isOnline) NeonGreen else NeonAmber,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.5.sp,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "•",
-                        color = TextMuted,
-                        fontSize = 10.sp
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = status.model.replace("Gemini ", "Gemini-"),
-                        color = TextSecondary,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(if (selectedTopMode == 0) Color(0xFF2A2A2A) else Color.Transparent)
+                            .clickable { selectedTopMode = 0 }
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Search",
+                            tint = if (selectedTopMode == 0) TextPrimary else TextMuted,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+
+                    // Computer / Assistant mode icon
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(if (selectedTopMode == 1) Color(0xFF2A2A2A) else Color.Transparent)
+                            .clickable { selectedTopMode = 1 }
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Laptop,
+                            contentDescription = "Computer Assistant",
+                            tint = if (selectedTopMode == 1) TextPrimary else TextMuted,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
+
+            // Right: Library / Collection button
+            Surface(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(CircleShape)
+                    .clickable { onOpenGuide() },
+                color = Color(0xFF202020),
+                shape = CircleShape,
+                border = BorderStroke(1.dp, Color(0xFF2E2E2E))
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.CollectionsBookmark,
+                        contentDescription = "Guide",
+                        tint = Color(0xFFA1A1AA),
+                        modifier = Modifier.size(17.dp)
                     )
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(36.dp))
-
-        // ═══ 2. Center Perplexity Hero ═══
-        Text(
-            text = "✳",
-            color = PerplexityTeal,
-            fontSize = 38.sp,
-            fontWeight = FontWeight.Light
-        )
-        Spacer(modifier = Modifier.height(10.dp))
-        Text(
-            text = "Where knowledge begins",
-            color = TextPrimary,
-            fontSize = 24.sp,
-            fontWeight = FontWeight.SemiBold,
-            letterSpacing = (-0.5).sp,
-            textAlign = TextAlign.Center
-        )
-        Spacer(modifier = Modifier.height(6.dp))
-        Text(
-            text = "Search live intelligence, research deep queries, or inspect your screen",
-            color = TextMuted,
-            fontSize = 13.sp,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // ═══ 3. Primary Floating Search Capsule ═══
-        Surface(
+        // ═══ 2. Center Minimalist Space with Brand (Matching Screenshot 1) ═══
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .shadow(
-                    elevation = 8.dp,
-                    shape = RoundedCornerShape(22.dp),
-                    ambientColor = PerplexityTealDim,
-                    spotColor = PerplexityTealDim
-                ),
-            shape = RoundedCornerShape(22.dp),
-            color = PerplexitySurfaceElevated,
-            border = BorderStroke(1.dp, PerplexityPillBorder)
+                .weight(1f)
+                .fillMaxWidth(),
+            contentAlignment = Alignment.Center
         ) {
-            Column(
+            Text(
+                text = "perplexity",
+                color = Color(0xFF71717A),
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Normal,
+                letterSpacing = (-0.5).sp,
+                fontFamily = FontFamily.SansSerif
+            )
+        }
+
+        // ═══ 3. Bottom Section (Matching Screenshot 1) ═══
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // Contextual Action Card: "Put Computer to work"
+            Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .clickable {
+                        onNavigateToChat("Put Computer to work: ")
+                    },
+                shape = RoundedCornerShape(18.dp),
+                color = Color(0xFF1C1C1C),
+                border = BorderStroke(1.dp, Color(0xFF282828))
             ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = "Search",
-                        tint = TextMuted,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Surface(
+                            modifier = Modifier.size(36.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFF252525),
+                            border = BorderStroke(1.dp, Color(0xFF333333))
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Laptop,
+                                    contentDescription = null,
+                                    tint = TextPrimary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Column {
+                            Text(
+                                text = "Put Computer to work",
+                                color = TextPrimary,
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "Hand off any project",
+                                color = TextSecondary,
+                                fontSize = 11.5.sp
+                            )
+                        }
+                    }
+
+                    Surface(
+                        modifier = Modifier.size(34.dp),
+                        shape = CircleShape,
+                        color = Color(0xFF252525)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.ArrowUpward,
+                                contentDescription = "Start",
+                                tint = TextPrimary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Primary Floating Command Capsule (Matching Screenshot 1)
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(22.dp),
+                color = Color(0xFF1C1C1C),
+                border = BorderStroke(1.dp, Color(0xFF282828))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 10.dp)
+                ) {
                     TextField(
                         value = queryText,
                         onValueChange = { queryText = it },
                         placeholder = {
                             Text(
-                                text = "Ask anything or search...",
-                                color = TextMuted,
-                                fontSize = 14.sp
+                                text = "Do anything...",
+                                color = Color(0xFF71717A),
+                                fontSize = 15.sp
                             )
                         },
                         colors = TextFieldDefaults.colors(
@@ -352,7 +402,7 @@ fun AthenaDashboardScreen(
                             unfocusedIndicatorColor = Color.Transparent,
                             focusedTextColor = TextPrimary,
                             unfocusedTextColor = TextPrimary,
-                            cursorColor = PerplexityTeal
+                            cursorColor = TextPrimary
                         ),
                         singleLine = false,
                         maxLines = 3,
@@ -364,457 +414,69 @@ fun AthenaDashboardScreen(
                                 onNavigateToChat(null)
                             }
                         }),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.fillMaxWidth()
                     )
-                }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Left action icons
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(
-                            onClick = onOpenOverlay,
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Mic,
-                                contentDescription = "Voice Input",
-                                tint = PerplexityTeal,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Left: Plus button (Screenshot 1)
                         IconButton(
                             onClick = {
-                                onNavigateToChat("Summarize the current visual screen context and inspect displayed interface.")
+                                onNavigateToChat("Analyze current screen context and inspect interface.")
                             },
                             modifier = Modifier.size(36.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.CameraAlt,
-                                contentDescription = "Screen Context",
-                                tint = PerplexityTeal,
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "Attach / Tools",
+                                tint = TextSecondary,
                                 modifier = Modifier.size(20.dp)
                             )
                         }
-                    }
 
-                    // Signature Circular Perplexity Send Button
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (queryText.isNotBlank()) PerplexityTeal
-                                else PerplexityTeal.copy(alpha = 0.5f)
-                            )
-                            .clickable {
-                                if (queryText.isNotBlank()) {
-                                    onNavigateToChat(queryText)
-                                } else {
-                                    onNavigateToChat(null)
+                        // Right: Mode / Mic / Send button
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(
+                                onClick = onOpenOverlay,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Mic,
+                                    contentDescription = "Voice Assistant",
+                                    tint = TextSecondary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+
+                            if (queryText.isNotBlank()) {
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .clip(CircleShape)
+                                        .background(TextPrimary)
+                                        .clickable {
+                                            onNavigateToChat(queryText)
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowUpward,
+                                        contentDescription = "Send",
+                                        tint = VoidBlack,
+                                        modifier = Modifier.size(18.dp)
+                                    )
                                 }
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowUpward,
-                            contentDescription = "Search",
-                            tint = VoidBlack,
-                            modifier = Modifier.size(20.dp)
-                        )
+                            }
+                        }
                     }
                 }
             }
-        }
-
-        Spacer(modifier = Modifier.height(18.dp))
-
-        // ═══ 4. Focus Mode Quick Chips Row ═══
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            FocusChip(
-                label = "Web Search",
-                icon = Icons.Default.Public,
-                onClick = { onNavigateToChat("Search the web for ") }
-            )
-            FocusChip(
-                label = "Pro Research",
-                icon = Icons.Default.AutoAwesome,
-                onClick = { onNavigateToChat("Conduct deep comprehensive research on ") }
-            )
-            FocusChip(
-                label = "Screen Context",
-                icon = Icons.Default.CameraAlt,
-                onClick = { onNavigateToChat("Inspect current screen context: ") }
-            )
-            FocusChip(
-                label = "Knowledge Vault",
-                icon = Icons.Default.Folder,
-                onClick = { onNavigateToChat("Search knowledge vault notes for ") }
-            )
-            FocusChip(
-                label = "Security Recon",
-                icon = Icons.Default.Security,
-                onClick = { onNavigateToChat("Perform security audit on ") }
-            )
-        }
-
-        Spacer(modifier = Modifier.height(28.dp))
-
-        // ═══ 5. Recent Threads / Discovery Section ═══
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "RECENT THREADS",
-                color = TextMuted,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-                letterSpacing = 1.2.sp,
-                fontFamily = FontFamily.Monospace
-            )
-            Text(
-                text = "View all ›",
-                color = PerplexityTeal,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier
-                    .clickable { onNavigateToChat(null) }
-                    .padding(vertical = 4.dp)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        if (recentSessions.isNotEmpty()) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                recentSessions.forEach { session ->
-                    RecentThreadCard(
-                        session = session,
-                        onClick = { onNavigateToChat(null) }
-                    )
-                }
-            }
-        } else {
-            // Discovery Starter Prompts
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                DiscoveryCard(
-                    prompt = "Explain quantum computing and qubit superposition simply",
-                    onClick = { onNavigateToChat("Explain quantum computing and qubit superposition simply") }
-                )
-                DiscoveryCard(
-                    prompt = "Analyze system health, device battery, and background services",
-                    onClick = { onNavigateToChat("Analyze system health, device battery, and background services") }
-                )
-                DiscoveryCard(
-                    prompt = "Conduct a security audit of recent terminal commands",
-                    onClick = { onNavigateToChat("Conduct a security audit of recent terminal commands") }
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(26.dp))
-
-        // ═══ 6. Tactical Quick System Controls ═══
-        Button(
-            onClick = onOpenOverlay,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp)
-                .shadow(
-                    elevation = 6.dp,
-                    shape = RoundedCornerShape(16.dp),
-                    ambientColor = PerplexityTealDim,
-                    spotColor = PerplexityTealDim
-                ),
-            shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = PerplexityTeal,
-                contentColor = VoidBlack
-            )
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = "⚡",
-                    fontSize = 16.sp,
-                    color = VoidBlack
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "OPEN ASSISTANT HUD",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.8.sp,
-                    fontFamily = FontFamily.SansSerif,
-                    color = VoidBlack
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            ActionTile(
-                title = "CONFIG",
-                subtitle = "Default App",
-                icon = Icons.Default.Settings,
-                modifier = Modifier.weight(1f),
-                onClick = onOpenSettings
-            )
-            ActionTile(
-                title = "GESTURES",
-                subtitle = "Power / Swipe",
-                icon = Icons.Default.TouchApp,
-                modifier = Modifier.weight(1f),
-                onClick = onOpenGuide
-            )
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // ═══ 7. Perplexity Footer Telemetry ═══
-        Text(
-            text = "127.0.0.1:2027 // STREAMING SSE ENGINE",
-            color = TextMuted,
-            fontSize = 10.5.sp,
-            fontWeight = FontWeight.Medium,
-            letterSpacing = 1.2.sp,
-            fontFamily = FontFamily.Monospace
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-    }
-}
-
-@Composable
-fun FocusChip(
-    label: String,
-    icon: ImageVector,
-    onClick: () -> Unit
-) {
-    Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = PerplexitySurfaceElevated,
-        border = BorderStroke(1.dp, PerplexityPillBorder),
-        modifier = Modifier.clickable(onClick = onClick)
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = PerplexityTeal,
-                modifier = Modifier.size(14.dp)
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-                text = label,
-                color = TextSecondary,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium
-            )
-        }
-    }
-}
-
-@Composable
-fun RecentThreadCard(
-    session: SessionItem,
-    onClick: () -> Unit
-) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        color = PerplexitySurfaceElevated,
-        shape = RoundedCornerShape(14.dp),
-        border = BorderStroke(1.dp, PerplexityPillBorder)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(
-                modifier = Modifier.weight(1f),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "💬",
-                    fontSize = 14.sp
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                Column {
-                    Text(
-                        text = session.title,
-                        color = TextPrimary,
-                        fontSize = 13.5.sp,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    if (session.lastMessage.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = session.lastMessage,
-                            color = TextMuted,
-                            fontSize = 11.5.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            Surface(
-                color = PanelDarkSolid,
-                shape = RoundedCornerShape(8.dp),
-                border = BorderStroke(1.dp, PerplexityPillBorder)
-            ) {
-                Text(
-                    text = "${session.messageCount} msgs",
-                    color = TextMuted,
-                    fontSize = 10.sp,
-                    fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun DiscoveryCard(
-    prompt: String,
-    onClick: () -> Unit
-) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        color = PerplexitySurfaceElevated,
-        shape = RoundedCornerShape(14.dp),
-        border = BorderStroke(1.dp, PerplexityPillBorder)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(
-                modifier = Modifier.weight(1f),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "💡",
-                    fontSize = 14.sp
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                Text(
-                    text = prompt,
-                    color = TextSecondary,
-                    fontSize = 12.5.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            Icon(
-                imageVector = Icons.Default.ArrowForward,
-                contentDescription = null,
-                tint = PerplexityTeal,
-                modifier = Modifier.size(16.dp)
-            )
-        }
-    }
-}
-
-@Composable
-fun ActionTile(
-    title: String,
-    subtitle: String,
-    icon: ImageVector,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    Surface(
-        modifier = modifier
-            .height(76.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .border(
-                border = BorderStroke(1.dp, PerplexityPillBorder),
-                shape = RoundedCornerShape(14.dp)
-            )
-            .clickable(onClick = onClick),
-        color = PerplexitySurfaceElevated,
-        shape = RoundedCornerShape(14.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.Start
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = title,
-                    tint = PerplexityTeal,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = title,
-                    color = TextPrimary,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.8.sp,
-                    fontFamily = FontFamily.SansSerif
-                )
-            }
-            Spacer(modifier = Modifier.height(3.dp))
-            Text(
-                text = subtitle,
-                color = TextMuted,
-                fontSize = 10.5.sp,
-                fontFamily = FontFamily.Monospace
-            )
         }
     }
 }

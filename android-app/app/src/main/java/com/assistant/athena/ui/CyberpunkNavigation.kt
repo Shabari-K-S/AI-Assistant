@@ -55,14 +55,14 @@ fun CyberpunkAppShell(
             bottomBar = {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    color = PanelDarkSolid,
-                    shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp),
-                    border = BorderStroke(1.dp, PanelStroke.copy(alpha = 0.5f)),
+                    color = VoidBlack,
+                    shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+                    border = BorderStroke(0.5.dp, PanelStroke),
                     shadowElevation = 8.dp
                 ) {
                     NavigationBar(
                         containerColor = Color.Transparent,
-                        contentColor = NeonCyan,
+                        contentColor = TextPrimary,
                         tonalElevation = 0.dp,
                         modifier = Modifier.height(64.dp)
                     ) {
@@ -75,7 +75,7 @@ fun CyberpunkAppShell(
                                     Icon(
                                         imageVector = tab.icon,
                                         contentDescription = tab.label,
-                                        tint = if (isSelected) NeonCyan else TextMuted,
+                                        tint = if (isSelected) TextPrimary else TextMuted,
                                         modifier = Modifier.size(20.dp)
                                     )
                                 },
@@ -83,16 +83,16 @@ fun CyberpunkAppShell(
                                     Text(
                                         text = tab.label,
                                         fontSize = 10.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (isSelected) NeonCyan else TextMuted
+                                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                        color = if (isSelected) TextPrimary else TextMuted
                                     )
                                 },
                                 colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = NeonCyan,
+                                    selectedIconColor = TextPrimary,
                                     unselectedIconColor = TextMuted,
-                                    selectedTextColor = NeonCyan,
+                                    selectedTextColor = TextPrimary,
                                     unselectedTextColor = TextMuted,
-                                    indicatorColor = NeonCyanDim
+                                    indicatorColor = Color(0xFF262626)
                                 )
                             )
                         }
@@ -127,8 +127,8 @@ fun CyberpunkAppShell(
                                 // Perplexity-style Tools Segment Bar
                                 Surface(
                                     modifier = Modifier.fillMaxWidth(),
-                                    color = PanelDarkSolid,
-                                    border = BorderStroke(1.dp, PanelStroke.copy(alpha = 0.4f))
+                                    color = VoidBlack,
+                                    border = BorderStroke(0.5.dp, PanelStroke)
                                 ) {
                                     Row(
                                         modifier = Modifier
@@ -141,8 +141,8 @@ fun CyberpunkAppShell(
                                                 .weight(1f)
                                                 .clip(RoundedCornerShape(16.dp))
                                                 .clickable { toolsSegment = 0 },
-                                            color = if (toolsSegment == 0) NeonCyanDim else Color.Transparent,
-                                            border = BorderStroke(1.dp, if (toolsSegment == 0) NeonCyan else PanelStroke),
+                                            color = if (toolsSegment == 0) Color(0xFF262626) else Color(0xFF181818),
+                                            border = BorderStroke(1.dp, if (toolsSegment == 0) Color(0xFF3F3F46) else PanelStroke),
                                             shape = RoundedCornerShape(16.dp)
                                         ) {
                                             Row(
@@ -153,7 +153,7 @@ fun CyberpunkAppShell(
                                                 Icon(
                                                     Icons.Default.Extension,
                                                     contentDescription = null,
-                                                    tint = if (toolsSegment == 0) NeonCyan else TextMuted,
+                                                    tint = if (toolsSegment == 0) TextPrimary else TextMuted,
                                                     modifier = Modifier.size(15.dp)
                                                 )
                                                 Spacer(modifier = Modifier.width(6.dp))
@@ -161,7 +161,7 @@ fun CyberpunkAppShell(
                                                     "MCP CONNECTORS",
                                                     color = if (toolsSegment == 0) TextPrimary else TextMuted,
                                                     fontSize = 11.sp,
-                                                    fontWeight = FontWeight.Bold
+                                                    fontWeight = FontWeight.Medium
                                                 )
                                             }
                                         }
@@ -171,8 +171,8 @@ fun CyberpunkAppShell(
                                                 .weight(1f)
                                                 .clip(RoundedCornerShape(16.dp))
                                                 .clickable { toolsSegment = 1 },
-                                            color = if (toolsSegment == 1) NeonCyanDim else Color.Transparent,
-                                            border = BorderStroke(1.dp, if (toolsSegment == 1) NeonCyan else PanelStroke),
+                                            color = if (toolsSegment == 1) Color(0xFF262626) else Color(0xFF181818),
+                                            border = BorderStroke(1.dp, if (toolsSegment == 1) Color(0xFF3F3F46) else PanelStroke),
                                             shape = RoundedCornerShape(16.dp)
                                         ) {
                                             Row(
@@ -183,7 +183,7 @@ fun CyberpunkAppShell(
                                                 Icon(
                                                     Icons.Default.Psychology,
                                                     contentDescription = null,
-                                                    tint = if (toolsSegment == 1) NeonCyan else TextMuted,
+                                                    tint = if (toolsSegment == 1) TextPrimary else TextMuted,
                                                     modifier = Modifier.size(15.dp)
                                                 )
                                                 Spacer(modifier = Modifier.width(6.dp))
@@ -191,7 +191,7 @@ fun CyberpunkAppShell(
                                                     "AI SKILLS",
                                                     color = if (toolsSegment == 1) TextPrimary else TextMuted,
                                                     fontSize = 11.sp,
-                                                    fontWeight = FontWeight.Bold
+                                                    fontWeight = FontWeight.Medium
                                                 )
                                             }
                                         }

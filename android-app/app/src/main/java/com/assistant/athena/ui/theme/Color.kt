@@ -3,42 +3,42 @@ package com.assistant.athena.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // =========================================================================
-// Perplexity Obsidian Dark & Luminous Teal Palette
+// Perplexity Minimalist Black & White / Charcoal Dark Palette
 // =========================================================================
 
-// Void & Surface Colors (Perplexity Obsidian Carbon)
-val VoidBlack = Color(0xFF0D1117)
-val DeepNavy = Color(0xFF13181F)
-val PanelDark = Color(0xE6161B22)
-val PanelDarkSolid = Color(0xFF161B22)
-val PanelStroke = Color(0x3320B2AA)
-val PanelStrokeActive = Color(0x8020B2AA)
+// Void & Surface Colors (Authentic Perplexity Charcoal Carbon)
+val VoidBlack = Color(0xFF121212)
+val DeepNavy = Color(0xFF181818)
+val PanelDark = Color(0xFF1C1C1C)
+val PanelDarkSolid = Color(0xFF1E1E1E)
+val PanelStroke = Color(0xFF2B2B2B)
+val PanelStrokeActive = Color(0xFF3E3E3E)
 
-// Perplexity Signature Teal & Luminous Accents
+// Perplexity Signature Minimalist Tokens
 val PerplexityTeal = Color(0xFF20B2AA)
-val PerplexityTealVibrant = Color(0xFF22D3EE)
-val PerplexityTealLight = Color(0xFF5EEAD4)
-val PerplexityTealGlow = Color(0x4D20B2AA)
-val PerplexityTealDim = Color(0x2420B2AA)
-val PerplexitySurfaceElevated = Color(0xFF1F2633)
-val PerplexityPillBorder = Color(0xFF2E3848)
-val PerplexityPillBackground = Color(0xFF18202A)
+val PerplexityTealVibrant = Color(0xFFE5E5E5)
+val PerplexityTealLight = Color(0xFFF4F4F5)
+val PerplexityTealGlow = Color(0x00000000)
+val PerplexityTealDim = Color(0xFF262626)
+val PerplexitySurfaceElevated = Color(0xFF222222)
+val PerplexityPillBorder = Color(0xFF2D2D2D)
+val PerplexityPillBackground = Color(0xFF1A1A1A)
 
-// Mapped Cyber Tokens (Seamlessly adopts Perplexity Teal throughout the system)
-val NeonCyan = Color(0xFF20B2AA)
-val NeonCyanLight = Color(0xFF5EEAD4)
-val NeonCyanGlow = Color(0x4D20B2AA)
-val NeonCyanDim = Color(0x2420B2AA)
-val DotGridColor = Color(0x0F20B2AA)
+// Mapped Legacy Tokens (Remapped to Neutral Black & White to eliminate cyan wireframes)
+val NeonCyan = Color(0xFFE5E5E5)
+val NeonCyanLight = Color(0xFFFFFFFF)
+val NeonCyanGlow = Color(0x00000000)
+val NeonCyanDim = Color(0xFF242424)
+val DotGridColor = Color(0x00000000)
 
 // Status & Semantic Colors
 val NeonGreen = Color(0xFF10B981)
-val NeonGreenGlow = Color(0x4D10B981)
+val NeonGreenGlow = Color(0x00000000)
 val NeonAmber = Color(0xFFF59E0B)
 val NeonRed = Color(0xFFF43F5E)
 
-// High-Legibility Typography Tokens
-val TextPrimary = Color(0xFFF3F4F6)
-val TextSecondary = Color(0xFF9CA3AF)
-val TextMuted = Color(0xFF6B7280)
+// High-Legibility Typography Tokens (Monochromatic High Contrast)
+val TextPrimary = Color(0xFFFFFFFF)
+val TextSecondary = Color(0xFFA1A1AA)
+val TextMuted = Color(0xFF71717A)
 val TextHighlight = Color(0xFFFFFFFF)
