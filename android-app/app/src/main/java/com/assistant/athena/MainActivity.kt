@@ -51,6 +51,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import com.assistant.athena.data.NetworkClient
 import com.assistant.athena.ui.CyberpunkAppShell
+import com.assistant.athena.ui.screens.AthenaSplashScreen
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
@@ -74,6 +75,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             AthenaTheme {
                 var status by remember { mutableStateOf(BackendStatus()) }
+                var showSplash by remember { mutableStateOf(true) }
                 val coroutineScope = rememberCoroutineScope()
 
                 suspend fun refresh() {
@@ -85,16 +87,25 @@ class MainActivity : ComponentActivity() {
                     refresh()
                 }
 
-                CyberpunkAppShell(
-                    networkClient = networkClient,
-                    status = status,
-                    onOpenOverlay = { launchOverlay() },
-                    onOpenSettings = { openAssistantSettings() },
-                    onOpenGuide = { openAccessGuide() },
-                    onRefreshStatus = {
-                        coroutineScope.launch { refresh() }
+                Box(modifier = Modifier.fillMaxSize()) {
+                    CyberpunkAppShell(
+                        networkClient = networkClient,
+                        status = status,
+                        onOpenOverlay = { launchOverlay() },
+                        onOpenSettings = { openAssistantSettings() },
+                        onOpenGuide = { openAccessGuide() },
+                        onRefreshStatus = {
+                            coroutineScope.launch { refresh() }
+                        }
+                    )
+
+                    if (showSplash) {
+                        AthenaSplashScreen(
+                            status = status,
+                            onFinished = { showSplash = false }
+                        )
                     }
-                )
+                }
             }
         }
     }

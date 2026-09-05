@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Athena" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/athena_cyan</item>
+        <item name="colorPrimaryDark">@color/athena_bg</item>
+        <item name="colorAccent">@color/athena_teal</item>
+        <item name="android:windowBackground">@color/athena_bg</item>
+        <item name="android:statusBarColor">@color/athena_bg</item>
+        <item name="android:navigationBarColor">@color/athena_bg</item>
+        <item name="android:windowLightStatusBar">false</item>
+
+        <!-- Android 12+ Splash Screen without white squircle wrapper -->
+        <item name="android:windowSplashScreenBackground">@color/athena_bg</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_splash_logo</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
+    </style>
+</resources>
