@@ -185,14 +185,18 @@ class NetworkClient(private val context: Context) {
             }
         }
 
-    suspend fun askAssistant(text: String, sessionId: String? = null): String? =
+    suspend fun askAssistant(text: String, sessionId: String? = null): AskResult? =
         withContext(Dispatchers.IO) {
             val payload = JSONObject().put("text", text)
             if (!sessionId.isNullOrBlank()) payload.put("session_id", sessionId)
             val raw = httpPostJson("/ask", payload) ?: return@withContext null
             try {
                 val json = JSONObject(raw)
-                json.optString("reply", "")
+                val reply = json.optString("reply", "")
+                val sid = json.optString("session_id", sessionId ?: "")
+                val ok = json.optBoolean("ok", true)
+                val handledSlash = json.optBoolean("handled_slash", false)
+                AskResult(reply = reply, sessionId = sid, ok = ok, handledSlash = handledSlash)
             } catch (_: Exception) {
                 null
             }

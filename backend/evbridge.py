@@ -603,6 +603,17 @@ class _Handler(BaseHTTPRequestHandler):
                 session_id = sm.get_active_session_id()
             sm.add_message(session_id, "user", prompt)
 
+            # Check for direct slash command execution
+            handled, cmd_reply = self._execute_slash_command(prompt, bus)
+            if handled:
+                bus.log("INFO", f"slash command executed via /ask: {prompt}")
+                if cmd_reply:
+                    sm.add_message(session_id, "assistant", cmd_reply)
+                    bus.set(phase="standby", reply=cmd_reply)
+                    bus.event("reply", text=cmd_reply)
+                self._json({"ok": True, "reply": cmd_reply, "session_id": session_id, "handled_slash": True})
+                return
+
             # Subscribe to bus events to wait synchronously for assistant reply
             q = bus.subscribe()
             bus.inject_prompt(prompt)

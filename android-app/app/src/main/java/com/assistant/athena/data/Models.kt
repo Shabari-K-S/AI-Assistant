@@ -101,6 +101,13 @@ data class MessageItem(
     }
 }
 
+data class AskResult(
+    val reply: String,
+    val sessionId: String,
+    val ok: Boolean = true,
+    val handledSlash: Boolean = false
+)
+
 // =========================================================================
 // 2. Markdown Notes Vault Models
 // =========================================================================
