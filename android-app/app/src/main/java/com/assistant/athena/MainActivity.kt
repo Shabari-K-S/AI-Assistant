@@ -47,6 +47,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import com.assistant.athena.data.NetworkClient
+import com.assistant.athena.ui.CyberpunkAppShell
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
@@ -60,23 +62,47 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestPermission()
     ) { /* Permission result handled */ }
 
-    private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(4, TimeUnit.SECONDS)
-        .readTimeout(5, TimeUnit.SECONDS)
-        .build()
+    private lateinit var networkClient: NetworkClient
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
+        networkClient = NetworkClient.getInstance(this)
         checkAudioPermission()
 
         setContent {
             AthenaTheme {
-                AthenaDashboardScreen(
+                var status by remember { mutableStateOf(BackendStatus()) }
+                val coroutineScope = rememberCoroutineScope()
+
+                suspend fun refresh() {
+                    val (online, phase, model) = networkClient.checkHealth()
+                    status = BackendStatus(isOnline = online, phase = phase, model = model)
+                }
+
+                LaunchedEffect(Unit) {
+                    refresh()
+                }
+
+                CyberpunkAppShell(
+                    networkClient = networkClient,
+                    status = status,
                     onOpenOverlay = { launchOverlay() },
                     onOpenSettings = { openAssistantSettings() },
                     onOpenGuide = { openAccessGuide() },
-                    onCheckBackend = { checkBackendHealth() }
+                    onRefreshStatus = {
+                        coroutineScope.launch { refresh() }
+                    },
+                    dashboardContent = {
+                        AthenaDashboardScreen(
+                            status = status,
+                            onOpenOverlay = { launchOverlay() },
+                            onOpenSettings = { openAssistantSettings() },
+                            onOpenGuide = { openAccessGuide() },
+                            onRefresh = {
+                                coroutineScope.launch { refresh() }
+                            }
+                        )
+                    }
                 )
             }
         }
@@ -114,24 +140,6 @@ class MainActivity : ComponentActivity() {
         startActivity(Intent(this, AccessAssistantActivity::class.java))
     }
 
-    private suspend fun checkBackendHealth(): BackendStatus = withContext(Dispatchers.IO) {
-        try {
-            val request = Request.Builder()
-                .url("http://127.0.0.1:2027/state")
-                .build()
-            val response = httpClient.newCall(request).execute()
-            val body = response.body?.string() ?: "{}"
-            response.close()
-            val json = JSONObject(body)
-            val online = json.optBoolean("online", false)
-            val phase = json.optString("phase", "standby")
-            val model = json.optString("llm_model", "Gemini 2.5 Flash")
-            BackendStatus(isOnline = online, phase = phase, model = model)
-        } catch (_: Exception) {
-            BackendStatus(isOnline = false, phase = "offline", model = "Gemini 2.5 Flash")
-        }
-    }
-
     private fun triggerHaptic(effectId: Int) {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -155,26 +163,19 @@ data class BackendStatus(
 
 @Composable
 fun AthenaDashboardScreen(
+    status: BackendStatus,
     onOpenOverlay: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenGuide: () -> Unit,
-    onCheckBackend: suspend () -> BackendStatus
+    onRefresh: () -> Unit
 ) {
-    var status by remember { mutableStateOf(BackendStatus()) }
-    val coroutineScope = rememberCoroutineScope()
-
-    LaunchedEffect(Unit) {
-        status = onCheckBackend()
-    }
-
-    DotMatrixBackground {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp, vertical = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
             Spacer(modifier = Modifier.height(12.dp))
 
             // ═══ 1. JARVIS Central Arc Reactor & Neural Core ═══
@@ -187,11 +188,7 @@ fun AthenaDashboardScreen(
             // ═══ 2. Glassmorphism HUD Telemetry Card ═══
             HudTelemetryCard(
                 status = status,
-                onRefresh = {
-                    coroutineScope.launch {
-                        status = onCheckBackend()
-                    }
-                }
+                onRefresh = onRefresh
             )
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -278,7 +275,6 @@ fun AthenaDashboardScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
         }
-    }
 }
 
 /**

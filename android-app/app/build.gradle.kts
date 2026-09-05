@@ -19,6 +19,10 @@ android {
         compose = true
     }
 
+    androidResources {
+        noCompress("tflite", "bin")
+    }
+
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.8"
     }
@@ -80,4 +84,8 @@ dependencies {
 
     implementation("com.google.android.material:material:1.11.0")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
+
+    // TensorFlow Lite for On-Device Offline Whisper Speech Recognition
+    implementation("org.tensorflow:tensorflow-lite:2.14.0")
+    implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
 }

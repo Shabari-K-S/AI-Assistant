@@ -40,6 +40,10 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.widget.NestedScrollView
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import com.assistant.athena.whisper.WhisperOfflineTranscriber
 import com.assistant.athena.ui.AudioWaveformView
 import com.assistant.athena.ui.OrbView
 import okhttp3.*
@@ -102,8 +106,7 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
     private lateinit var chipSchedule: TextView
     private lateinit var chipSystem: TextView
 
-    // Audio Capture & On-Device Multilingual Speech Recognizer
-    private var speechRecognizer: SpeechRecognizer? = null
+    // Audio Capture State
     private var audioRecord: AudioRecord? = null
     private var recordThread: Thread? = null
     private var isRecording = false
@@ -113,7 +116,7 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
     private val audioFormat = AudioFormat.ENCODING_PCM_16BIT
     private val minBufferSize = maxOf(AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat), 4096)
 
-    // Android Neural TTS & Echo Guard
+    // Android TTS & Echo Guard
     private var tts: TextToSpeech? = null
     private var isTtsReady = false
     @Volatile private var isTtsSpeaking = false
@@ -137,6 +140,11 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
         initTTS()
         connectSSEStream()
         triggerHaptic(VibrationEffect.EFFECT_CLICK)
+
+        // Preload On-Device Whisper TFLite model in background
+        CoroutineScope(Dispatchers.IO).launch {
+            WhisperOfflineTranscriber.initialize(this@AssistantOverlayActivity)
+        }
 
         // Check audio permissions & begin capture
         if (hasAudioPermission()) {
@@ -496,100 +504,12 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
     }
 
     // =========================================================================
-    // Real-Time On-Device Multilingual Speech Recognition (English + Tamil)
+    // Real-Time Audio Capture & Dynamic Waveform Reaction
     // =========================================================================
 
     @SuppressLint("MissingPermission")
     private fun startAudioRecording() {
         if (isRecording || isTtsSpeaking || SystemClock.uptimeMillis() < ttsQuietUntil) return
-
-        // 1. Try Native On-Device SpeechRecognizer (Zero latency, bilingual ML model)
-        if (SpeechRecognizer.isRecognitionAvailable(this)) {
-            try {
-                speechRecognizer?.destroy()
-                speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
-                speechRecognizer?.setRecognitionListener(object : RecognitionListener {
-                    override fun onReadyForSpeech(params: Bundle?) {
-                        isRecording = true
-                        orbView.setState(OrbView.STATE_LISTENING)
-                        waveformVisualizer.setMode(listening = true, thinking = false, speaking = false)
-                    }
-
-                    override fun onBeginningOfSpeech() {
-                        triggerHaptic(VibrationEffect.EFFECT_TICK)
-                    }
-
-                    override fun onRmsChanged(rmsdB: Float) {
-                        val normLevel = ((rmsdB + 2f) / 12f).coerceIn(0f, 1f)
-                        waveformVisualizer.setMicLevel(normLevel)
-                        orbView.setAudioAmplitude(normLevel)
-                    }
-
-                    override fun onBufferReceived(buffer: ByteArray?) {}
-
-                    override fun onEndOfSpeech() {
-                        orbView.setState(OrbView.STATE_THINKING)
-                        waveformVisualizer.setMode(listening = false, thinking = true, speaking = false)
-                    }
-
-                    override fun onError(error: Int) {
-                        isRecording = false
-                        if (!isFinishing && !isTtsSpeaking) {
-                            handler.postDelayed({
-                                if (!isRecording && !isFinishing && !isTtsSpeaking) {
-                                    startAudioRecording()
-                                }
-                            }, 800)
-                        }
-                    }
-
-                    override fun onResults(results: Bundle?) {
-                        isRecording = false
-                        val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                        val text = matches?.firstOrNull()?.trim() ?: ""
-                        if (text.isNotEmpty()) {
-                            if (isEchoOfLastReply(text, lastSpokenText)) {
-                                Log.i(TAG, "Discarded acoustic self-echo: $text")
-                                handler.postDelayed({ startAudioRecording() }, 600)
-                            } else {
-                                executeQuery(text)
-                            }
-                        } else {
-                            handler.postDelayed({ startAudioRecording() }, 600)
-                        }
-                    }
-
-                    override fun onPartialResults(partialResults: Bundle?) {
-                        val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                        val partial = matches?.firstOrNull()?.trim() ?: ""
-                        if (partial.isNotEmpty()) {
-                            showUserQuery(partial)
-                        }
-                    }
-
-                    override fun onEvent(eventType: Int, params: Bundle?) {}
-                })
-
-                val recognizerIntent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                    putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                    putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-IN")
-                    putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", arrayOf("ta-IN", "ta", "en-US"))
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
-                    }
-                }
-
-                speechRecognizer?.startListening(recognizerIntent)
-                isRecording = true
-                return
-            } catch (e: Exception) {
-                Log.w(TAG, "On-device SpeechRecognizer unavailable, falling back to stream capture", e)
-            }
-        }
-
-        // 2. Fallback: AudioRecord PCM capture with VAD
         try {
             audioRecord = AudioRecord(
                 MediaRecorder.AudioSource.VOICE_RECOGNITION,
@@ -609,13 +529,18 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
                 )
             }
 
+            // Enable Hardware Acoustic Echo Cancellation and Noise Suppression
             val sessionId = audioRecord?.audioSessionId ?: 0
             if (sessionId != 0) {
                 if (AcousticEchoCanceler.isAvailable()) {
-                    try { AcousticEchoCanceler.create(sessionId)?.enabled = true } catch (_: Exception) {}
+                    try {
+                        AcousticEchoCanceler.create(sessionId)?.enabled = true
+                    } catch (_: Exception) {}
                 }
                 if (NoiseSuppressor.isAvailable()) {
-                    try { NoiseSuppressor.create(sessionId)?.enabled = true } catch (_: Exception) {}
+                    try {
+                        NoiseSuppressor.create(sessionId)?.enabled = true
+                    } catch (_: Exception) {}
                 }
             }
 
@@ -636,6 +561,7 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
                 while (isRecording && !isFinishing) {
                     val read = audioRecord?.read(buffer, 0, buffer.size) ?: 0
                     if (read > 0) {
+                        // Guard against TTS speech audio bleeding into mic input
                         if (isTtsSpeaking || SystemClock.uptimeMillis() < ttsQuietUntil) {
                             isVoiceActive = false
                             speechFrames = 0
@@ -709,10 +635,6 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
 
     private fun stopAudioRecording() {
         isRecording = false
-        try {
-            speechRecognizer?.stopListening()
-            speechRecognizer?.cancel()
-        } catch (_: Exception) {}
         recordThread?.interrupt()
         recordThread = null
         try {
@@ -742,10 +664,7 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                handler.post {
-                    orbView.setState(OrbView.STATE_IDLE)
-                    waveformVisualizer.setMode(listening = false, thinking = false, speaking = false)
-                }
+                runOnDeviceWhisper(wavBytes)
             }
 
             override fun onResponse(call: Call, response: Response) {
@@ -775,15 +694,41 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
                                 executeQuery(queryText)
                             }
                         } else {
-                            orbView.setState(OrbView.STATE_IDLE)
-                            waveformVisualizer.setMode(listening = false, thinking = false, speaking = false)
+                            runOnDeviceWhisper(wavBytes)
                         }
                     } catch (_: Exception) {
-                        orbView.setState(OrbView.STATE_IDLE)
+                        runOnDeviceWhisper(wavBytes)
                     }
                 }
             }
         })
+    }
+
+    private fun runOnDeviceWhisper(wavBytes: ByteArray) {
+        CoroutineScope(Dispatchers.Main).launch {
+            showStatusTelemetry("⚡ <i>Transcribing on-device with Whisper TFLite…</i>")
+            val whisperText = WhisperOfflineTranscriber.transcribeAudio(
+                this@AssistantOverlayActivity,
+                wavBytes
+            )
+            if (whisperText.isNotEmpty()) {
+                if (isEchoOfLastReply(whisperText, lastSpokenText)) {
+                    Log.i(TAG, "Ignored acoustic echo of previous response: '$whisperText'")
+                    orbView.setState(OrbView.STATE_LISTENING)
+                    waveformVisualizer.setMode(listening = true, thinking = false, speaking = false)
+                    handler.postDelayed({
+                        if (!isRecording && !isFinishing && !isTtsSpeaking) {
+                            startAudioRecording()
+                        }
+                    }, 600)
+                } else {
+                    executeQuery(whisperText)
+                }
+            } else {
+                orbView.setState(OrbView.STATE_IDLE)
+                waveformVisualizer.setMode(listening = false, thinking = false, speaking = false)
+            }
+        }
     }
 
     private fun addWavHeader(pcm: ByteArray, rate: Int): ByteArray {
@@ -823,7 +768,7 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
     }
 
     // =========================================================================
-    // Ultra-Natural Perplexity-Style Neural Audio (Multilingual Tamil + English)
+    // Native Android TTS & Haptics (Supports Tamil & Multilingual Speech)
     // =========================================================================
 
     private fun initTTS() {
@@ -833,19 +778,6 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
             tts?.language = Locale.US
-            tts?.setSpeechRate(1.04f)
-            tts?.setPitch(1.01f)
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                try {
-                    val audioAttributes = AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ASSISTANT)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                        .build()
-                    tts?.setAudioAttributes(audioAttributes)
-                } catch (_: Exception) {}
-            }
-
             tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {
                     isTtsSpeaking = true
@@ -895,31 +827,15 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
         ttsQuietUntil = SystemClock.uptimeMillis() + 60000L
         try {
             val hasTamil = text.any { it in '\u0B80'..'\u0BFF' }
-            val targetLocale = if (hasTamil) Locale("ta", "IN") else Locale.US
-            val res = tts?.setLanguage(targetLocale)
-            if (res == TextToSpeech.LANG_MISSING_DATA || res == TextToSpeech.LANG_NOT_SUPPORTED) {
-                if (hasTamil) tts?.language = Locale("ta")
+            if (hasTamil) {
+                val tamilLocale = Locale("ta", "IN")
+                val res = tts?.setLanguage(tamilLocale)
+                if (res == TextToSpeech.LANG_MISSING_DATA || res == TextToSpeech.LANG_NOT_SUPPORTED) {
+                    tts?.language = Locale("ta")
+                }
+            } else {
+                tts?.language = Locale.US
             }
-
-            // Select natural/neural voice variant for premium Perplexity feel
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                try {
-                    val voices = tts?.voices ?: emptySet()
-                    val naturalVoice = voices.firstOrNull { v ->
-                        v.locale.language == targetLocale.language &&
-                        (v.name.contains("neural", ignoreCase = true) ||
-                         v.name.contains("natural", ignoreCase = true) ||
-                         v.name.contains("female", ignoreCase = true) ||
-                         v.name.contains("local", ignoreCase = true))
-                    }
-                    if (naturalVoice != null) {
-                        tts?.voice = naturalVoice
-                    }
-                } catch (_: Exception) {}
-            }
-
-            tts?.setSpeechRate(1.04f)
-            tts?.setPitch(1.01f)
             tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "AthenaReply")
         } catch (e: Exception) {
             isTtsSpeaking = false

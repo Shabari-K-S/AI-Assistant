@@ -355,6 +355,27 @@ class _Handler(BaseHTTPRequestHandler):
                 "content": body,
             }, 200)
             return
+        if path == "/sessions":
+            from session_manager import get_session_manager
+            sm = get_session_manager()
+            sessions = sm.list_sessions()
+            self._json({"ok": True, "active_id": sm.get_active_session_id(), "sessions": sessions}, 200)
+            return
+        if path == "/sessions/detail" or path.startswith("/sessions/"):
+            query_params = urllib.parse.parse_qs(parsed_url.query)
+            sid = query_params.get("id", [""])[0].strip()
+            if not sid and path.startswith("/sessions/"):
+                sid = path[len("/sessions/"):].strip()
+            from session_manager import get_session_manager
+            sm = get_session_manager()
+            if not sid:
+                sid = sm.get_active_session_id()
+            detail = sm.get_session(sid)
+            if detail is None:
+                self._json({"ok": False, "error": f"Session '{sid}' not found"}, 404)
+            else:
+                self._json({"ok": True, "session": detail}, 200)
+            return
         if path == "/timers":
             from timer_engine import get_timer_engine
             engine = get_timer_engine(bus)
@@ -537,31 +558,50 @@ class _Handler(BaseHTTPRequestHandler):
 
         if path == "/prompt":
             prompt = str(body.get("text") or "").strip()
+            session_id = str(body.get("session_id") or "").strip() or None
             if not prompt:
                 self._json({"ok": False, "error": "empty prompt"}, 400)
                 return
+
+            from session_manager import get_session_manager
+            sm = get_session_manager()
+            if session_id:
+                sm.set_active_session_id(session_id)
+            else:
+                session_id = sm.get_active_session_id()
+            sm.add_message(session_id, "user", prompt)
 
             # Check for direct slash command execution
             handled, cmd_reply = self._execute_slash_command(prompt, bus)
             if handled:
                 bus.log("INFO", f"slash command executed: {prompt}")
                 if cmd_reply:
+                    sm.add_message(session_id, "assistant", cmd_reply)
                     bus.set(phase="standby", reply=cmd_reply)
                     bus.event("reply", text=cmd_reply)
-                self._json({"ok": True, "prompt": prompt, "handled_slash": True, "reply": cmd_reply})
+                self._json({"ok": True, "prompt": prompt, "handled_slash": True, "reply": cmd_reply, "session_id": session_id})
                 return
 
             bus.inject_prompt(prompt)
             bus.set(phase="processing", transcript=prompt)
             bus.log("INFO", f"terminal uplink: {prompt}")
-            self._json({"ok": True, "prompt": prompt})
+            self._json({"ok": True, "prompt": prompt, "session_id": session_id})
             return
 
         if path == "/ask":
             prompt = str(body.get("text") or "").strip()
+            session_id = str(body.get("session_id") or "").strip() or None
             if not prompt:
                 self._json({"ok": False, "error": "empty prompt"}, 400)
                 return
+
+            from session_manager import get_session_manager
+            sm = get_session_manager()
+            if session_id:
+                sm.set_active_session_id(session_id)
+            else:
+                session_id = sm.get_active_session_id()
+            sm.add_message(session_id, "user", prompt)
 
             # Subscribe to bus events to wait synchronously for assistant reply
             q = bus.subscribe()
@@ -586,10 +626,13 @@ class _Handler(BaseHTTPRequestHandler):
                 bus.unsubscribe(q)
 
             if reply_text:
-                self._json({"ok": True, "reply": reply_text})
+                sm.add_message(session_id, "assistant", reply_text)
+                self._json({"ok": True, "reply": reply_text, "session_id": session_id})
             else:
                 last_reply = str(bus.get().get("reply", "")).strip()
-                self._json({"ok": bool(last_reply), "reply": last_reply or "I processed your request.", "timeout": True})
+                final_reply = last_reply or "I processed your request."
+                sm.add_message(session_id, "assistant", final_reply)
+                self._json({"ok": bool(last_reply), "reply": final_reply, "timeout": True, "session_id": session_id})
             return
 
         if path == "/transcribe":
@@ -848,6 +891,56 @@ class _Handler(BaseHTTPRequestHandler):
             engine = get_timer_engine(bus)
             res = engine.cancel_timer(timer_id)
             self._json(res, 200 if res.get("ok") else 400)
+            return
+
+        if path == "/sessions/new":
+            title = str(body.get("title") or "").strip() or None
+            from session_manager import get_session_manager
+            sm = get_session_manager()
+            new_s = sm.create_session(title=title)
+            bus.publish({"type": "session_created", "session": new_s})
+            self._json({"ok": True, "session": new_s}, 200)
+            return
+
+        if path == "/sessions/rename":
+            sid = str(body.get("id") or "").strip()
+            title = str(body.get("title") or "").strip()
+            if not sid or not title:
+                self._json({"ok": False, "error": "id and title required"}, 400)
+                return
+            from session_manager import get_session_manager
+            sm = get_session_manager()
+            success = sm.rename_session(sid, title)
+            bus.publish({"type": "session_renamed", "id": sid, "title": title})
+            self._json({"ok": success}, 200 if success else 404)
+            return
+
+        if path == "/sessions/delete":
+            sid = str(body.get("id") or "").strip()
+            if not sid:
+                self._json({"ok": False, "error": "id required"}, 400)
+                return
+            from session_manager import get_session_manager
+            sm = get_session_manager()
+            success = sm.delete_session(sid)
+            bus.publish({"type": "session_deleted", "id": sid})
+            self._json({"ok": success}, 200 if success else 404)
+            return
+
+        if path == "/sessions/select":
+            sid = str(body.get("id") or "").strip()
+            from session_manager import get_session_manager
+            sm = get_session_manager()
+            success = sm.set_active_session_id(sid)
+            self._json({"ok": success, "active_id": sid}, 200 if success else 404)
+            return
+
+        if path == "/sessions/pin":
+            sid = str(body.get("id") or "").strip()
+            from session_manager import get_session_manager
+            sm = get_session_manager()
+            pinned = sm.toggle_pin_session(sid)
+            self._json({"ok": True, "is_pinned": pinned}, 200)
             return
 
         self.send_response(404)
