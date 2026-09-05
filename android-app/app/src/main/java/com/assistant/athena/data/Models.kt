@@ -61,20 +61,69 @@ data class SessionDetail(
     }
 }
 
+data class ToolExecutionStep(
+    val name: String,
+    val durationMs: Double = 0.0,
+    val status: String = "ok",
+    val preview: String = "",
+    val args: String = ""
+) {
+    companion object {
+        fun fromJson(json: JSONObject): ToolExecutionStep {
+            return ToolExecutionStep(
+                name = json.optString("name", "tool"),
+                durationMs = json.optDouble("duration_ms", 0.0),
+                status = json.optString("status", "ok"),
+                preview = json.optString("preview", ""),
+                args = json.optString("args", "")
+            )
+        }
+    }
+}
+
 data class ToolData(
     val name: String,
     val durationMs: Double = 0.0,
     val status: String = "ok",
-    val preview: String = ""
+    val preview: String = "",
+    val steps: List<ToolExecutionStep> = emptyList()
 ) {
     companion object {
         fun fromJson(json: JSONObject?): ToolData? {
             if (json == null) return null
+            val stepsList = mutableListOf<ToolExecutionStep>()
+            val stepsArr = json.optJSONArray("steps")
+            if (stepsArr != null) {
+                for (i in 0 until stepsArr.length()) {
+                    val stepObj = stepsArr.optJSONObject(i) ?: continue
+                    stepsList.add(ToolExecutionStep.fromJson(stepObj))
+                }
+            }
+
+            val defaultName = json.optString("name", if (stepsList.size > 1) "${stepsList.size} tools" else (stepsList.firstOrNull()?.name ?: "tool"))
+            val defaultDur = json.optDouble("duration_ms", 0.0)
+            val defaultStatus = json.optString("status", if (stepsList.any { it.status == "error" }) "error" else "ok")
+            val defaultPreview = json.optString("preview", stepsList.lastOrNull()?.preview ?: "")
+
+            if (stepsList.isEmpty() && defaultName.isNotBlank() && defaultName != "tool") {
+                stepsList.add(
+                    ToolExecutionStep(
+                        name = defaultName,
+                        durationMs = defaultDur,
+                        status = defaultStatus,
+                        preview = defaultPreview
+                    )
+                )
+            }
+
+            val totalDur = if (defaultDur > 0.0) defaultDur else stepsList.sumOf { it.durationMs }
+
             return ToolData(
-                name = json.optString("name", "tool"),
-                durationMs = json.optDouble("duration_ms", 0.0),
-                status = json.optString("status", "ok"),
-                preview = json.optString("preview", "")
+                name = defaultName,
+                durationMs = totalDur,
+                status = defaultStatus,
+                preview = defaultPreview,
+                steps = stepsList
             )
         }
     }
@@ -105,7 +154,8 @@ data class AskResult(
     val reply: String,
     val sessionId: String,
     val ok: Boolean = true,
-    val handledSlash: Boolean = false
+    val handledSlash: Boolean = false,
+    val toolData: ToolData? = null
 )
 
 // =========================================================================

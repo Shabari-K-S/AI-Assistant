@@ -45,6 +45,7 @@ import com.assistant.athena.data.NetworkClient
 import com.assistant.athena.data.SessionDetail
 import com.assistant.athena.data.SessionItem
 import com.assistant.athena.data.ToolData
+import com.assistant.athena.data.ToolExecutionStep
 import com.assistant.athena.ui.components.HudCard
 import com.assistant.athena.ui.theme.*
 import kotlinx.coroutines.launch
@@ -166,12 +167,15 @@ fun SessionsChatScreen(
                     activeSessionId = result.sessionId
                 }
 
-                val replyText = result.reply.ifBlank { "Acknowledged. Task processed." }
+                val replyText = result.reply.ifBlank {
+                    if (result.toolData != null) "Task executed successfully." else "Acknowledged. Task processed."
+                }
                 val assistantMsg = MessageItem(
                     id = UUID.randomUUID().toString(),
                     role = "assistant",
                     text = replyText,
-                    timestamp = System.currentTimeMillis() / 1000.0
+                    timestamp = System.currentTimeMillis() / 1000.0,
+                    toolData = result.toolData
                 )
                 localMessages = localMessages + assistantMsg
 
@@ -709,32 +713,7 @@ fun CyberChatMessageBubble(msg: MessageItem, onCopy: (String) -> Unit) {
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
     ) {
-        // Tool execution pill
-        if (msg.toolData != null) {
-            Surface(
-                color = PanelDarkSolid,
-                shape = RoundedCornerShape(6.dp),
-                border = BorderStroke(1.dp, NeonAmber.copy(alpha = 0.6f)),
-                modifier = Modifier.padding(bottom = 6.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(text = "⚡", fontSize = 11.sp)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "EXECUTED: ${msg.toolData.name} (${msg.toolData.durationMs.toInt()}ms)",
-                        color = NeonAmber,
-                        fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            }
-        }
-
-        // Main Bubble Container
+        // Main Unified Bubble Container
         Surface(
             color = when {
                 isSystem -> NeonRed.copy(alpha = 0.12f)
@@ -755,7 +734,7 @@ fun CyberChatMessageBubble(msg: MessageItem, onCopy: (String) -> Unit) {
                     else -> PanelStroke
                 }
             ),
-            modifier = Modifier.fillMaxWidth(if (isSystem) 1f else 0.88f)
+            modifier = Modifier.fillMaxWidth(if (isSystem) 1f else 0.92f)
         ) {
             Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
 
@@ -806,10 +785,247 @@ fun CyberChatMessageBubble(msg: MessageItem, onCopy: (String) -> Unit) {
                     }
                 }
 
-                Spacer(modifier = Modifier.height(6.dp))
+                // Integrated Continuous Multi-Step Tool Chain (Gemini / Claude / ChatGPT style)
+                if (!isUser && msg.toolData != null && msg.toolData.steps.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    CyberToolChainAccordion(toolData = msg.toolData, onCopy = onCopy)
+                }
 
-                // Rich Markdown Body Parser
-                CyberMarkdownText(text = msg.text, onCopyCode = onCopy)
+                // Rich Markdown Response Body (Handles continuous multi-part text sections)
+                if (msg.text.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    CyberMarkdownText(text = msg.text, onCopyCode = onCopy)
+                }
+            }
+        }
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Continuous Multi-Step Tool Execution Chain Accordion (Gemini/Claude Style)
+// ═════════════════════════════════════════════════════════════════════════════
+@Composable
+fun CyberToolChainAccordion(toolData: ToolData, onCopy: (String) -> Unit) {
+    var isExpanded by remember { mutableStateOf(false) }
+    val steps = toolData.steps
+    val stepCount = steps.size
+    val isError = toolData.status == "error" || steps.any { it.status == "error" }
+    val accentColor = if (isError) NeonRed else NeonAmber
+
+    Surface(
+        color = VoidBlack.copy(alpha = 0.75f),
+        shape = RoundedCornerShape(8.dp),
+        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.5f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(8.dp)) {
+            // Header Toggle Bar
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable { isExpanded = !isExpanded }
+                    .padding(horizontal = 4.dp, vertical = 3.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(text = "⚡", fontSize = 12.sp)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = if (stepCount > 1) {
+                                    "CHAIN: $stepCount TOOLS EXECUTED"
+                                } else {
+                                    "TOOL: ${toolData.name.uppercase()}"
+                                },
+                                color = accentColor,
+                                fontSize = 10.5.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.8.sp
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Surface(
+                                color = if (isError) NeonRed.copy(alpha = 0.2f) else NeonGreen.copy(alpha = 0.2f),
+                                shape = RoundedCornerShape(4.dp),
+                                border = BorderStroke(0.8.dp, if (isError) NeonRed.copy(alpha = 0.5f) else NeonGreen.copy(alpha = 0.5f))
+                            ) {
+                                Text(
+                                    text = if (isError) "ERR" else "OK",
+                                    color = if (isError) NeonRed else NeonGreen,
+                                    fontSize = 8.5.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                )
+                            }
+                        }
+                        if (stepCount > 1 && !isExpanded) {
+                            val namesSummary = steps.joinToString(" ➔ ") { it.name.replace('_', ' ') }
+                            Text(
+                                text = namesSummary,
+                                color = TextMuted,
+                                fontSize = 9.5.sp,
+                                fontFamily = FontFamily.Monospace,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "${toolData.durationMs.toInt()}ms",
+                        color = TextMuted,
+                        fontSize = 9.5.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(
+                        imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = if (isExpanded) "Collapse Tool Steps" else "Expand Tool Steps",
+                        tint = accentColor,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            // Expandable Step-by-Step Breakdown
+            AnimatedVisibility(
+                visible = isExpanded,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(PanelStrokeActive.copy(alpha = 0.3f))
+                    )
+
+                    steps.forEachIndexed { index, step ->
+                        val isStepErr = step.status == "error"
+                        Surface(
+                            color = PanelDarkSolid,
+                            shape = RoundedCornerShape(6.dp),
+                            border = BorderStroke(1.dp, if (isStepErr) NeonRed.copy(alpha = 0.4f) else PanelStroke),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(8.dp)) {
+                                // Step Header
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = "[STEP ${index + 1}]",
+                                            color = NeonCyan,
+                                            fontSize = 9.5.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = step.name,
+                                            color = TextPrimary,
+                                            fontSize = 10.5.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = "${step.durationMs.toInt()}ms",
+                                            color = TextMuted,
+                                            fontSize = 9.sp,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = if (isStepErr) "[FAIL]" else "[PASS]",
+                                            color = if (isStepErr) NeonRed else NeonGreen,
+                                            fontSize = 8.5.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+
+                                // Tool Arguments (if present)
+                                if (step.args.isNotBlank()) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Surface(
+                                        color = VoidBlack,
+                                        shape = RoundedCornerShape(4.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(
+                                            text = "INPUT // ${step.args}",
+                                            color = NeonCyanLight.copy(alpha = 0.85f),
+                                            fontSize = 9.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                                            maxLines = 3,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+
+                                // Tool Result / Observation Preview (if present)
+                                if (step.preview.isNotBlank()) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Surface(
+                                        color = VoidBlack.copy(alpha = 0.9f),
+                                        shape = RoundedCornerShape(4.dp),
+                                        border = BorderStroke(0.5.dp, PanelStroke),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = "OUTPUT // ${step.preview}",
+                                                color = TextSecondary,
+                                                fontSize = 9.sp,
+                                                fontFamily = FontFamily.Monospace,
+                                                modifier = Modifier.weight(1f),
+                                                maxLines = 4,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            IconButton(
+                                                onClick = { onCopy(step.preview) },
+                                                modifier = Modifier.size(18.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.ContentCopy,
+                                                    contentDescription = "Copy Output",
+                                                    tint = TextMuted,
+                                                    modifier = Modifier.size(11.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

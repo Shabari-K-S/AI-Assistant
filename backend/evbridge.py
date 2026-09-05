@@ -700,38 +700,90 @@ class _Handler(BaseHTTPRequestHandler):
             if image_b64:
                 bus.log("INFO", f"multimodal screen query via {path}: {prompt[:60]}")
                 bus.set(phase="thinking", transcript=prompt or "Analyzing screen...")
+                v_start = time.monotonic()
                 vision_reply = self._analyze_multimodal_vision(prompt, image_b64)
-                sm.add_message(session_id, "assistant", vision_reply)
+                v_dur = round((time.monotonic() - v_start) * 1000.0, 1)
+                vision_tool = {
+                    "name": "Screen Vision Analysis",
+                    "duration_ms": v_dur,
+                    "status": "ok",
+                    "preview": "Multimodal visual inspection of Android screen",
+                    "steps": [
+                        {
+                            "name": "android_screen_capture",
+                            "duration_ms": v_dur,
+                            "status": "ok",
+                            "preview": "Screenshot captured & analyzed via Gemini Vision",
+                            "args": f"query='{prompt[:60]}', image_payload=true",
+                        }
+                    ],
+                    "count": 1,
+                }
+                sm.add_message(session_id, "assistant", vision_reply, tool_data=vision_tool)
                 bus.set(phase="speaking", reply=vision_reply)
                 bus.event("reply", text=vision_reply)
-                self._json({"ok": True, "reply": vision_reply, "has_image": True, "session_id": session_id})
+                self._json({"ok": True, "reply": vision_reply, "has_image": True, "session_id": session_id, "tool_data": vision_tool})
                 return
 
             # Check for direct slash command execution
             handled, cmd_reply = self._execute_slash_command(prompt, bus)
             if handled:
                 bus.log("INFO", f"slash command executed via /ask: {prompt}")
+                cmd_name = prompt.split()[0] if prompt else "/cmd"
+                cmd_tool = {
+                    "name": cmd_name,
+                    "duration_ms": 20.0,
+                    "status": "ok",
+                    "preview": f"Executed slash directive {cmd_name}",
+                    "steps": [
+                        {
+                            "name": cmd_name,
+                            "duration_ms": 20.0,
+                            "status": "ok",
+                            "preview": (cmd_reply or "")[:160],
+                            "args": prompt,
+                        }
+                    ],
+                    "count": 1,
+                }
                 if cmd_reply:
-                    sm.add_message(session_id, "assistant", cmd_reply)
+                    sm.add_message(session_id, "assistant", cmd_reply, tool_data=cmd_tool)
                     bus.set(phase="standby", reply=cmd_reply)
                     bus.event("reply", text=cmd_reply)
-                self._json({"ok": True, "reply": cmd_reply, "session_id": session_id, "handled_slash": True})
+                self._json({"ok": True, "reply": cmd_reply, "session_id": session_id, "handled_slash": True, "tool_data": cmd_tool})
                 return
 
-            # Subscribe to bus events to wait synchronously for assistant reply
+            # Subscribe to bus events to wait synchronously for assistant reply and tool stream
             q = bus.subscribe()
             bus.inject_prompt(prompt)
             bus.set(phase="processing", transcript=prompt)
             bus.log("INFO", f"android uplink: {prompt}")
 
+            pending_tools: dict[str, str] = {}
+            executed_tools: list[dict[str, Any]] = []
             reply_text = ""
             start_t = time.monotonic()
             try:
-                while time.monotonic() - start_t < 30.0:
+                while time.monotonic() - start_t < 35.0:
                     try:
                         line = q.get(timeout=0.25)
                         event = json.loads(line)
-                        if event.get("type") == "reply":
+                        etype = event.get("type")
+                        if etype == "tool_start":
+                            t_name = str(event.get("name") or "tool")
+                            t_args = event.get("args")
+                            pending_tools[t_name] = json.dumps(t_args) if isinstance(t_args, (dict, list)) else str(t_args or "")
+                        elif etype == "tool_end":
+                            t_name = str(event.get("name") or "tool")
+                            args_str = pending_tools.pop(t_name, "")
+                            executed_tools.append({
+                                "name": t_name,
+                                "duration_ms": float(event.get("duration_ms", 0.0)),
+                                "status": str(event.get("status", "ok")),
+                                "preview": str(event.get("preview", "")),
+                                "args": args_str,
+                            })
+                        elif etype == "reply":
                             reply_text = str(event.get("text", "")).strip()
                             if reply_text:
                                 break
@@ -740,14 +792,26 @@ class _Handler(BaseHTTPRequestHandler):
             finally:
                 bus.unsubscribe(q)
 
+            tool_data = None
+            if executed_tools:
+                total_dur = sum(s.get("duration_ms", 0.0) for s in executed_tools)
+                tool_data = {
+                    "name": executed_tools[0].get("name") if len(executed_tools) == 1 else f"{len(executed_tools)} tools",
+                    "duration_ms": round(total_dur, 1),
+                    "status": "error" if any(s.get("status") == "error" for s in executed_tools) else "ok",
+                    "preview": executed_tools[-1].get("preview", "") if executed_tools else "",
+                    "steps": executed_tools,
+                    "count": len(executed_tools),
+                }
+
             if reply_text:
-                sm.add_message(session_id, "assistant", reply_text)
-                self._json({"ok": True, "reply": reply_text, "session_id": session_id})
+                sm.add_message(session_id, "assistant", reply_text, tool_data=tool_data)
+                self._json({"ok": True, "reply": reply_text, "session_id": session_id, "tool_data": tool_data})
             else:
                 last_reply = str(bus.get().get("reply", "")).strip()
                 final_reply = last_reply or "I processed your request."
-                sm.add_message(session_id, "assistant", final_reply)
-                self._json({"ok": bool(last_reply), "reply": final_reply, "timeout": True, "session_id": session_id})
+                sm.add_message(session_id, "assistant", final_reply, tool_data=tool_data)
+                self._json({"ok": bool(last_reply), "reply": final_reply, "timeout": True, "session_id": session_id, "tool_data": tool_data})
             return
 
         if path == "/transcribe":
