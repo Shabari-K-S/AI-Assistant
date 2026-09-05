@@ -204,15 +204,10 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
     }
 
     private fun initScreenContextPreview() {
-        val bmp = com.assistant.athena.data.ScreenCaptureHolder.getScreenshot()
-        if (bmp != null) {
-            isScreenContextAttached = true
-            imgScreenThumbnail.setImageBitmap(bmp)
-            cardScreenContextPreview.visibility = View.VISIBLE
-        } else {
-            isScreenContextAttached = false
-            cardScreenContextPreview.visibility = View.GONE
-        }
+        // Screenshot is silently cached in ScreenCaptureHolder on assist invocation,
+        // but NOT attached by default until the user explicitly toggles it via the Vision button or screen chip.
+        isScreenContextAttached = false
+        cardScreenContextPreview.visibility = View.GONE
     }
 
     private fun setupListeners() {
@@ -233,7 +228,16 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
 
         // Suggestion Chips (one-tap instant queries)
         chipNotifications.setOnClickListener { executeQuery("Catch me up on my notifications and recent messages") }
-        chipScreen.setOnClickListener { executeQuery("What's currently on my screen? Provide key context and insights.") }
+        chipScreen.setOnClickListener {
+            triggerHaptic(VibrationEffect.EFFECT_CLICK)
+            val bmp = com.assistant.athena.data.ScreenCaptureHolder.getScreenshot()
+            if (bmp != null) {
+                isScreenContextAttached = true
+                imgScreenThumbnail.setImageBitmap(bmp)
+                cardScreenContextPreview.visibility = View.VISIBLE
+            }
+            executeQuery("What's currently on my screen? Provide key context and insights.")
+        }
         chipNews.setOnClickListener { executeQuery("Perform deep research on today's breaking news and top headlines") }
         chipSchedule.setOnClickListener { executeQuery("Check my upcoming schedule, weather forecast, and reminders") }
         chipSystem.setOnClickListener { executeQuery("Run a full system diagnosis and report device status") }
@@ -242,7 +246,20 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
         btnToggleKeyboard.setOnClickListener { toggleKeyboardMode() }
         btnVisionSearch.setOnClickListener {
             triggerHaptic(VibrationEffect.EFFECT_CLICK)
-            executeQuery("Analyze screen context and assist with the active task.")
+            val bmp = com.assistant.athena.data.ScreenCaptureHolder.getScreenshot()
+            if (bmp != null) {
+                isScreenContextAttached = !isScreenContextAttached
+                if (isScreenContextAttached) {
+                    imgScreenThumbnail.setImageBitmap(bmp)
+                    cardScreenContextPreview.visibility = View.VISIBLE
+                    showStatusTelemetry("📸 <i>Screen context attached to query</i>")
+                } else {
+                    cardScreenContextPreview.visibility = View.GONE
+                    showStatusTelemetry("<i>Screen context removed</i>")
+                }
+            } else {
+                showStatusTelemetry("⚠️ <i>No cached screenshot available</i>")
+            }
         }
         btnMicAction.setOnClickListener {
             if (isRecording) {
@@ -451,6 +468,10 @@ class AssistantOverlayActivity : AppCompatActivity(), TextToSpeech.OnInitListene
                 json.put("image_b64", imgB64)
                 showStatusTelemetry("📸 <i>Uploading screen context to Gemini Vision…</i>")
             }
+        }
+        if (isScreenContextAttached) {
+            isScreenContextAttached = false
+            cardScreenContextPreview.visibility = View.GONE
         }
 
         val jsonBody = json.toString()

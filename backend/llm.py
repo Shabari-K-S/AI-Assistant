@@ -378,7 +378,15 @@ class GeminiGemmaLLM(LLMEngine):
                     continue
                 for part in candidate.content.parts:
                     if getattr(part, "thought", False):
-                        continue  # reasoning pass — never stream it
+                        if part.text:
+                            try:
+                                import evbridge
+                                b = evbridge.get_bus()
+                                if b is not None:
+                                    b.event("thinking", text=part.text)
+                            except Exception:
+                                pass
+                        continue  # reasoning pass — stream to thinking telemetry, not final text
                     if part.text:
                         if ttft is None:
                             ttft = time.perf_counter() - t0
@@ -759,6 +767,13 @@ class GeminiRestLLM(LLMEngine):
                             for part in content.get("parts", []):
                                 if "text" in part and part["text"]:
                                     if part.get("thought"):
+                                        try:
+                                            import evbridge
+                                            b = evbridge.get_bus()
+                                            if b is not None:
+                                                b.event("thinking", text=part["text"])
+                                        except Exception:
+                                            pass
                                         continue
                                     text_val = part["text"]
                                     if ttft is None:

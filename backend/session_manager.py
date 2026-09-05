@@ -64,6 +64,10 @@ def _init_db() -> None:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_msg_session ON messages(session_id, timestamp)"
             )
+            try:
+                conn.execute("ALTER TABLE messages ADD COLUMN thinking TEXT DEFAULT NULL")
+            except sqlite3.OperationalError:
+                pass  # already added
             conn.commit()
 
 
@@ -164,7 +168,7 @@ class SessionManager:
                     return None
 
                 m_cur = conn.execute(
-                    "SELECT id, role, text, tool_data, timestamp FROM messages WHERE session_id = ? ORDER BY timestamp ASC",
+                    "SELECT id, role, text, tool_data, thinking, timestamp FROM messages WHERE session_id = ? ORDER BY timestamp ASC",
                     (session_id,),
                 )
                 messages = []
@@ -175,11 +179,17 @@ class SessionManager:
                             tool_obj = json.loads(m["tool_data"])
                         except Exception:
                             pass
+                    thinking_val = None
+                    try:
+                        thinking_val = m["thinking"]
+                    except Exception:
+                        pass
                     messages.append({
                         "id": m["id"],
                         "role": m["role"],
                         "text": m["text"],
                         "tool_data": tool_obj,
+                        "thinking": thinking_val,
                         "timestamp": m["timestamp"],
                     })
 
@@ -225,6 +235,7 @@ class SessionManager:
         role: str,
         text: str,
         tool_data: dict[str, Any] | None = None,
+        thinking: str | None = None,
     ) -> dict[str, Any]:
         """Append a message turn to a session."""
         if not session_id:
@@ -261,8 +272,8 @@ class SessionManager:
                         conn.execute("UPDATE sessions SET title = ? WHERE id = ?", (clean_title, session_id))
 
                 conn.execute(
-                    "INSERT INTO messages (id, session_id, role, text, tool_data, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
-                    (mid, session_id, role, text, tool_json, now),
+                    "INSERT INTO messages (id, session_id, role, text, tool_data, thinking, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (mid, session_id, role, text, tool_json, thinking, now),
                 )
                 conn.execute("UPDATE sessions SET updated_at = ? WHERE id = ?", (now, session_id))
                 conn.commit()
@@ -273,6 +284,7 @@ class SessionManager:
             "role": role,
             "text": text,
             "tool_data": tool_data,
+            "thinking": thinking,
             "timestamp": now,
         }
 

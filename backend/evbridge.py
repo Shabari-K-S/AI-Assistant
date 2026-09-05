@@ -649,7 +649,9 @@ class _Handler(BaseHTTPRequestHandler):
             if session_id:
                 sm.set_active_session_id(session_id)
             else:
-                session_id = sm.get_active_session_id()
+                title = (prompt[:36] or "New Thread").strip()
+                new_s = sm.create_session(title=title)
+                session_id = new_s["id"]
             sm.add_message(session_id, "user", prompt or "[Screen Context Query]")
 
             # If image is attached, run Gemini Multimodal Vision immediately
@@ -693,7 +695,9 @@ class _Handler(BaseHTTPRequestHandler):
             if session_id:
                 sm.set_active_session_id(session_id)
             else:
-                session_id = sm.get_active_session_id()
+                title = (prompt[:36] or "New Thread").strip()
+                new_s = sm.create_session(title=title)
+                session_id = new_s["id"]
             sm.add_message(session_id, "user", prompt or "[Screen Context Query]")
 
             # Direct multimodal vision processing when screenshot is provided
@@ -761,6 +765,7 @@ class _Handler(BaseHTTPRequestHandler):
 
             pending_tools: dict[str, str] = {}
             executed_tools: list[dict[str, Any]] = []
+            thinking_chunks: list[str] = []
             reply_text = ""
             start_t = time.monotonic()
             try:
@@ -769,7 +774,11 @@ class _Handler(BaseHTTPRequestHandler):
                         line = q.get(timeout=0.25)
                         event = json.loads(line)
                         etype = event.get("type")
-                        if etype == "tool_cue":
+                        if etype == "thinking":
+                            th_text = str(event.get("text") or "")
+                            if th_text:
+                                thinking_chunks.append(th_text)
+                        elif etype == "tool_cue":
                             cue_text = str(event.get("text") or "").strip()
                             if cue_text:
                                 executed_tools.append({
@@ -815,9 +824,11 @@ class _Handler(BaseHTTPRequestHandler):
                     "count": len(executed_tools),
                 }
 
+            thinking_text = "".join(thinking_chunks).strip() or None
+
             if reply_text:
-                sm.add_message(session_id, "assistant", reply_text, tool_data=tool_data)
-                self._json({"ok": True, "reply": reply_text, "session_id": session_id, "tool_data": tool_data})
+                sm.add_message(session_id, "assistant", reply_text, tool_data=tool_data, thinking=thinking_text)
+                self._json({"ok": True, "reply": reply_text, "session_id": session_id, "tool_data": tool_data, "thinking": thinking_text})
             else:
                 last_reply = str(bus.get().get("reply", "")).strip()
                 cue_previews = {s.get("preview") for s in executed_tools if s.get("status") == "status"}
@@ -825,8 +836,8 @@ class _Handler(BaseHTTPRequestHandler):
                     final_reply = last_reply
                 else:
                     final_reply = "I processed your request."
-                sm.add_message(session_id, "assistant", final_reply, tool_data=tool_data)
-                self._json({"ok": bool(last_reply), "reply": final_reply, "timeout": True, "session_id": session_id, "tool_data": tool_data})
+                sm.add_message(session_id, "assistant", final_reply, tool_data=tool_data, thinking=thinking_text)
+                self._json({"ok": bool(last_reply), "reply": final_reply, "timeout": True, "session_id": session_id, "tool_data": tool_data, "thinking": thinking_text})
             return
 
         if path == "/transcribe":

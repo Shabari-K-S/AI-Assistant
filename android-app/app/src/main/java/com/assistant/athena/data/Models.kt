@@ -134,17 +134,20 @@ data class MessageItem(
     val role: String, // "user" | "assistant" | "system" | "tool"
     val text: String,
     val timestamp: Double,
-    val toolData: ToolData? = null
+    val toolData: ToolData? = null,
+    val thinking: String? = null
 ) {
     companion object {
         fun fromJson(json: JSONObject): MessageItem {
             val toolJson = json.optJSONObject("tool_data")
+            val thinkingRaw = json.optString("thinking", "").trim().ifEmpty { null }
             return MessageItem(
                 id = json.optString("id", java.util.UUID.randomUUID().toString()),
                 role = json.optString("role", "assistant"),
                 text = json.optString("text", ""),
                 timestamp = json.optDouble("timestamp", System.currentTimeMillis() / 1000.0),
-                toolData = ToolData.fromJson(toolJson)
+                toolData = ToolData.fromJson(toolJson),
+                thinking = thinkingRaw
             )
         }
     }
@@ -155,7 +158,8 @@ data class AskResult(
     val sessionId: String,
     val ok: Boolean = true,
     val handledSlash: Boolean = false,
-    val toolData: ToolData? = null
+    val toolData: ToolData? = null,
+    val thinking: String? = null
 )
 
 // =========================================================================

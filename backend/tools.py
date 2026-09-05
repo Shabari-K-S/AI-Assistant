@@ -1730,13 +1730,9 @@ class ToolRegistry:
         if bus is not None and hasattr(bus, "emit_tool_start"):
             bus.emit_tool_start(name, args)
 
-        # Emit conversational progress cue if registered
-        cue_cb = getattr(self, "_cue_callback", None)
-        if cue_cb and name in self.TOOL_VOCAL_CUES:
-            try:
-                cue_cb(self.TOOL_VOCAL_CUES[name])
-            except Exception:
-                pass
+        # Emit thinking telemetry for tool execution (no voice hijacking)
+        if bus is not None and hasattr(bus, "event"):
+            bus.event("thinking", text=f"Invoking {name}...")
 
         try:
             res = tool.handler(args or {})

@@ -138,7 +138,12 @@ fun SessionsChatScreen(
     }
 
     LaunchedEffect(activeSessionId) {
-        activeSessionId?.let { reloadActiveSession(it) }
+        if (activeSessionId != null) {
+            reloadActiveSession(activeSessionId!!)
+        } else {
+            activeSessionDetail = null
+            localMessages = emptyList()
+        }
     }
 
     // Handle Send Action
@@ -190,7 +195,8 @@ fun SessionsChatScreen(
                     role = "assistant",
                     text = replyText,
                     timestamp = System.currentTimeMillis() / 1000.0,
-                    toolData = result.toolData
+                    toolData = result.toolData,
+                    thinking = result.thinking
                 )
                 localMessages = localMessages + assistantMsg
 
@@ -430,6 +436,7 @@ fun SessionsChatScreen(
                         IconButton(
                             onClick = {
                                 activeSessionId = null
+                                activeSessionDetail = null
                                 localMessages = emptyList()
                                 inputText = ""
                             },
@@ -983,6 +990,12 @@ fun CyberChatMessageBubble(
                     CyberToolChainAccordion(toolData = msg.toolData, onCopy = onCopy)
                 }
 
+                // Gemini / Claude Reasoning Dropdown
+                if (!msg.thinking.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    GeminiThinkingDropdown(thinking = msg.thinking, onCopy = onCopy)
+                }
+
                 // Rich Markdown Body
                 if (msg.text.isNotBlank()) {
                     Spacer(modifier = Modifier.height(6.dp))
@@ -993,6 +1006,103 @@ fun CyberChatMessageBubble(
                 if (msg.text.isNotBlank() && !isSystem) {
                     Spacer(modifier = Modifier.height(8.dp))
                     PerplexityFollowUpSection(onSelectPrompt = onSelectFollowUp)
+                }
+            }
+        }
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Gemini / Claude Reasoning Dropdown
+// ═════════════════════════════════════════════════════════════════════════════
+@Composable
+fun GeminiThinkingDropdown(
+    thinking: String,
+    onCopy: ((String) -> Unit)? = null
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Surface(
+        color = Color(0xFF141414),
+        shape = RoundedCornerShape(10.dp),
+        border = BorderStroke(0.5.dp, Color(0xFF2A2A2A)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "✦",
+                        color = PerplexityTeal,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (expanded) "Thinking Process" else "Thought Process",
+                        color = TextSecondary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (expanded && onCopy != null) {
+                        IconButton(
+                            onClick = { onCopy(thinking) },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = "Copy thinking",
+                                tint = TextMuted,
+                                modifier = Modifier.size(13.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
+                    Icon(
+                        imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                        contentDescription = if (expanded) "Collapse" else "Expand",
+                        tint = TextMuted,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            AnimatedVisibility(visible = expanded) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF0C0C0C), RoundedCornerShape(6.dp))
+                            .border(0.5.dp, Color(0xFF222222), RoundedCornerShape(6.dp))
+                            .padding(10.dp)
+                    ) {
+                        Text(
+                            text = thinking.trim(),
+                            color = Color(0xFFABABAB),
+                            fontSize = 11.5.sp,
+                            lineHeight = 17.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
                 }
             }
         }

@@ -198,12 +198,14 @@ class NetworkClient(private val context: Context) {
                 val handledSlash = json.optBoolean("handled_slash", false)
                 val toolDataJson = json.optJSONObject("tool_data")
                 val toolData = ToolData.fromJson(toolDataJson)
+                val thinking = json.optString("thinking", "").trim().ifEmpty { null }
                 AskResult(
                     reply = reply,
                     sessionId = sid,
                     ok = ok,
                     handledSlash = handledSlash,
-                    toolData = toolData
+                    toolData = toolData,
+                    thinking = thinking
                 )
             } catch (_: Exception) {
                 null
@@ -228,12 +230,14 @@ class NetworkClient(private val context: Context) {
             val handledSlash = json.optBoolean("handled_slash", false)
             val toolDataJson = json.optJSONObject("tool_data")
             val toolData = ToolData.fromJson(toolDataJson)
+            val thinking = json.optString("thinking", "").trim().ifEmpty { null }
             AskResult(
                 reply = reply,
                 sessionId = sid,
                 ok = ok,
                 handledSlash = handledSlash,
-                toolData = toolData
+                toolData = toolData,
+                thinking = thinking
             )
         } catch (_: Exception) {
             null
