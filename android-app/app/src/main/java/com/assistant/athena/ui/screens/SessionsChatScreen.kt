@@ -61,7 +61,9 @@ import java.util.*
 @Composable
 fun SessionsChatScreen(
     networkClient: NetworkClient,
-    onLaunchOverlay: () -> Unit
+    onLaunchOverlay: () -> Unit,
+    initialPrompt: String? = null,
+    onPromptConsumed: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -197,6 +199,15 @@ fun SessionsChatScreen(
             if (localMessages.isNotEmpty()) {
                 listState.animateScrollToItem(localMessages.size - 1)
             }
+        }
+    }
+
+    // Handle cross-screen prompt handoff (e.g. from Perplexity Home Search)
+    LaunchedEffect(initialPrompt) {
+        if (!initialPrompt.isNullOrBlank()) {
+            inputText = initialPrompt
+            onPromptConsumed()
+            executeSendPrompt()
         }
     }
 
@@ -437,6 +448,10 @@ fun SessionsChatScreen(
                                     val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                     cm.setPrimaryClip(ClipData.newPlainText("ATHENA", textToCopy))
                                     Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
+                                },
+                                onSelectFollowUp = { followUpPrompt ->
+                                    inputText = followUpPrompt
+                                    executeSendPrompt()
                                 }
                             )
                         }
@@ -452,81 +467,103 @@ fun SessionsChatScreen(
             }
 
             // ═════════════════════════════════════════════════════════════════
-            // 3. Tactical Command Deck Input Bar
+            // 3. Perplexity-Style Floating Capsule Command Deck
             // ═════════════════════════════════════════════════════════════════
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = PanelDarkSolid,
-                border = BorderStroke(1.dp, PanelStroke)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(VoidBlack)
+                    .padding(horizontal = 14.dp, vertical = 6.dp)
             ) {
-                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-
-                    // Quick Action Chips Row
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState())
-                            .padding(bottom = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                // Focus Mode / Quick Action Chips Row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(bottom = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    CyberQuickChip(
+                        text = if (com.assistant.athena.data.ScreenCaptureHolder.hasFreshScreenshot()) "📸 Screen Context" else "📸 Ask Screen",
+                        icon = Icons.Default.Search
                     ) {
-                        CyberQuickChip(
-                            text = if (com.assistant.athena.data.ScreenCaptureHolder.hasFreshScreenshot()) "📸 Screen Context" else "📸 Ask Screen",
-                            icon = Icons.Default.Search
-                        ) {
-                            if (com.assistant.athena.data.ScreenCaptureHolder.hasFreshScreenshot()) {
-                                inputText = "Analyze the attached screen context and summarize key insights."
-                                executeSendPrompt()
-                            } else {
-                                inputText = "What's on my screen? (Hold Home/Power button or swipe corner to capture screen)"
-                                executeSendPrompt()
-                            }
-                        }
-                        CyberQuickChip(text = "⚡ Deep Research", icon = Icons.Default.Search) {
-                            inputText = "/research "
-                        }
-                        CyberQuickChip(text = "🛡️ Recon Scan", icon = Icons.Default.Security) {
-                            inputText = "/recon "
-                        }
-                        CyberQuickChip(text = "☀️ Daily Briefing", icon = Icons.Default.WbSunny) {
-                            inputText = "/briefing"
+                        if (com.assistant.athena.data.ScreenCaptureHolder.hasFreshScreenshot()) {
+                            inputText = "Analyze the attached screen context and summarize key insights."
                             executeSendPrompt()
-                        }
-                        CyberQuickChip(text = "📚 Vault Notes", icon = Icons.Default.Book) {
-                            inputText = "List my recent notes in the vault"
-                            executeSendPrompt()
-                        }
-                        CyberQuickChip(text = "❓ /help", icon = Icons.Default.HelpOutline) {
-                            inputText = "/help"
+                        } else {
+                            inputText = "What's on my screen? (Hold Home/Power button or swipe corner to capture screen)"
                             executeSendPrompt()
                         }
                     }
+                    CyberQuickChip(text = "⚡ Pro Research", icon = Icons.Default.Search) {
+                        inputText = "/research "
+                    }
+                    CyberQuickChip(text = "🛡️ Recon Scan", icon = Icons.Default.Security) {
+                        inputText = "/recon "
+                    }
+                    CyberQuickChip(text = "☀️ Daily Briefing", icon = Icons.Default.WbSunny) {
+                        inputText = "/briefing"
+                        executeSendPrompt()
+                    }
+                    CyberQuickChip(text = "📚 Vault Notes", icon = Icons.Default.Book) {
+                        inputText = "List my recent notes in the vault"
+                        executeSendPrompt()
+                    }
+                    CyberQuickChip(text = "❓ /help", icon = Icons.Default.HelpOutline) {
+                        inputText = "/help"
+                        executeSendPrompt()
+                    }
+                }
 
-                    // Input Field & Send Action
+                // Perplexity Floating Pill Input Capsule
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(26.dp),
+                    color = PerplexitySurfaceElevated,
+                    border = BorderStroke(
+                        1.dp,
+                        if (inputText.isNotBlank()) NeonCyan.copy(alpha = 0.65f) else PanelStroke
+                    ),
+                    shadowElevation = 4.dp
+                ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // Focus spark indicator
+                        Icon(
+                            imageVector = Icons.Default.Bolt,
+                            contentDescription = "Focus",
+                            tint = if (inputText.isNotBlank()) NeonCyan else TextMuted,
+                            modifier = Modifier.size(18.dp)
+                        )
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        // High-legibility Perplexity Input
                         OutlinedTextField(
                             value = inputText,
                             onValueChange = { inputText = it },
                             placeholder = {
                                 Text(
-                                    text = "Transmit command or /prompt to Athena...",
+                                    text = "Ask anything or follow-up...",
                                     color = TextMuted,
-                                    fontSize = 13.sp
+                                    fontSize = 13.5.sp
                                 )
                             },
                             modifier = Modifier
                                 .weight(1f)
-                                .heightIn(min = 50.dp, max = 130.dp),
-                            shape = RoundedCornerShape(10.dp),
+                                .heightIn(min = 44.dp, max = 130.dp),
+                            shape = RoundedCornerShape(20.dp),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = NeonCyan,
-                                unfocusedBorderColor = PanelStroke,
+                                focusedBorderColor = Color.Transparent,
+                                unfocusedBorderColor = Color.Transparent,
                                 focusedTextColor = TextPrimary,
                                 unfocusedTextColor = TextPrimary,
-                                focusedContainerColor = VoidBlack,
-                                unfocusedContainerColor = VoidBlack,
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
                                 cursorColor = NeonCyan
                             ),
                             trailingIcon = {
@@ -546,24 +583,30 @@ fun SessionsChatScreen(
                             }
                         )
 
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
 
-                        // Glowing Cyan Send Button
-                        val sendButtonColor = if (inputText.isNotBlank() && !isSending) NeonCyan else NeonCyanDim
+                        // Perplexity Signature Circular Send Button with Upward Arrow
+                        val isReadyToSend = inputText.isNotBlank() && !isSending
                         IconButton(
                             onClick = { executeSendPrompt() },
                             modifier = Modifier
-                                .size(48.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(sendButtonColor)
-                                .border(BorderStroke(1.dp, if (inputText.isNotBlank()) NeonCyan else PanelStroke), RoundedCornerShape(10.dp)),
-                            enabled = !isSending && inputText.isNotBlank()
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(if (isReadyToSend) NeonCyan else NeonCyanDim)
+                                .border(
+                                    BorderStroke(
+                                        1.dp,
+                                        if (isReadyToSend) NeonCyanLight else Color.Transparent
+                                    ),
+                                    CircleShape
+                                ),
+                            enabled = isReadyToSend
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Send,
-                                contentDescription = "Transmit",
-                                tint = if (inputText.isNotBlank() && !isSending) VoidBlack else TextMuted,
-                                modifier = Modifier.size(20.dp)
+                                imageVector = Icons.Default.ArrowUpward,
+                                contentDescription = "Send Prompt",
+                                tint = if (isReadyToSend) VoidBlack else TextMuted,
+                                modifier = Modifier.size(19.dp)
                             )
                         }
                     }
@@ -700,7 +743,11 @@ fun SessionsChatScreen(
 // Tactical Sci-Fi Chat Message Bubble with Markdown Rendering
 // ═════════════════════════════════════════════════════════════════════════════
 @Composable
-fun CyberChatMessageBubble(msg: MessageItem, onCopy: (String) -> Unit) {
+fun CyberChatMessageBubble(
+    msg: MessageItem,
+    onCopy: (String) -> Unit,
+    onSelectFollowUp: (String) -> Unit = {}
+) {
     val isUser = msg.role == "user"
     val isSystem = msg.role == "system"
 
@@ -713,30 +760,31 @@ fun CyberChatMessageBubble(msg: MessageItem, onCopy: (String) -> Unit) {
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
     ) {
-        // Main Unified Bubble Container
+        // Main Unified Bubble Container (Perplexity Obsidian & Elevated Slate)
         Surface(
             color = when {
                 isSystem -> NeonRed.copy(alpha = 0.12f)
-                isUser -> NeonCyanDim
+                isUser -> PerplexitySurfaceElevated
                 else -> PanelDarkSolid
             },
             shape = RoundedCornerShape(
-                topStart = if (isUser) 14.dp else 2.dp,
-                topEnd = 14.dp,
-                bottomStart = 14.dp,
-                bottomEnd = if (isUser) 2.dp else 14.dp
+                topStart = if (isUser) 18.dp else 4.dp,
+                topEnd = 18.dp,
+                bottomStart = 18.dp,
+                bottomEnd = if (isUser) 4.dp else 18.dp
             ),
             border = BorderStroke(
                 1.dp,
                 when {
                     isSystem -> NeonRed.copy(alpha = 0.5f)
-                    isUser -> PanelStrokeActive
-                    else -> PanelStroke
+                    isUser -> PerplexityPillBorder
+                    else -> PanelStroke.copy(alpha = 0.6f)
                 }
             ),
+            shadowElevation = if (isUser) 1.dp else 3.dp,
             modifier = Modifier.fillMaxWidth(if (isSystem) 1f else 0.92f)
         ) {
-            Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
 
                 // Role Header & Action Row
                 Row(
@@ -748,17 +796,17 @@ fun CyberChatMessageBubble(msg: MessageItem, onCopy: (String) -> Unit) {
                         Text(
                             text = when {
                                 isSystem -> "SYSTEM NOTICE"
-                                isUser -> "[OPERATOR // UPLINK]"
-                                else -> "[A.T.H.E.N.A. // CORE]"
+                                isUser -> "YOU"
+                                else -> "ATHENA // INTELLIGENCE"
                             },
                             color = when {
                                 isSystem -> NeonRed
-                                isUser -> NeonCyan
-                                else -> NeonGreen
+                                isUser -> TextPrimary
+                                else -> PerplexityTealVibrant
                             },
-                            fontSize = 10.sp,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp,
+                            letterSpacing = 0.8.sp,
                             fontFamily = FontFamily.Monospace
                         )
                         Spacer(modifier = Modifier.width(8.dp))
@@ -785,16 +833,177 @@ fun CyberChatMessageBubble(msg: MessageItem, onCopy: (String) -> Unit) {
                     }
                 }
 
-                // Integrated Continuous Multi-Step Tool Chain (Gemini / Claude / ChatGPT style)
+                // Perplexity Sources & Citations Carousel
                 if (!isUser && msg.toolData != null && msg.toolData.steps.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    PerplexitySourcesRow(steps = msg.toolData.steps)
                     CyberToolChainAccordion(toolData = msg.toolData, onCopy = onCopy)
                 }
 
                 // Rich Markdown Response Body (Handles continuous multi-part text sections)
                 if (msg.text.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
                     CyberMarkdownText(text = msg.text, onCopyCode = onCopy)
+                }
+
+                // Perplexity Interactive Follow-Up Prompts Section
+                if (!isUser && msg.text.isNotBlank() && !isSystem) {
+                    PerplexityFollowUpSection(onSelectPrompt = onSelectFollowUp)
+                }
+            }
+        }
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Perplexity Sources & Citations Carousel
+// ═════════════════════════════════════════════════════════════════════════════
+@Composable
+fun PerplexitySourcesRow(steps: List<ToolExecutionStep>) {
+    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "SOURCES",
+                color = TextMuted,
+                fontSize = 9.5.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+                letterSpacing = 0.9.sp
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Surface(
+                color = NeonCyanDim,
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text(
+                    text = "${steps.size}",
+                    color = NeonCyan,
+                    fontSize = 9.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            steps.forEachIndexed { idx, step ->
+                Surface(
+                    color = PerplexitySurfaceElevated,
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, PerplexityPillBorder)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            color = NeonCyanDim,
+                            shape = CircleShape
+                        ) {
+                            Text(
+                                text = "${idx + 1}",
+                                color = NeonCyan,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = step.name.replace('_', ' '),
+                            color = TextHighlight,
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "${step.durationMs.toInt()}ms",
+                            color = TextMuted,
+                            fontSize = 8.5.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Perplexity Follow-Up Interactive Prompts Section
+// ═════════════════════════════════════════════════════════════════════════════
+@Composable
+fun PerplexityFollowUpSection(onSelectPrompt: (String) -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 10.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(0.5.dp)
+                .background(PanelStroke.copy(alpha = 0.4f))
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "RELATED // FOLLOW-UP",
+                color = TextMuted,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+                letterSpacing = 0.8.sp
+            )
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            val suggestions = listOf(
+                "Can you elaborate with technical detail?",
+                "What are the key takeaways and trade-offs?",
+                "Provide step-by-step implementation code"
+            )
+            suggestions.forEach { suggestion ->
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onSelectPrompt(suggestion) },
+                    color = PerplexitySurfaceElevated.copy(alpha = 0.6f),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(0.8.dp, PerplexityPillBorder)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(text = "+", color = NeonCyan, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = suggestion, color = TextPrimary, fontSize = 11.5.sp)
+                        }
+                        Icon(
+                            imageVector = Icons.Default.ArrowForward,
+                            contentDescription = null,
+                            tint = TextMuted,
+                            modifier = Modifier.size(13.dp)
+                        )
+                    }
                 }
             }
         }
@@ -1259,8 +1468,8 @@ fun CyberThinkingIndicator() {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// Empty State Slate (Tactical Holographic Intro)
-// ═════════════════════════════════════════════════════════════════════════════
+// Empty State Slate (Perplexity Discovery Greeting)
+// ═════════════════════════════════════════════════════════════════
 @Composable
 fun CyberEmptyState(onSelectSample: (String) -> Unit) {
     Column(
@@ -1271,49 +1480,47 @@ fun CyberEmptyState(onSelectSample: (String) -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Surface(
-            modifier = Modifier.size(72.dp),
+            modifier = Modifier.size(64.dp),
             shape = CircleShape,
             color = NeonCyanDim,
-            border = BorderStroke(1.5.dp, PanelStrokeActive)
+            border = BorderStroke(1.5.dp, NeonCyan.copy(alpha = 0.6f))
         ) {
             Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = Icons.Default.Forum,
-                    contentDescription = null,
-                    tint = NeonCyan,
-                    modifier = Modifier.size(36.dp)
+                Text(
+                    text = "✳️",
+                    fontSize = 28.sp
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(18.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
         Text(
-            text = "[A.T.H.E.N.A. // NEURAL CHAT UPLINK]",
-            color = NeonCyan,
+            text = "Where knowledge begins",
+            color = TextPrimary,
             fontWeight = FontWeight.Bold,
-            letterSpacing = 1.4.sp,
-            fontSize = 14.sp,
-            fontFamily = FontFamily.Monospace
+            letterSpacing = 0.5.sp,
+            fontSize = 18.sp,
+            fontFamily = FontFamily.SansSerif
         )
 
         Spacer(modifier = Modifier.height(6.dp))
 
         Text(
-            text = "Ask questions, dispatch academic deep research, execute MCP tools, or inspect security scopes.",
+            text = "Ask anything, search deep academic intelligence, or analyze your current screen context.",
             color = TextSecondary,
-            fontSize = 12.sp,
+            fontSize = 12.5.sp,
             textAlign = TextAlign.Center,
             lineHeight = 18.sp,
-            modifier = Modifier.padding(horizontal = 16.dp)
+            modifier = Modifier.padding(horizontal = 20.dp)
         )
 
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(24.dp))
 
-        // Sample Starters
+        // Perplexity-Style Discovery Starter Cards
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             SampleStarterChip("⚡ Run deep research on Quantum Computing 2026") {
                 onSelectSample("/research Quantum Computing 2026 breakthroughs")
@@ -1321,7 +1528,7 @@ fun CyberEmptyState(onSelectSample: (String) -> Unit) {
             SampleStarterChip("🛡️ Run automated DAST security reconnaissance on localhost") {
                 onSelectSample("/recon 127.0.0.1")
             }
-            SampleStarterChip("☀️ Synthesize my morning executive briefing") {
+            SampleStarterChip("☀️ Synthesize morning executive intelligence briefing") {
                 onSelectSample("/briefing")
             }
         }
@@ -1333,18 +1540,42 @@ fun SampleStarterChip(label: String, onClick: () -> Unit) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
             .clickable(onClick = onClick),
-        color = PanelDarkSolid,
-        shape = RoundedCornerShape(8.dp),
-        border = BorderStroke(1.dp, PanelStroke)
+        color = PerplexitySurfaceElevated,
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, PerplexityPillBorder)
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Icon(Icons.Default.Terminal, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(14.dp))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(text = label, color = TextHighlight, fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.Explore,
+                    contentDescription = null,
+                    tint = NeonCyan,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = label,
+                    color = TextPrimary,
+                    fontSize = 12.5.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Icon(
+                Icons.Default.ArrowForward,
+                contentDescription = null,
+                tint = TextMuted,
+                modifier = Modifier.size(14.dp)
+            )
         }
     }
 }
@@ -1433,16 +1664,18 @@ fun CyberSessionHistoryItemRow(
 @Composable
 fun CyberQuickChip(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
     Surface(
-        modifier = Modifier.clickable(onClick = onClick),
-        color = DeepNavy,
-        shape = RoundedCornerShape(14.dp),
-        border = BorderStroke(1.dp, PanelStroke)
+        modifier = Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .clickable(onClick = onClick),
+        color = PerplexitySurfaceElevated,
+        shape = RoundedCornerShape(20.dp),
+        border = BorderStroke(1.dp, PerplexityPillBorder)
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(imageVector = icon, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(12.dp))
+            Icon(imageVector = icon, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(13.dp))
             Spacer(modifier = Modifier.width(6.dp))
             Text(text = text, color = TextHighlight, fontSize = 11.5.sp, fontWeight = FontWeight.Medium)
         }

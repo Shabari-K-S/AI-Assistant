@@ -6,14 +6,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
-import com.assistant.athena.ui.theme.DotGridColor
+import com.assistant.athena.ui.theme.NeonCyan
 import com.assistant.athena.ui.theme.VoidBlack
 
 /**
- * High-performance 120Hz 2D dot-grid overlay canvas.
- * Renders subtle cybernetic HUD matrix dots spaced 24.dp apart on deep void black.
+ * Modern Perplexity-Style Obsidian Matte Canvas with subtle ambient atmospheric lighting.
  */
 @Composable
 fun DotMatrixBackground(
@@ -21,28 +20,25 @@ fun DotMatrixBackground(
     content: @Composable () -> Unit
 ) {
     Box(
-        modifier = modifier
-            .fillMaxSize()
+        modifier = modifier.fillMaxSize()
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
+            // Base Matte Obsidian Dark
             drawRect(color = VoidBlack)
 
-            val spacingPx = 24.dp.toPx()
-            val dotRadius = 1.25.dp.toPx()
-
-            var x = spacingPx / 2f
-            while (x < size.width) {
-                var y = spacingPx / 2f
-                while (y < size.height) {
-                    drawCircle(
-                        color = DotGridColor,
-                        radius = dotRadius,
-                        center = Offset(x, y)
-                    )
-                    y += spacingPx
-                }
-                x += spacingPx
-            }
+            // Soft atmospheric radial illumination at top
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        NeonCyan.copy(alpha = 0.055f),
+                        Color.Transparent
+                    ),
+                    center = Offset(size.width / 2f, size.height * 0.15f),
+                    radius = size.width * 0.85f
+                ),
+                radius = size.width * 0.85f,
+                center = Offset(size.width / 2f, size.height * 0.15f)
+            )
         }
 
         content()

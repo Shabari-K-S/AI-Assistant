@@ -19,10 +19,10 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Gesture
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -35,12 +35,14 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.assistant.athena.data.SessionItem
 import com.assistant.athena.ui.components.DotMatrixBackground
-import com.assistant.athena.ui.components.HudCard
-import com.assistant.athena.ui.components.NeuralArcReactor
 import com.assistant.athena.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -92,15 +94,17 @@ class MainActivity : ComponentActivity() {
                     onRefreshStatus = {
                         coroutineScope.launch { refresh() }
                     },
-                    dashboardContent = {
+                    dashboardContent = { onNavigateToChat ->
                         AthenaDashboardScreen(
                             status = status,
+                            networkClient = networkClient,
                             onOpenOverlay = { launchOverlay() },
                             onOpenSettings = { openAssistantSettings() },
                             onOpenGuide = { openAccessGuide() },
                             onRefresh = {
                                 coroutineScope.launch { refresh() }
-                            }
+                            },
+                            onNavigateToChat = onNavigateToChat
                         )
                     }
                 )
@@ -164,128 +168,17 @@ data class BackendStatus(
 @Composable
 fun AthenaDashboardScreen(
     status: BackendStatus,
+    networkClient: NetworkClient,
     onOpenOverlay: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenGuide: () -> Unit,
-    onRefresh: () -> Unit
+    onRefresh: () -> Unit,
+    onNavigateToChat: (String?) -> Unit
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-            Spacer(modifier = Modifier.height(12.dp))
+    var queryText by remember { mutableStateOf("") }
+    var recentSessions by remember { mutableStateOf<List<SessionItem>>(emptyList()) }
 
-            // ═══ 1. JARVIS Central Arc Reactor & Neural Core ═══
-            NeuralArcReactor(
-                isOnline = status.isOnline
-            )
-
-            Spacer(modifier = Modifier.height(28.dp))
-
-            // ═══ 2. Glassmorphism HUD Telemetry Card ═══
-            HudTelemetryCard(
-                status = status,
-                onRefresh = onRefresh
-            )
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // ═══ 3. Primary Next-Gen Action: ⚡ OPEN ASSISTANT HUD ═══
-            Button(
-                onClick = onOpenOverlay,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp)
-                    .shadow(
-                        elevation = 8.dp,
-                        shape = RoundedCornerShape(14.dp),
-                        ambientColor = NeonCyanGlow,
-                        spotColor = NeonCyan
-                    ),
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = NeonCyan,
-                    contentColor = VoidBlack
-                ),
-                contentPadding = PaddingValues(vertical = 12.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Text(
-                        text = "⚡",
-                        fontSize = 18.sp,
-                        color = VoidBlack
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "OPEN ASSISTANT HUD",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp,
-                        fontFamily = FontFamily.SansSerif,
-                        color = VoidBlack
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // ═══ 4. Secondary Action Tiles: CONFIG & GESTURES ═══
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                ActionTile(
-                    title = "CONFIG",
-                    subtitle = "Default App",
-                    icon = Icons.Default.Settings,
-                    modifier = Modifier.weight(1f),
-                    onClick = onOpenSettings
-                )
-                ActionTile(
-                    title = "GESTURES",
-                    subtitle = "Power / Swipe",
-                    icon = Icons.Default.TouchApp,
-                    modifier = Modifier.weight(1f),
-                    onClick = onOpenGuide
-                )
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // ═══ 5. Integrated Capabilities Log ═══
-            CapabilitiesLogCard()
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // ═══ 6. Modern Footer Telemetry ═══
-            Text(
-                text = "127.0.0.1:2027 // TERMUX HUD LINK",
-                color = TextMuted,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
-                letterSpacing = 1.2.sp,
-                fontFamily = FontFamily.Monospace
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-        }
-}
-
-/**
- * Translucent Glassmorphism Telemetry Card with Animated LED Status Indicator.
- */
-@Composable
-fun HudTelemetryCard(
-    status: BackendStatus,
-    onRefresh: () -> Unit
-) {
-    val infiniteTransition = rememberInfiniteTransition(label = "LedPulse")
+    val infiniteTransition = rememberInfiniteTransition(label = "StatusPulse")
     val ledAlpha by infiniteTransition.animateFloat(
         initialValue = 0.4f,
         targetValue = 1.0f,
@@ -296,102 +189,579 @@ fun HudTelemetryCard(
         label = "ledAlpha"
     )
 
-    HudCard {
-        // Digital Assistant Row
+    LaunchedEffect(Unit) {
+        try {
+            val sessions = networkClient.fetchSessions()
+            recentSessions = sessions.take(3)
+        } catch (_: Exception) {}
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp, vertical = 20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // ═══ 1. Perplexity Brand & Telemetry Header Bar ═══
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "DIGITAL ASSISTANT",
-                color = TextMuted,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-                letterSpacing = 1.sp,
-                fontFamily = FontFamily.Monospace
-            )
-            Text(
-                text = "NATIVE TRIGGERS READY",
-                color = NeonCyan,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.SansSerif
-            )
-        }
-
-        Spacer(modifier = Modifier.height(14.dp))
-
-        // AI Engine Backend Row
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "AI ENGINE BACKEND",
-                color = TextMuted,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-                letterSpacing = 1.sp,
-                fontFamily = FontFamily.Monospace
-            )
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                // Animated Pulsing LED
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (status.isOnline) NeonGreen.copy(alpha = ledAlpha)
-                            else NeonAmber.copy(alpha = ledAlpha)
-                        )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clickable { onRefresh() }
+            ) {
+                Text(
+                    text = "✳",
+                    color = PerplexityTeal,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = if (status.isOnline) "ONLINE" else "STANDBY",
-                    color = if (status.isOnline) NeonGreen else NeonAmber,
-                    fontSize = 12.sp,
+                    text = "ATHENA",
+                    color = TextPrimary,
+                    fontSize = 17.sp,
                     fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
+                    letterSpacing = 1.2.sp,
+                    fontFamily = FontFamily.SansSerif
+                )
+            }
+
+            // Model & LED Status Capsule
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = PerplexitySurfaceElevated,
+                border = BorderStroke(1.dp, PerplexityPillBorder),
+                modifier = Modifier.clickable { onRefresh() }
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (status.isOnline) NeonGreen.copy(alpha = ledAlpha)
+                                else NeonAmber.copy(alpha = ledAlpha)
+                            )
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (status.isOnline) "ONLINE" else "STANDBY",
+                        color = if (status.isOnline) NeonGreen else NeonAmber,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "•",
+                        color = TextMuted,
+                        fontSize = 10.sp
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = status.model.replace("Gemini ", "Gemini-"),
+                        color = TextSecondary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(36.dp))
+
+        // ═══ 2. Center Perplexity Hero ═══
+        Text(
+            text = "✳",
+            color = PerplexityTeal,
+            fontSize = 38.sp,
+            fontWeight = FontWeight.Light
+        )
+        Spacer(modifier = Modifier.height(10.dp))
+        Text(
+            text = "Where knowledge begins",
+            color = TextPrimary,
+            fontSize = 24.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = (-0.5).sp,
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = "Search live intelligence, research deep queries, or inspect your screen",
+            color = TextMuted,
+            fontSize = 13.sp,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = 16.dp)
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // ═══ 3. Primary Floating Search Capsule ═══
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .shadow(
+                    elevation = 8.dp,
+                    shape = RoundedCornerShape(22.dp),
+                    ambientColor = PerplexityTealDim,
+                    spotColor = PerplexityTealDim
+                ),
+            shape = RoundedCornerShape(22.dp),
+            color = PerplexitySurfaceElevated,
+            border = BorderStroke(1.dp, PerplexityPillBorder)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = "Search",
+                        tint = TextMuted,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    TextField(
+                        value = queryText,
+                        onValueChange = { queryText = it },
+                        placeholder = {
+                            Text(
+                                text = "Ask anything or search...",
+                                color = TextMuted,
+                                fontSize = 14.sp
+                            )
+                        },
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary,
+                            cursorColor = PerplexityTeal
+                        ),
+                        singleLine = false,
+                        maxLines = 3,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        keyboardActions = KeyboardActions(onSearch = {
+                            if (queryText.isNotBlank()) {
+                                onNavigateToChat(queryText)
+                            } else {
+                                onNavigateToChat(null)
+                            }
+                        }),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Left action icons
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = onOpenOverlay,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Mic,
+                                contentDescription = "Voice Input",
+                                tint = PerplexityTeal,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        IconButton(
+                            onClick = {
+                                onNavigateToChat("Summarize the current visual screen context and inspect displayed interface.")
+                            },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CameraAlt,
+                                contentDescription = "Screen Context",
+                                tint = PerplexityTeal,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
+                    // Signature Circular Perplexity Send Button
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (queryText.isNotBlank()) PerplexityTeal
+                                else PerplexityTeal.copy(alpha = 0.5f)
+                            )
+                            .clickable {
+                                if (queryText.isNotBlank()) {
+                                    onNavigateToChat(queryText)
+                                } else {
+                                    onNavigateToChat(null)
+                                }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowUpward,
+                            contentDescription = "Search",
+                            tint = VoidBlack,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(18.dp))
+
+        // ═══ 4. Focus Mode Quick Chips Row ═══
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            FocusChip(
+                label = "Web Search",
+                icon = Icons.Default.Public,
+                onClick = { onNavigateToChat("Search the web for ") }
+            )
+            FocusChip(
+                label = "Pro Research",
+                icon = Icons.Default.AutoAwesome,
+                onClick = { onNavigateToChat("Conduct deep comprehensive research on ") }
+            )
+            FocusChip(
+                label = "Screen Context",
+                icon = Icons.Default.CameraAlt,
+                onClick = { onNavigateToChat("Inspect current screen context: ") }
+            )
+            FocusChip(
+                label = "Knowledge Vault",
+                icon = Icons.Default.Folder,
+                onClick = { onNavigateToChat("Search knowledge vault notes for ") }
+            )
+            FocusChip(
+                label = "Security Recon",
+                icon = Icons.Default.Security,
+                onClick = { onNavigateToChat("Perform security audit on ") }
+            )
+        }
+
+        Spacer(modifier = Modifier.height(28.dp))
+
+        // ═══ 5. Recent Threads / Discovery Section ═══
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "RECENT THREADS",
+                color = TextMuted,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 1.2.sp,
+                fontFamily = FontFamily.Monospace
+            )
+            Text(
+                text = "View all ›",
+                color = PerplexityTeal,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .clickable { onNavigateToChat(null) }
+                    .padding(vertical = 4.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        if (recentSessions.isNotEmpty()) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                recentSessions.forEach { session ->
+                    RecentThreadCard(
+                        session = session,
+                        onClick = { onNavigateToChat(null) }
+                    )
+                }
+            }
+        } else {
+            // Discovery Starter Prompts
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                DiscoveryCard(
+                    prompt = "Explain quantum computing and qubit superposition simply",
+                    onClick = { onNavigateToChat("Explain quantum computing and qubit superposition simply") }
+                )
+                DiscoveryCard(
+                    prompt = "Analyze system health, device battery, and background services",
+                    onClick = { onNavigateToChat("Analyze system health, device battery, and background services") }
+                )
+                DiscoveryCard(
+                    prompt = "Conduct a security audit of recent terminal commands",
+                    onClick = { onNavigateToChat("Conduct a security audit of recent terminal commands") }
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(26.dp))
 
-        // Telemetry Specs
+        // ═══ 6. Tactical Quick System Controls ═══
+        Button(
+            onClick = onOpenOverlay,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp)
+                .shadow(
+                    elevation = 6.dp,
+                    shape = RoundedCornerShape(16.dp),
+                    ambientColor = PerplexityTealDim,
+                    spotColor = PerplexityTealDim
+                ),
+            shape = RoundedCornerShape(16.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = PerplexityTeal,
+                contentColor = VoidBlack
+            )
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = "⚡",
+                    fontSize = 16.sp,
+                    color = VoidBlack
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "OPEN ASSISTANT HUD",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.8.sp,
+                    fontFamily = FontFamily.SansSerif,
+                    color = VoidBlack
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            ActionTile(
+                title = "CONFIG",
+                subtitle = "Default App",
+                icon = Icons.Default.Settings,
+                modifier = Modifier.weight(1f),
+                onClick = onOpenSettings
+            )
+            ActionTile(
+                title = "GESTURES",
+                subtitle = "Power / Swipe",
+                icon = Icons.Default.TouchApp,
+                modifier = Modifier.weight(1f),
+                onClick = onOpenGuide
+            )
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // ═══ 7. Perplexity Footer Telemetry ═══
         Text(
-            text = "Model: ${status.model}  •  Port: 2027  •  Phase: ${status.phase}",
-            color = TextSecondary,
-            fontSize = 11.5.sp,
+            text = "127.0.0.1:2027 // STREAMING SSE ENGINE",
+            color = TextMuted,
+            fontSize = 10.5.sp,
+            fontWeight = FontWeight.Medium,
+            letterSpacing = 1.2.sp,
             fontFamily = FontFamily.Monospace
         )
 
-        Spacer(modifier = Modifier.height(10.dp))
-
-        // Refresh Connection Link
-        Text(
-            text = "› REFRESH CONNECTION",
-            color = NeonCyan,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace,
-            modifier = Modifier
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onRefresh
-                )
-                .padding(vertical = 4.dp)
-        )
+        Spacer(modifier = Modifier.height(12.dp))
     }
 }
 
-/**
- * Cyberpunk Action Tile with frosted glass backdrop and neon cyan stroke.
- */
+@Composable
+fun FocusChip(
+    label: String,
+    icon: ImageVector,
+    onClick: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = PerplexitySurfaceElevated,
+        border = BorderStroke(1.dp, PerplexityPillBorder),
+        modifier = Modifier.clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = PerplexityTeal,
+                modifier = Modifier.size(14.dp)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = label,
+                color = TextSecondary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
+    }
+}
+
+@Composable
+fun RecentThreadCard(
+    session: SessionItem,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        color = PerplexitySurfaceElevated,
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, PerplexityPillBorder)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "💬",
+                    fontSize = 14.sp
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                    Text(
+                        text = session.title,
+                        color = TextPrimary,
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (session.lastMessage.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = session.lastMessage,
+                            color = TextMuted,
+                            fontSize = 11.5.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            Surface(
+                color = PanelDarkSolid,
+                shape = RoundedCornerShape(8.dp),
+                border = BorderStroke(1.dp, PerplexityPillBorder)
+            ) {
+                Text(
+                    text = "${session.messageCount} msgs",
+                    color = TextMuted,
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun DiscoveryCard(
+    prompt: String,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        color = PerplexitySurfaceElevated,
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, PerplexityPillBorder)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "💡",
+                    fontSize = 14.sp
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = prompt,
+                    color = TextSecondary,
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            Icon(
+                imageVector = Icons.Default.ArrowForward,
+                contentDescription = null,
+                tint = PerplexityTeal,
+                modifier = Modifier.size(16.dp)
+            )
+        }
+    }
+}
+
 @Composable
 fun ActionTile(
     title: String,
@@ -402,14 +772,14 @@ fun ActionTile(
 ) {
     Surface(
         modifier = modifier
-            .height(84.dp)
+            .height(76.dp)
             .clip(RoundedCornerShape(14.dp))
             .border(
-                border = BorderStroke(1.dp, PanelStroke),
+                border = BorderStroke(1.dp, PerplexityPillBorder),
                 shape = RoundedCornerShape(14.dp)
             )
             .clickable(onClick = onClick),
-        color = PanelDark,
+        color = PerplexitySurfaceElevated,
         shape = RoundedCornerShape(14.dp)
     ) {
         Column(
@@ -425,7 +795,7 @@ fun ActionTile(
                 Icon(
                     imageVector = icon,
                     contentDescription = title,
-                    tint = NeonCyan,
+                    tint = PerplexityTeal,
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
@@ -445,59 +815,6 @@ fun ActionTile(
                 fontSize = 10.5.sp,
                 fontFamily = FontFamily.Monospace
             )
-        }
-    }
-}
-
-/**
- * Terminal-style Integrated Capabilities Log Card.
- */
-@Composable
-fun CapabilitiesLogCard() {
-    HudCard {
-        Text(
-            text = "INTEGRATED CAPABILITIES",
-            color = TextMuted,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.SemiBold,
-            letterSpacing = 1.sp,
-            fontFamily = FontFamily.Monospace
-        )
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        val capabilities = listOf(
-            "Real-Time Streaming SSE Link (Live AI Reasoning)",
-            "Hardware Power & Home Button Long-Press",
-            "Corner Gesture Navigation Invocation",
-            "Continuous Conversational Turn Listening",
-            "Live Dynamic Audio Waveform Spectrum",
-            "Zero Background Battery Drain"
-        )
-
-        capabilities.forEach { item ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 3.dp),
-                verticalAlignment = Alignment.Top
-            ) {
-                Text(
-                    text = "›",
-                    color = NeonCyan,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = item,
-                    color = TextSecondary,
-                    fontSize = 12.sp,
-                    lineHeight = 16.sp,
-                    fontFamily = FontFamily.SansSerif
-                )
-            }
         }
     }
 }

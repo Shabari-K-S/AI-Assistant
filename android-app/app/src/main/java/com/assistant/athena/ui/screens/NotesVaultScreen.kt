@@ -337,14 +337,14 @@ fun NotesVaultScreen(
                 ) {
                     Column {
                         Text(
-                            text = "MARKDOWN NOTES VAULT",
+                            text = "LIBRARY // KNOWLEDGE VAULT",
                             color = NeonCyan,
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp,
                             letterSpacing = 1.sp
                         )
                         Text(
-                            text = "${notes.size} documents indexed // local RAG",
+                            text = "${notes.size} documents indexed // Local RAG",
                             color = TextMuted,
                             fontSize = 11.sp,
                             fontFamily = FontFamily.Monospace
