@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, type ReactNode } from 'react'
+import { useState, useMemo, useCallback, useEffect, memo, type ReactNode } from 'react'
 import {
   BookOpen,
   Search,
@@ -519,7 +519,7 @@ function renderFormattedText(text: string) {
   return <>{parts}</>
 }
 
-export function NotesVaultPanel({ onSendPrompt }: Props) {
+export const NotesVaultPanel = memo(function NotesVaultPanel({ onSendPrompt }: Props) {
   const {
     notes,
     allNotesCount,
@@ -1107,4 +1107,4 @@ export function NotesVaultPanel({ onSendPrompt }: Props) {
       )}
     </div>
   )
-}
+})

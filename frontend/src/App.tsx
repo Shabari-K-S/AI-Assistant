@@ -112,31 +112,34 @@ export default function App() {
   const phaseLabel =
     PHASE_TAG[activePhase] ?? (connected ? 'SYSTEM ACTIVE' : 'HOST BACKEND OFFLINE')
 
-  const toggleLeft = () => {
+  const toggleLeft = useCallback(() => {
     soundFx.click()
     setShowLeftSidebar((prev) => !prev)
-  }
+  }, [])
 
-  const toggleRight = () => {
+  const toggleRight = useCallback(() => {
     soundFx.click()
     setShowRightSidebar((prev) => !prev)
-  }
+  }, [])
 
-  const toggleScanlines = () => {
+  const toggleScanlines = useCallback(() => {
     soundFx.click()
     setScanlinesActive((prev) => !prev)
-  }
+  }, [])
 
-  const switchMobileTab = (tab: MobileTab) => {
+  const switchMobileTab = useCallback((tab: MobileTab) => {
     soundFx.click()
     setMobileTab(tab)
-  }
+  }, [])
 
-  const handlePromptFromSubviews = (text: string) => {
+  const handlePromptFromSubviews = useCallback((text: string) => {
     sendPrompt(text)
     setCenterView('core')
     if (isMobile) setMobileTab('core')
-  }
+  }, [sendPrompt, isMobile])
+
+  const handleCloseBriefing = useCallback(() => setBriefing(null), [setBriefing])
+  const handleMobileClose = useCallback(() => switchMobileTab('core'), [switchMobileTab])
 
   return (
     <div className="relative flex h-[100dvh] w-screen flex-col overflow-hidden bg-[#03070b] text-[#e8fbff] select-none">
@@ -167,7 +170,7 @@ export default function App() {
       {briefing && (
         <BriefingModal
           briefing={briefing}
-          onClose={() => setBriefing(null)}
+          onClose={handleCloseBriefing}
           onSendPrompt={handlePromptFromSubviews}
         />
       )}
@@ -336,7 +339,7 @@ export default function App() {
 
             <McpConfigPanel
               onSendPrompt={handlePromptFromSubviews}
-              onClose={isMobile ? () => switchMobileTab('core') : undefined}
+              onClose={isMobile ? handleMobileClose : undefined}
             />
           </main>
         ) : (
@@ -572,7 +575,7 @@ export default function App() {
             snap={activeSnap}
             logs={logs}
             onClearLogs={clearLogs}
-            onClose={isMobile ? () => switchMobileTab('core') : undefined}
+            onClose={isMobile ? handleMobileClose : undefined}
           />
         )}
       </div>

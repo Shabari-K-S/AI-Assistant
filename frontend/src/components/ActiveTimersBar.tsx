@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, memo } from 'react'
 import { Timer, Clock, Coffee, Play, X, Plus } from 'lucide-react'
 import type { ActiveTimer } from '../types'
 import { soundFx } from '../lib/soundFx'
@@ -15,7 +15,7 @@ function formatTime(seconds: number): string {
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
 }
 
-export function ActiveTimersBar({ timers, onCreateTimer, onCancelTimer }: Props) {
+export const ActiveTimersBar = memo(function ActiveTimersBar({ timers, onCreateTimer, onCancelTimer }: Props) {
   const [showAddMenu, setShowAddMenu] = useState(false)
   const [customDuration, setCustomDuration] = useState('')
   const [customLabel, setCustomLabel] = useState('')
@@ -154,4 +154,4 @@ export function ActiveTimersBar({ timers, onCreateTimer, onCancelTimer }: Props)
       )}
     </div>
   )
-}
+})
