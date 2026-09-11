@@ -676,8 +676,8 @@ class MicCapture:
             if self._stream is not None:
                 try:
                     self._stream.close()
-                except Exception:
-                    pass
+                except Exception as close_exc:
+                    log.debug("failed to close audio stream during cleanup: %s", close_exc)
                 self._stream = None
             raise
 
@@ -685,12 +685,12 @@ class MicCapture:
         if self._stream is not None:
             try:
                 self._stream.stop()
-            except Exception:
-                pass
+            except Exception as exc:
+                log.debug("failed to stop audio stream: %s", exc)
             try:
                 self._stream.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                log.debug("failed to close audio stream: %s", exc)
             self._stream = None
 
     def flush(self, until_monotonic: float | None = None) -> None:
