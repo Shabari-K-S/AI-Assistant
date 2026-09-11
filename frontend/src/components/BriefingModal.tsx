@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, memo } from 'react'
 import {
   Sun,
   Moon,
@@ -22,7 +22,7 @@ interface Props {
   onSendPrompt: (prompt: string) => Promise<boolean> | Promise<void> | void
 }
 
-export function BriefingModal({ briefing, onClose, onSendPrompt }: Props) {
+export const BriefingModal = memo(function BriefingModal({ briefing, onClose, onSendPrompt }: Props) {
   const [copied, setCopied] = useState(false)
   const isMorning = briefing.type === 'morning'
 
@@ -247,4 +247,4 @@ export function BriefingModal({ briefing, onClose, onSendPrompt }: Props) {
       </div>
     </div>
   )
-}
+})

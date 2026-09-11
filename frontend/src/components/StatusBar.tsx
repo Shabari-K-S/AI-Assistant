@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, memo } from 'react'
 import { animate, stagger } from 'animejs'
 import type { Phase } from '../types'
 import { soundFx } from '../lib/soundFx'
@@ -30,7 +30,7 @@ const PHASE_LABEL: Record<Phase, string> = {
 }
 
 /** Top HUD bar: identity, phase, live state lights, audio controls. */
-export function StatusBar({ phase, online, wakeWord, isTerminalOpen, onToggleTerminal }: Props) {
+export const StatusBar = memo(function StatusBar({ phase, online, wakeWord, isTerminalOpen, onToggleTerminal }: Props) {
   const clock = useClock()
   const barRef = useRef<HTMLDivElement>(null)
   const [soundEnabled, setSoundEnabled] = useState(true)
@@ -175,4 +175,4 @@ export function StatusBar({ phase, online, wakeWord, isTerminalOpen, onToggleTer
       </div>
     </header>
   )
-}
+})
